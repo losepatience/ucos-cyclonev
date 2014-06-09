@@ -1,0 +1,818 @@
+/*
+*******************************************************************************************
+*	UART1 and UART2 transmit and receive      											  *	
+*   UART1 for headboard and UART2 for motion                                              *
+*	This function can be implemented more easier and better performance, but for easy     *
+*	porting to other CPU, we implement in this way										  *		
+*                                        												  * 
+*	COM Format on line: START(0xAA) 0/1 CRC "LEN CMD DATA[N]"                             *
+*						***	 (LEN = N+5)	5 <= LEN <= 32  ***	                 		  *
+*	UART Format in Program:		LEN CMD DATA[N]											  *
+*							***	(LEN = N + 2)  2 <= LEN <= 28							  *	
+*	ACK: 0xAA, 0x55 																	  *	
+*	Porting Guide: TmpQ.buff can be a buf >= 32 + 2(For ACK)        				      *
+*******************************************************************************************
+*/
+
+#include "os_includes.h"
+
+#include "status.h"
+#include "global.h"
+#include "consol.h"
+#include "miscellance.h"
+
+#include "usart/usart.h"
+#include "pmc/pmc.h"
+#include "irq/irq.h"
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+#ifdef __DEBUG_MOTION
+#define NO_RESEND
+#define DUMP_SENDTO_DMP_CMD
+#endif
+
+//#define DUMP_SENDTO_DMP_CMD
+//#define DUMP_SENDTO_HEADBOARD_CMD
+/////////////////////////////////////////////////////////////////////////////////////////////////
+unsigned char CRC8_Table(unsigned char *p, char counter);
+
+#define BUF_LEN 1024	//Must less than 65535 and >= MAX_CMD_LEN * 2
+
+#define TXFIFOSIZE	16
+
+#define CMD_COUNT 5     //count of uart command
+
+#define UART_WAIT_TIME	25 //resend interval
+
+//If a command is sent, in this time, we should receive ACK, otherwise, resend this command, unit:ms
+#ifdef NO_RESEND
+#define UART_TIME_OUT	0 
+#else
+#define UART_TIME_OUT	512  //Maxmum resend time
+#endif
+
+//UART_TIME_OUT*UART_WAIT_TIME must be greater than 5S, when update DSP and DSP is ereasing, it will cost almost 5S.
+
+//If a CMD is re-sent 10 times (500ms) but not receive ACK, time out and report error.  
+
+//#define DEBUG
+
+typedef struct 
+{
+	INT8U  buff[BUF_LEN];            /* data buffer */
+	INT16U           wptr;           /* write pointer */
+	INT16U           rptr;           /* read pointer */
+	INT16U			 cmdptr;		 /*CMD begin pointer*/	 
+	INT16U			 size;	
+} UART_BUFFER;
+
+static UART_BUFFER RxQ[3] SLOW_DATA_SECTION, TxQ[3] SLOW_DATA_SECTION; 
+static UART_BUFFER tmpQ[2] SLOW_DATA_SECTION;
+
+static INT8U toggle[3] = {1,1,1};
+
+static INT8U RxToggle[3] = {0,0,0};
+
+static INT8U needACK[3] ={False, False, False}; //After received a CMD, we should ACK the command 
+static INT8U cmdLeft[3] = {0,0,0};	 //Left bytes after One CMD is sent one time or more	
+static INT8U canTx[3] = {True,True,True}; //Nothing in UART FIFO, UART is not working on transmitting 
+static INT8U TxACKed[3] = {True, True, True}; //Send CMD is ACKed
+static INT16U retryTimes[3] = {0,0,0};
+static INT8U checkModel[3] = {0,0,0};     //0, auto; 1, only check sum; 2 only CRC.
+
+//INT8U retryTimes[2] = {0,0};
+
+volatile INT16U uart_waittime[3] = {0, 0,0};
+
+// UART_HEAD_CHANNEL	0
+// UART_MOTION_CHANNEL	1
+
+static INT8U ACKBuff[2] = { 0xAA, 0x55};
+//Johnextern Pin CLEAN_STATUS_LED;
+
+//This function ia called in interrupt handler
+//Call this function must diable the interrupt
+void headUart_TimeTicksHook(INT8U ticks)  //HeadBoard channel 
+{
+	INT8U cmdLen = 0;
+	INT16U i;
+	
+	if (canTx[0])
+	{
+		//		while (rUFSTAT1 & 0x200); //Tx FIFO FULL
+		//		while (((rUFSTAT1 & 0xF0)>>4) >= TXFIFOSIZE);
+		if (cmdLeft[0] == 0) //Send left part of one command
+		{			
+			if (needACK[0])
+			{
+				needACK[0] = False;
+				//JohnUSART_WriteBuffer(BOARD_HEADBOARD_USART_BASE, ACKBuff, 2);
+				canTx[0] = False;	
+				return;			
+			}
+			
+			if (TxACKed[0]) //Command is sent correctly
+			{
+				//				if (ticks == False)
+				//					CONSOL_Printf("0!:%d", uart_waittime[0]);
+				retryTimes[0] = 0; //Reset retry times 	
+				uart_waittime[0] = 0;			
+				
+				if (TxQ[0].size == 0)
+					cmdLen = 0;
+				else
+				{
+					if (TxQ[0].cmdptr != TxQ[0].rptr)
+					{
+						i = TxQ[0].cmdptr+LEN_OFFSET_INCMD;
+						if (i >= BUF_LEN)
+							i -= BUF_LEN;
+						TxQ[0].size -= TxQ[0].buff[i]; //Lendth in Offset == 3						
+						TxQ[0].cmdptr = TxQ[0].rptr; //Point to next CMD
+					}
+					if (TxQ[0].size == 0)
+						cmdLen = 0;
+					else  //Begin a new CMD transmit
+					{
+						i = TxQ[0].rptr+LEN_OFFSET_INCMD;
+						if (i >= BUF_LEN)
+							i -= BUF_LEN;
+						cmdLen = TxQ[0].buff[i]; //CMD length
+						TxACKed[0] = False;
+					}
+				}
+			}else //One command translate completed
+			{
+				if (ticks)
+				{					
+					if (retryTimes[0] < UART_TIME_OUT) //Resend
+					{
+						uart_waittime[0] = UART_WAIT_TIME;
+						retryTimes[0]++;
+						TxQ[0].rptr = TxQ[0].cmdptr; 
+						i = TxQ[0].rptr+LEN_OFFSET_INCMD;
+						if (i >= BUF_LEN)
+							i -= BUF_LEN;
+						cmdLen = TxQ[0].buff[i]; //CMD length
+					}
+					else
+					{	
+						CONSOL_Printf("Retry times: %d", retryTimes[0]);
+						status_ReportStatus(STATUS_ERR_UART1_TXTIMEOUT, STATUS_SET); //UART1 transmit timeout error
+						TxACKed[0] = True;
+						retryTimes[0] = 0;
+					}
+				}else
+					uart_waittime[0] = UART_WAIT_TIME;
+			}
+		}else
+			cmdLen = cmdLeft[0];
+		
+		if (cmdLen > 0)
+		{	
+			//Even the interrupt level is set to 0, when interrupt occur, this count maybe none 0; need wait;
+			i = BUF_LEN - TxQ[0].rptr; 
+			
+			if (cmdLen > i)
+			{
+				cmdLeft[0] = cmdLen - i;
+				cmdLen = i;	
+			}
+			else
+			{
+				cmdLeft[0] = 0;								
+			}
+			//JohnUSART_WriteBuffer(BOARD_HEADBOARD_USART_BASE, TxQ[0].buff + TxQ[0].rptr, cmdLen);
+			
+			TxQ[0].rptr += cmdLen;
+			if (TxQ[0].rptr >= BUF_LEN)
+				TxQ[0].rptr = 0;					
+			
+			canTx[0] = False;	
+		}			
+	}
+}
+
+#if ((defined(EPSON_BOTTOM_BOARD_V3) ||defined (EPSON_BOTTOM_BOARD_V2_1))&& defined(SUPPORT_MOTOR_CONTROL))||defined(SUPPORT_MOTOR_CONTROL_ONLY_STEP)
+INT8U UART_MotionGetCMD(INT8U *data)
+{
+	INT8U cmdlen = 0;
+	INT8U i;
+	OS_CPU_SR cpu_sr;	
+	
+	OS_ENTER_CRITICAL();
+	
+	if (TxQ[UART_MOTION_CHANNEL].size == 0)
+	{
+		OS_EXIT_CRITICAL();
+		return False;
+	}
+	
+	cmdlen = TxQ[UART_MOTION_CHANNEL].buff[TxQ[UART_MOTION_CHANNEL].rptr];	
+	
+	if ((cmdlen > TxQ[UART_MOTION_CHANNEL].size)||(cmdlen>28))
+	{
+		status_ReportStatus(STATUS_FTA_INTERNAL_WRONGFORMAT, STATUS_SET);
+		OS_EXIT_CRITICAL();
+		return False;
+	}
+	
+	for (i=0; i<cmdlen; i++)
+	{
+		*(data++)=TxQ[UART_MOTION_CHANNEL].buff[TxQ[UART_MOTION_CHANNEL].rptr++];
+		if (TxQ[UART_MOTION_CHANNEL].rptr >= BUF_LEN)
+			TxQ[UART_MOTION_CHANNEL].rptr = 0;	
+	}
+	TxQ[UART_MOTION_CHANNEL].size -= cmdlen;
+	OS_EXIT_CRITICAL(); 	
+	return True;	
+}
+#endif
+
+INT8U UART_GetCMD(INT8U channel, INT8U *data)
+{
+	INT8U cmdlen = 0;
+	INT8U i;
+	OS_CPU_SR cpu_sr;	
+#if defined(SUPPORT_MOTOR_CONTROL_ONLY_STEP)    
+	if(channel == UART_MOTION_CHANNEL)
+		channel = UART_DSP_CHANNEL;
+#endif
+	OS_ENTER_CRITICAL();
+	
+	if (RxQ[channel].size == 0)
+	{
+		OS_EXIT_CRITICAL();
+		return False;
+	}
+	
+	cmdlen = RxQ[channel].buff[RxQ[channel].rptr];	
+	
+	if ((cmdlen > RxQ[channel].size)||(cmdlen>29))
+	{
+		status_ReportStatus(STATUS_FTA_INTERNAL_WRONGFORMAT, STATUS_SET);
+		OS_EXIT_CRITICAL();
+		return False;
+	}
+	
+	for (i=0; i<cmdlen; i++)
+	{
+		*(data++)=RxQ[channel].buff[RxQ[channel].rptr++];
+		if (RxQ[channel].rptr >= BUF_LEN)
+			RxQ[channel].rptr = 0;	
+	}
+	RxQ[channel].size -= cmdlen;
+	OS_EXIT_CRITICAL(); 	
+	return True;	
+}
+
+void UART_SetCheckModel(INT8U channel, INT8U model)
+{
+	OS_CPU_SR  cpu_sr;
+	if(model >=0 && model <= 2 && (channel == UART_MOTION_CHANNEL || channel == UART_HEAD_CHANNEL))
+	{
+		OS_ENTER_CRITICAL();
+		checkModel[channel] = model;
+		OS_EXIT_CRITICAL();	
+	}
+}
+
+#if ((defined(EPSON_BOTTOM_BOARD_V3) ||defined (EPSON_BOTTOM_BOARD_V2_1))&& defined(SUPPORT_MOTOR_CONTROL))||defined(SUPPORT_MOTOR_CONTROL_ONLY_STEP)
+INT8U UART_SendMotionCMD(INT8U *data)
+{
+	OS_CPU_SR  cpu_sr;
+	INT8U err;
+	INT8U i, len, ret = True;	
+	
+	len = data[0];
+	if (len < 2) return False; //Wrong Command
+	
+	OS_ENTER_CRITICAL();
+	if (BUF_LEN - TxQ[UART_MOTION_CHANNEL].size >= data[0]) //No enough space
+	{		
+		for (i = 0; i < len; i++)
+		{
+			TxQ[UART_MOTION_CHANNEL].buff[TxQ[UART_MOTION_CHANNEL].wptr++] = data[i];
+			if (TxQ[UART_MOTION_CHANNEL].wptr >= BUF_LEN)
+				TxQ[UART_MOTION_CHANNEL].wptr = 0;		
+		}
+		TxQ[UART_MOTION_CHANNEL].size += len;	
+		OSFlagPost(mix_FLAG_GRP, MOTION_SEND_CMD,OS_FLAG_SET,&err); 
+	}
+	else
+		ret = False;
+	OS_EXIT_CRITICAL();	
+	return ret;
+}
+#endif    
+
+static INT8U UART_SendCMD_Internal(INT8U channel, INT8U *data)
+{
+	INT8U buf[MAX_CMD_LEN];
+	INT8U i;
+	OS_CPU_SR  cpu_sr;
+	INT8U len;	
+	INT8U chksum = 0;
+	
+	if ((channel != 0)&&(channel != 1)&&(channel != UART_MOTION_CHANNEL))
+		return False;
+	if (data[0] > MAX_CMD_LEN - LEN_OFFSET_INCMD)
+		return False;
+#if ((defined(EPSON_BOTTOM_BOARD_V3) ||defined (EPSON_BOTTOM_BOARD_V2_1))&& defined(SUPPORT_MOTOR_CONTROL))
+	if(UART_MOTION_CHANNEL == channel)
+		return UART_SendMotionCMD(data);
+#endif    
+	
+#ifdef SUPPORT_MOTOR_CONTROL_ONLY_STEP
+	if(UART_MOTION_CHANNEL == channel)
+	{
+		if((data[1] == UART_AXISMOVETO_CMD &&(data[2] == 4 || data[2] == 8))||
+		   (data[1] == UART_MOVEDISTANCE_CMD &&(data[2] == 5 || data[2] == 6|| data[2] == 7|| data[2] == 8)))
+			return UART_SendMotionCMD(data);
+		else
+			channel = UART_DSP_CHANNEL;
+#ifdef RIPSTAR_SIX_AXIS_MODEL		
+		if(data[1] == UART_AXISMOVETO_CMD)
+		{
+#if defined(MANUFACTURER_LONGKE_FLAT_UV_150)||defined(MANUFACTURER_LONGKE_FLAT_UV_130)
+			if(data[2] == 0x10||data[2] == 0x20)
+				data[3] = PRINTER_ZAXIS_SPEED_FLAT;
+#endif
+			if(data[2] == 0x10)
+				data[2] = 4; 
+			if(data[2] == 0x20)
+				data[2] = 8; 
+		}
+		if(data[1] == UART_MOVEDISTANCE_CMD)
+		{
+			if(data[2] >= 9)
+			{
+				data[2] -= 4; 
+#if defined(MANUFACTURER_LONGKE_FLAT_UV_150)||defined(MANUFACTURER_LONGKE_FLAT_UV_130)
+				data[3] = PRINTER_ZAXIS_SPEED_FLAT;
+#endif
+			}
+		}		
+#endif			
+	}
+#endif
+#ifdef DUMP_SENDTO_DMP_CMD
+	if (channel == 1)
+	{	
+		CONSOL_Printf("Send command to motion:");
+		{   INT8U i;
+		for (i = 0; i<data[0];i++)
+			CONSOL_Printf("%x|",data[i]);
+		CONSOL_Printf("\r\n");	
+		}
+	}
+#endif	
+	
+#ifdef DUMP_SENDTO_HEADBOARD_CMD
+	if (channel == 0)
+	{	
+		CONSOL_Printf("Retry times: %d", retryTimes[0]);
+		CONSOL_Printf("Send command to headboard:");
+		{   
+			INT8U i;
+			for (i = 0; i<data[0];i++)
+				CONSOL_Printf("%x|",data[i]);
+			CONSOL_Printf("\r\n");	
+		}
+	}
+#endif	
+	
+	len = data[0];
+	if (len < 2) return False; //Wrong Command
+	
+	buf[0] = 0xAA;
+	buf[1] = toggle[channel];
+	buf[2] = 0;
+	
+	for (i = 1; i < len; i++)
+		buf[LEN_OFFSET_INCMD+i] = data[i];
+	
+	len += LEN_OFFSET_INCMD;
+	buf[3] = len;
+	
+	if(checkModel[channel] == 2)
+		chksum = CRC8_Table(buf, len);
+	else
+	{
+		for (i = 0; i <	len; i++) //checksum
+			chksum += buf[i];
+	}
+	
+	buf[2] = chksum;
+	
+	OS_ENTER_CRITICAL();
+	if (BUF_LEN - TxQ[channel].size >= data[0]+LEN_OFFSET_INCMD) //No enough space
+	{		
+		toggle[channel] = !toggle[channel];
+		
+		for (i = 0; i < len; i++)
+		{
+			TxQ[channel].buff[TxQ[channel].wptr++] = buf[i];
+			if (TxQ[channel].wptr >= BUF_LEN)
+				TxQ[channel].wptr = 0;		
+		}
+		TxQ[channel].size += len;	
+		if (canTx[channel])
+		{
+			if (uart_waittime[channel] == 0)
+				uart_waittime[channel] = 1;		
+		}		
+	}
+	OS_EXIT_CRITICAL();	
+	return True;
+}
+
+/*********************************************************************
+*this function is used to judge the command that you send whether exist
+*in UART_CMD_Arr[CMD_COUNT] not in it, the UART_CMD_Arr[CMD_COUNT] contain
+* the uart command that can tirgger the Y moving.
+*********************************************************************/
+static INT8U Judge_UART_CMD_Is_Exist(INT8U UART_CMD, INT8U dir)
+{
+	INT8U i = 0;
+	INT8U UART_CMD_Arr[CMD_COUNT] = {UART_PRINT_CMD,UART_PAPERFEED_CMD,
+	UART_MOVEDISTANCE_CMD,UART_AXISMOVETO_CMD,UART_GOHOME_CMD};   //send this command may be trigger Y moving 
+	
+	for ( i = 0; i < CMD_COUNT; i++)
+	{
+		if (UART_CMD == UART_CMD_Arr[i])
+		{
+			switch (UART_CMD)
+			{
+			case UART_MOVEDISTANCE_CMD:   //special circumstances
+				if (dir == 3 || dir == 4)   //1,2 X, 3,4 Y, 5,6 Z
+				{
+					return True;
+				}
+				return False;
+			case UART_AXISMOVETO_CMD:    //special circumstances
+				if (dir == 2)              //AXIS:1:x; 2:y; 4:z; 8:wiper Y.
+				{
+					return True;
+				}
+				return False;
+			case UART_GOHOME_CMD:        //special circumstances
+				if (dir == 2)              //AXIS:1:x; 2:y; 4:z; 8:wiper Y.
+				{
+					return True;
+				}
+				return False;
+			default: return True;  
+			}
+		}
+	}
+	
+	return False;
+}
+
+/*********************************************************************
+*this function is used to judge the command that you send can trigger
+* Y moving, if moving then return True, else return False.
+*********************************************************************/
+static INT8U Judge_Y_Need_Move(const INT8U *data)     
+{
+	INT8U ret = False;
+	
+	ret = Judge_UART_CMD_Is_Exist(data[1], data[2]);    //data[1] is uart command , data[2] is moving direction
+	if (ret)
+	{
+		return True;
+	}
+	
+	return False;
+}
+/*********************************************************************
+* if the send uart command is trigger the Y moving then CLEAN_STATUS_LED 
+* light.
+*********************************************************************/
+
+INT8U UART_SendCMD(INT8U channel, INT8U *data)
+{
+	INT8U ret = False;
+	INT8U is_move = False;
+#ifdef ALLWIN_MEDIA_KEY   
+	if(UART_HEAD_CHANNEL != channel)
+	{
+		is_move = Judge_Y_Need_Move(data);
+		if (is_move)
+		{
+			PIO_Set(&CLEAN_STATUS_LED);
+		}
+	}
+#endif   
+	ret = UART_SendCMD_Internal(channel, data);   
+	return ret;
+}
+void HeadUARTInterrupt()
+{	
+	INT8U len = 0;
+	INT8U chksum = 0;
+	INT8U cmdChkSum;
+	INT8U i;
+	//	OS_CPU_SR  cpu_sr;	
+	
+	INT32U status;
+	
+	// Read USART status
+	//Johnstatus = BOARD_HEADBOARD_USART_BASE->US_CSR;
+	
+	//	if (rSUBSRCPND&BIT_SUB_RXD1) //Rx FIFO full (12 bytes)
+	// cheney: only receive one byte
+
+
+
+
+	////		OS_ENTER_CRITICAL();				
+	//		
+	//		if (rUFSTAT1 & 0x100) //Rx FIFO FULL
+	//			len = 16;
+	//		else
+	//			len = (rUFSTAT1&0xF);
+	len = 1;
+	
+	//tmpQ.buff[0]:Flag for if there is a legal command in the temp buffer; 1:have legal command
+	if (BUF_LEN - RxQ[0].size < MAX_CMD_LEN ) //No space for new CMD
+	{
+		for (i = 0; i < len; i++)
+			//JohnBOARD_HEADBOARD_USART_BASE->US_RHR; //Just read out the data for next receive inetrrupt, because the Q is full
+		//			OS_EXIT_CRITICAL();	
+		goto INTCLR;
+	}else
+	{
+		for (i = 0; i < len; i++)
+			;//JohntmpQ[0].buff[tmpQ[0].wptr++] = BOARD_HEADBOARD_USART_BASE->US_RHR;
+	}
+	
+	tmpQ[0].cmdptr = tmpQ[0].rptr;
+	
+	while (tmpQ[0].wptr - tmpQ[0].cmdptr >= 2)
+	{
+		if (tmpQ[0].buff[tmpQ[0].cmdptr++] != 0xAA)
+		{
+			tmpQ[0].rptr = tmpQ[0].cmdptr;				
+			continue;
+		}
+		/*			
+		if ( (tmpQ[0].buff[tmpQ[0].cmdptr] != !RxToggle[0]) //This command already received, first toggle is 1
+		&& (tmpQ[0].buff[tmpQ[0].cmdptr] != 0x55) )
+		{
+		tmpQ[0].cmdptr++;
+		tmpQ[0].rptr = tmpQ[0].cmdptr;
+		continue;
+	}*/			
+		if (tmpQ[0].buff[tmpQ[0].cmdptr++] == 0x55) //ACK
+		{
+			tmpQ[0].rptr = tmpQ[0].cmdptr;
+			TxACKed[0] = True; 
+			retryTimes[0] = 0;
+			uart_waittime[0] = 1;	//Trigger a send at the next time tick;
+			continue;
+		}
+		
+		tmpQ[0].rptr = tmpQ[0].cmdptr - 2; //0xAA
+		break;
+	}
+	
+	if (tmpQ[0].wptr - tmpQ[0].rptr > 3)
+	{	
+		len = tmpQ[0].buff[tmpQ[0].rptr+3]; //Length byte
+		if (len <= MAX_CMD_LEN) //The command that are more than 32 bytes will be ignored
+		{
+			if (tmpQ[0].wptr - tmpQ[0].rptr	>= len) //CMD is received
+			{
+				cmdChkSum = tmpQ[0].buff[tmpQ[0].rptr+2];			
+				tmpQ[0].buff[tmpQ[0].rptr+2] = 0; //Skip checksum byte
+				chksum = 0;
+				switch(checkModel[0])
+				{
+				case 1:
+					for (i = 0; i < len; i++)
+						chksum += tmpQ[0].buff[tmpQ[0].rptr + i];	
+					break;
+				case 2:
+					chksum = CRC8_Table(tmpQ[0].buff + tmpQ[0].rptr, len);
+					break;
+				case 0:
+				default:
+					chksum = CRC8_Table(tmpQ[0].buff + tmpQ[0].rptr, len);
+					if(chksum != cmdChkSum)
+					{
+						chksum = 0;
+						for (i = 0; i < len; i++)
+							chksum += tmpQ[0].buff[tmpQ[0].rptr + i];	
+					}
+					break;
+				}
+				if (chksum == cmdChkSum) //The Ccommand is OK;
+				{	
+#ifndef NO_RESEND					
+					if (tmpQ[0].buff[tmpQ[0].rptr+1] != RxToggle[0])
+#endif						
+					{
+						
+						//Copy the data to RxQ, 0xAA 0/1 CRC is throw away
+						tmpQ[0].buff[tmpQ[0].rptr+3] -= 3;
+						for (i = 3; i < len; i++)
+						{
+							RxQ[0].buff[RxQ[0].wptr++] = tmpQ[0].buff[tmpQ[0].rptr+i];
+							if (RxQ[0].wptr >= BUF_LEN)
+								RxQ[0].wptr = 0;
+						}
+						
+						RxQ[0].size += (len-3);
+						RxToggle[0] = !RxToggle[0]; 	
+					}					
+					needACK[0] = True; //Need trigger the transfer
+					retryTimes[0] = 0;
+					uart_waittime[0] = 1;	//Will send at the next time tick;						
+				}
+				tmpQ[0].rptr = 0;
+				tmpQ[0].wptr = 0;
+				tmpQ[0].cmdptr = 0;						
+			}
+		}else
+		{
+			tmpQ[0].rptr = 0;
+			tmpQ[0].wptr = 0;
+			tmpQ[0].cmdptr = 0;
+		}
+	}
+	
+	//Need porting ...........//////////////////////////////////////////
+	if (tmpQ[0].wptr >= BUF_LEN - MAX_CMD_LEN*2)
+	{
+		for (i = 0; i< tmpQ[0].wptr - tmpQ[0].rptr; i++)
+			tmpQ[0].buff[i] = tmpQ[0].buff[tmpQ[0].rptr+i];				 
+		tmpQ[0].wptr = tmpQ[0].wptr - tmpQ[0].rptr;
+		tmpQ[0].cmdptr = tmpQ[0].rptr = 0;		
+	}
+	
+	if (tmpQ[0].wptr <= tmpQ[0].rptr) //Temp buffer is not a loopback buffer; Size >= MOSTLENGTH + 2; One CMD + ACK;
+	{
+		tmpQ[0].rptr = 0;
+		tmpQ[0].wptr = 0;
+		tmpQ[0].cmdptr = 0;			
+	}
+	//		OS_EXIT_CRITICAL();		
+
+
+
+
+
+	//	if (rSUBSRCPND&BIT_SUB_TXD1) //Tx FIFO empty (16 bytes can write)
+	//Johnif (((status & AT91C_US_TXBUFE) & (BOARD_HEADBOARD_USART_BASE->US_IMR)) == AT91C_US_TXBUFE) //send a cmd buffer.
+	if (1)
+	{
+		//		OS_ENTER_CRITICAL();
+		canTx[0] = True;
+		headUart_TimeTicksHook(False);
+		//		OS_EXIT_CRITICAL();
+	}
+INTCLR:
+	return;
+	//	rSUBSRCPND = BIT_SUB_RXD1|BIT_SUB_TXD1;; //Cleaning the  interrupt sub bits
+	//	ClearPending(BIT_UART1);		
+	//	OS_EXIT_CRITICAL();
+}
+
+#if (defined(EPSON_BOTTOM_BOARD_V3)||defined (EPSON_BOTTOM_BOARD_V2_1)) && defined(SUPPORT_MOTOR_CONTROL)
+INT8U UART_MotionReportCMD(INT8U *data)
+{
+	OS_CPU_SR  cpu_sr;
+	INT8U err;
+	INT8U i, len, ret = True;	
+	
+	len = data[0];
+	if (len < 2 || len > 28) return False; //Wrong Command
+	
+	OS_ENTER_CRITICAL();
+	if (BUF_LEN - RxQ[UART_MOTION_CHANNEL].size >= data[0]) //No enough space
+	{
+		for (i = 0; i < len; i++)
+		{
+			RxQ[UART_MOTION_CHANNEL].buff[RxQ[UART_MOTION_CHANNEL].wptr++] = data[i];
+			if (RxQ[UART_MOTION_CHANNEL].wptr >= BUF_LEN)
+				RxQ[UART_MOTION_CHANNEL].wptr = 0;
+		}
+		RxQ[UART_MOTION_CHANNEL].size += len;
+		OSFlagPost(mix_FLAG_GRP, MOTION_REPORT_CMD, OS_FLAG_SET, &err);
+	}
+	else
+		ret = False;
+	OS_EXIT_CRITICAL();	
+	return ret;
+}
+#endif
+
+//Initial UART2(head) and UART3(DSP), DBGU use as CONSOL port
+void UART_Init(INT8U HeadUARTInc)
+{
+	OS_CPU_SR  cpu_sr;
+	//INT8U err;	
+	INT32U wBaud = 115200;
+#if 0
+	unsigned int mode = AT91C_US_USMODE_NORMAL
+		| AT91C_US_CLKS_CLOCK
+			| AT91C_US_CHRL_8_BITS
+				| AT91C_US_PAR_NONE
+					| AT91C_US_NBSTOP_1_BIT
+						| AT91C_US_CHMODE_NORMAL;
+#endif
+	
+	//mix_FLAG_GRP = OSFlagCreate(0x0, &err); //SX2 Communication Flags
+	
+	//Initializing the TxQ and RxQ for UART1 and UART2
+	TxQ[0].wptr = 0;
+	TxQ[0].rptr = 0;
+	TxQ[0].cmdptr = 0;
+	TxQ[0].size = 0;
+	
+	TxQ[1].wptr = 0;
+	TxQ[1].rptr = 0;
+	TxQ[1].cmdptr = 0;
+	TxQ[1].size = 0;
+	
+	TxQ[2].wptr = 0;
+	TxQ[2].rptr = 0;
+	TxQ[2].cmdptr = 0;
+	TxQ[2].size = 0;
+	
+	RxQ[0].wptr = 0;
+	RxQ[0].rptr = 0;
+	RxQ[0].cmdptr = 0;
+	RxQ[0].size = 0;
+	
+	RxQ[1].wptr = 0;
+	RxQ[1].rptr = 0;
+	RxQ[1].cmdptr = 0;
+	RxQ[1].size = 0;
+	
+	RxQ[2].wptr = 0;
+	RxQ[2].rptr = 0;
+	RxQ[2].cmdptr = 0;
+	RxQ[2].size = 0;
+	
+	tmpQ[0].wptr = 0;
+	tmpQ[0].rptr = 0;
+	tmpQ[0].cmdptr = 0;
+	tmpQ[0].size = 0;
+	
+	tmpQ[1].wptr = 0;
+	tmpQ[1].rptr = 0;
+	tmpQ[1].cmdptr = 0;
+	tmpQ[1].size = 0;
+	
+#if 0	
+	if (HeadUARTInc)
+	{	
+		// Enable the peripheral clock in the PMC
+		PMC_EnablePeripheral(BOARD_ID_HEADBOARD_USART);
+		
+		//Headboard
+		USART_Configure( BOARD_HEADBOARD_USART_BASE, mode, 19200, BOARD_MCK);
+		
+		OS_ENTER_CRITICAL();
+		
+		// Configure the RXBUFF interrupt
+		IRQ_ConfigureIT(BOARD_ID_HEADBOARD_USART, IRQ_PRI_US2, HeadUARTInterrupt);
+		IRQ_EnableIT(BOARD_ID_HEADBOARD_USART);
+		BOARD_HEADBOARD_USART_BASE->US_IER = AT91C_US_RXRDY; //| AT91C_US_TXBUFE;
+		
+		// Enable receiver & transmitter
+		USART_SetTransmitterEnabled(BOARD_HEADBOARD_USART_BASE, 1);
+		USART_SetReceiverEnabled(BOARD_HEADBOARD_USART_BASE, 1);
+		
+		OS_EXIT_CRITICAL();    
+		
+	}
+#endif
+	
+#if 0//!((defined(EPSON_BOTTOM_BOARD_V3)||defined (EPSON_BOTTOM_BOARD_V2_1)) && defined(SUPPORT_MOTOR_CONTROL)&& !defined(MOTION_Y_DSP))
+	// Enable the peripheral clock in the PMC
+	PMC_EnablePeripheral(BOARD_ID_DSP_USART);
+	
+	//DSP
+	USART_Configure( BOARD_DSP_USART_BASE, mode, wBaud, BOARD_MCK);
+	
+	OS_ENTER_CRITICAL();
+	
+	// Configure the RXBUFF interrupt
+	IRQ_ConfigureIT(BOARD_ID_DSP_USART, IRQ_PRI_US3, DSPUARTInterrupt);
+	IRQ_EnableIT(BOARD_ID_DSP_USART);
+	BOARD_DSP_USART_BASE->US_IER = AT91C_US_RXRDY; //| AT91C_US_TXBUFE;
+	
+	// Enable receiver & transmitter
+	USART_SetTransmitterEnabled(BOARD_DSP_USART_BASE, 1);
+	USART_SetReceiverEnabled(BOARD_DSP_USART_BASE, 1);
+	
+	OS_EXIT_CRITICAL();    
+#endif    
+	
+}
+

@@ -1,0 +1,43 @@
+#ifndef __FLASH_H__
+#define __FLASH_H__
+
+#include "job.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+	
+	/*************** We define Flash command sequence here. ****************/
+#define AM_ADDR_UNLOCK1        	0x555
+#define AM_ADDR_UNLOCK2        	0x2aa
+#define AM_DATA_UNLOCK1        	0xaaaa
+#define AM_DATA_UNLOCK2        	0x5555
+#define AM_SETUP_WRITE         	0xa0a0
+#define AM_SETUP_ERASE         	0x8080
+#define AM_CHIP_ERASE          	0x1010
+#define AM_SECTOR_ERASE	       	0x3030
+#define AM_RESET		    	0xf0f0
+	
+	
+	//INT8S Flash_EraseSec(unsigned short SecNoFirst, unsigned short SecNoLast);
+	//INT8S Flash_Prg(unsigned short * AddrSrc, unsigned short * AddrDst, int bytecount);
+	
+#define is_digit(x)     ((x >= '0' && x <= '9') ? 1:0)
+#define is_lowercase(x) ((x >= 'a' && x <= 'z') ? 1:0)
+#define is_xdigit(x)    ((is_digit(x) || (x >= 'A' && x <= 'F')||is_lowercase(x))? 1:0)
+#define to_upper(x)     ((is_lowercase(x)) ? x - 'a' + 'A': x)
+#define is_space(x)     (((x==' ')||(x==0x0D)) ? 1:0)
+	
+	INT8S Flash_UpdateCode(struct Struct_Updater *codeInfo, UBYTE index);
+	
+	unsigned char ReadFPGA(INT32U * pFileLen, INT8U ** FPGA_File_Location);
+	
+	void DeSecurity(unsigned char * pSrc, unsigned char * pDest, int len);
+	void EnSecurity(unsigned char * pSrc, unsigned char * pDest, int len);
+	INT8S Flash_UpdateFPGA(struct Struct_Updater *codeInfo, UBYTE index);
+	
+#ifdef __cplusplus
+}
+#endif
+
+
+#endif
