@@ -240,8 +240,7 @@ static void gpio_interrupt(void *arg)
 			continue;
 
 		if ((status & pSources[i].pin->mask) != 0) {
-			unsigned int reg;
-			reg = (unsigned int)gc->priv + GPIO_INT_EOI_REG_OFFSET;
+			void *reg = gc->priv + GPIO_INT_EOI_REG_OFFSET;
 
 			pSources[i].handler(pSources[i].pin);
 			status &= ~(pSources[i].pin->mask);

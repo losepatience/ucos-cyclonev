@@ -67,7 +67,7 @@ struct __msg {
 };
 
 struct __port {
-	u32			base;
+	void			*base;
 	u32			offs;
 	u32			bitmask;
 	int			type;
@@ -88,17 +88,17 @@ static inline struct __port *__get_port(int num)
 
 static inline void __irq_enable(struct __port *port)
 {
-	setbits_le32(port->base + USB_IER_OFFS, port->bitmask);
+	setbits32(port->base + USB_IER_OFFS, port->bitmask);
 }
 
 static inline void __irq_disable(struct __port *port)
 {
-	clrbits_le32(port->base + USB_IER_OFFS, port->bitmask);
+	clrbits32(port->base + USB_IER_OFFS, port->bitmask);
 }
 
 static inline void __irq_clr(struct __port *port)
 {
-	setbits_le32(port->base + USB_CIR_OFFS, port->bitmask);
+	setbits32(port->base + USB_CIR_OFFS, port->bitmask);
 }
 
 static inline int __is_port_busy(struct __port *port)
@@ -243,7 +243,7 @@ int usb_init(void)
 	for (i = 0; i < CONFIG_USB_PORT_CNT; i++) {
 		struct __port *port = __get_port(i);
 
-		port->base = CONFIG_USB_BASE;
+		port->base = (void *)CONFIG_USB_BASE;
 		port->offs = USB_CTX_OFFS + 4 * i;
 		port->bitmask = 1 << i;
 		port->burst = BURST;

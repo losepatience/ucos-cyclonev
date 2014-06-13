@@ -70,23 +70,23 @@ u32 BSP_OSC_FREQ;
 
 static u32 cacl_vco_base(enum vco vco)
 {
-	u32 addr, val, cnt, denom;
+	u32 offs, val, cnt, denom;
 
 	switch (vco) {
 	case main_vco:
-		addr = CLKMGR_MAINPLLGRP_VCO_ADDRESS;
+		offs = CLKMGR_MAINPLLGRP_VCO_ADDRESS;
 		break;
 	case peri_vco:
-		addr = CLKMGR_PERPLLGRP_VCO_ADDRESS;
+		offs = CLKMGR_PERPLLGRP_VCO_ADDRESS;
 		break;
 	case sdram_vco:
-		addr = CLKMGR_SDRPLLGRP_VCO_ADDRESS;
+		offs = CLKMGR_SDRPLLGRP_VCO_ADDRESS;
 		break;
 	default:
 		break;
 	}
 
-	val = readl(SOCFPGA_CLKMGR_ADDRESS + addr);
+	val = readl((void *)SOCFPGA_CLKMGR_ADDRESS + offs);
 
 	cnt = 1 + ((val & 0x0000fff8) >> 3);
 	denom = 1 + ((val & 0x003f0000) >> 16);
@@ -94,24 +94,20 @@ static u32 cacl_vco_base(enum vco vco)
 	return CONFIG_HPS_CLK_OSC1_HZ * cnt / denom;
 }
 
-static u32 cacl_divided_clk(u32 scr_clk, u32 addr)
+static u32 cacl_divided_clk(u32 scr_clk, u32 offs)
 {
 	u32 val, div;
 
-	val = readl(SOCFPGA_CLKMGR_ADDRESS + addr);
+	val = readl((void *)SOCFPGA_CLKMGR_ADDRESS + offs);
 	div = 1 + ((val & 0x000001ff) >> 0);
 
 	return scr_clk / div;
 }
 
-static inline u32 clk_read32(u32 addr)
-{
-	return readl(SOCFPGA_CLKMGR_ADDRESS + addr);
-}
-
 int clock_init(void)
 {
 	u32 clk;
+	void *addr;
 
 	cv_clk.main_vco_base = cacl_vco_base(main_vco);
 	cv_clk.peri_vco_base = cacl_vco_base(peri_vco);
@@ -144,16 +140,18 @@ int clock_init(void)
 	cv_clk.ddrdqclk = cacl_divided_clk(clk, 0xd0);
 	cv_clk.s2fuser2clk = cacl_divided_clk(clk, 0xd4);
 
+	addr = (void *)SOCFPGA_CLKMGR_ADDRESS;
+
 	/* l3 mp and l3 sp */
-	cv_clk.maindiv = clk_read32(0x64);
-	cv_clk.dbgdiv = clk_read32(0x68);
-	cv_clk.tracediv = clk_read32(0x6c);
-	cv_clk.l4src = clk_read32(0x70);
+	cv_clk.maindiv = readl(addr + 0x64);
+	cv_clk.dbgdiv = readl(addr + 0x68);
+	cv_clk.tracediv = readl(addr + 0x6c);
+	cv_clk.l4src = readl(addr + 0x70);
 
 	/* l4 mp, l4 sp, can0, and can1 */
-	cv_clk.perdiv = clk_read32(0xa4);
-	cv_clk.gpiodiv = clk_read32(0xa8);
-	cv_clk.persrc = clk_read32(0xac);
+	cv_clk.perdiv = readl(addr + 0xa4);
+	cv_clk.gpiodiv = readl(addr + 0xa8);
+	cv_clk.persrc = readl(addr + 0xac);
 
 	BSP_OSC_FREQ = cv_clk.mpuclk;
 	return 0;

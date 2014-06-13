@@ -5,12 +5,12 @@
 #ifndef OS1
 # define __os_base	0x000140000
 #else
-# define __os_base	0x00800000
+# define __os_base	0x00500000
 #endif
+#define __os_end	0x00a00000
 
-#define __text_base	__os_base
+#define __text_base	0x000140000
 #define __mmu_table	0x000100000
-#define __os_end	0x01800000
 
 /* -------------------------------------------------------------- */
 /* XXX: Plz verify it according to pll_config.h */
@@ -31,6 +31,11 @@
 #define CONFIG_HPS_CLK_GPIODB_HZ		(32000)
 #define CONFIG_HPS_CLK_L4_MP_HZ			(100000000)
 #define CONFIG_HPS_CLK_L4_SP_HZ			(100000000)
+
+/* -------------------------------------------------------------- */
+/* QSPI support */
+/* -------------------------------------------------------------- */
+#define PHYS_SDRAM_SIZE				(0x20000000)
 
 /* -------------------------------------------------------------- */
 /* QSPI support */

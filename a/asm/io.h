@@ -98,15 +98,9 @@ static inline u32 __raw_readl(const volatile void *addr)
 #define writel(v,c)		({ __iowmb(); writel_relaxed(v,c); })
 #endif	/* readl */
 
-
 /* access ports */
-#define setbits32(p, v) outl(inl(p) | (v), p)
-#define clrbits32(p, v) outl(inl(p) & ~(v), p)
-
-#define setbits16(p, v) outw(inw(p) | (v), p)
-#define clrbits16(p, v) outw(inw(p) & ~(v), p)
-
-#define setbits8(p, v) outb(inb(p) | (v), p)
-#define clrbits8(p, v) outb(inb(p) & ~(v), p)
+#define setbits(p, v) outl(inl(p) | (v), p)
+#define clrbits(p, v) outl(inl(p) & ~(v), p)
+#define clrsetbits(addr, clr, set) outl((addr), (inl(addr) & ~(clr)) | (set))
 
 #endif	/* __ASM_ARM_IO_H */

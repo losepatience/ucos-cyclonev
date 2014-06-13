@@ -48,7 +48,7 @@ static int ns16550_setup(void)
 	}
 
 	writeb(CONFIG_SYS_NS16550_IER, &port->ier);
-	writeb(UART_LCR_BKSE | UART_LCRVAL, (u32)&port->lcr);
+	writeb(UART_LCR_BKSE | UART_LCRVAL, &port->lcr);
 	writeb(0, &port->dll);
 	writeb(0, &port->dlm);
 	writeb(UART_LCRVAL, &port->lcr);	/* 8IN1 */

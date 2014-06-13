@@ -33,11 +33,10 @@
 #define CR_TE	(1 << 30)	/* Thumb exception enable		*/
 
 #define SECTION_SHIFT		(20)
-#define PHYS_SDRAM_1_SIZE	(0x20000000)
 
 #define PAGE1M_NOMAL		(0x5c1e)
 #define PAGE1M_NOCACHE		(0xc12)
-#define PAGE1M_SHARED		(1<<16)
+#define PAGE1M_SHARED		(1 << 16)
 
 /*
  * The cache doesn't need to be flushed when TLB entries change when

@@ -1,0 +1,816 @@
+diff --git a/Makefile b/Makefile
+index 0f49646..933b168 100644
+--- a/Makefile
++++ b/Makefile
+@@ -71,7 +71,7 @@ INCDIRS := $(sort $(INCDIRS))
+ INCDIRS += $(TOPDIR)/include $(TOPDIR)/include/Ripstar 
+ INCDIRS += $(TOPDIR)/APP $(TOPDIR)/to $(TOPDIR)/to/porting
+ 
+-CS_DIRS := $(TOPDIR)/APP $(TOPDIR)/OS $(TOPDIR)/lib $(TOPDIR)/to
++CS_DIRS := $(TOPDIR)/APP $(TOPDIR)/OS $(TOPDIR)/lib #$(TOPDIR)/to
+ CS_SRCS := $(shell find $(CS_DIRS) -name "*.S" -o -name "*.c")
+ CS_OBJS := $(CS_SRCS:%.c=%.o)
+ CS_OBJS := $(CS_OBJS:%.S=%.o)
+diff --git a/include/asm/io.h b/include/asm/io.h
+index fc75313..bb98508 100644
+--- a/include/asm/io.h
++++ b/include/asm/io.h
+@@ -4,26 +4,53 @@
+ #include <asm/types.h>
+ #include <asm/compiler.h>
+ 
+-/*
+- * Generic virtual read/write.  Note that we don't support half-word
+- * read/writes.  We define __arch_*[bl] here, and leave __arch_*w
+- * to the architecture specific code.
+- */
+-#define __arch_getb(a)			(*(volatile unsigned char *)(a))
+-#define __arch_getw(a)			(*(volatile unsigned short *)(a))
+-#define __arch_getl(a)			(*(volatile unsigned int *)(a))
+-
+-#define __arch_putb(v,a)		(*(volatile unsigned char *)(a) = (v))
+-#define __arch_putw(v,a)		(*(volatile unsigned short *)(a) = (v))
+-#define __arch_putl(v,a)		(*(volatile unsigned int *)(a) = (v))
+-
+-#define __raw_writeb(v,a)	__arch_putb(v,a)
+-#define __raw_writew(v,a)	__arch_putw(v,a)
+-#define __raw_writel(v,a)	__arch_putl(v,a)
+-
+-#define __raw_readb(a)		__arch_getb(a)
+-#define __raw_readw(a)		__arch_getw(a)
+-#define __raw_readl(a)		__arch_getl(a)
++static inline void __raw_writeb(u8 val, volatile void *addr)
++{
++	asm volatile("strb %1, %0"
++		     : "+Qo" (*(volatile u8 *)addr)
++		     : "r" (val));
++}
++
++static inline void __raw_writew(u16 val, volatile void *addr)
++{
++	asm volatile("strh %1, %0"
++		     : "+Q" (*(volatile u16 *)addr)
++		     : "r" (val));
++}
++
++static inline void __raw_writel(u32 val, volatile void *addr)
++{
++	asm volatile("str %1, %0"
++		     : "+Qo" (*(volatile u32 *)addr)
++		     : "r" (val));
++}
++
++static inline u8 __raw_readb(const volatile void *addr)
++{
++	u8 val;
++	asm volatile("ldrb %1, %0"
++		     : "+Qo" (*(volatile u8 *)addr),
++		       "=r" (val));
++	return val;
++}
++
++static inline u16 __raw_readw(const volatile void *addr)
++{
++	u16 val;
++	asm volatile("ldrh %1, %0"
++		     : "+Q" (*(volatile u16 *)addr),
++		       "=r" (val));
++	return val;
++}
++
++static inline u32 __raw_readl(const volatile void *addr)
++{
++	u32 val;
++	asm volatile("ldr %1, %0"
++		     : "+Qo" (*(volatile u32 *)addr),
++		       "=r" (val));
++	return val;
++}
+ 
+ /*
+  * TODO: The kernel offers some more advanced versions of barriers, it might
+@@ -33,80 +60,53 @@
+ #define __iormb()	dmb()
+ #define __iowmb()	dmb()
+ 
+-#define writeb(v,c)	({ u8  __v = v; __iowmb(); __arch_putb(__v,c); __v; })
+-#define writew(v,c)	({ u16 __v = v; __iowmb(); __arch_putw(__v,c); __v; })
+-#define writel(v,c)	({ u32 __v = v; __iowmb(); __arch_putl(__v,c); __v; })
+-
+-#define readb(c)	({ u8  __v = __arch_getb(c); __iormb(); __v; })
+-#define readw(c)	({ u16 __v = __arch_getw(c); __iormb(); __v; })
+-#define readl(c)	({ u32 __v = __arch_getl(c); __iormb(); __v; })
+-
+-/*
+- * The compiler seems to be incapable of optimising constants
+- * properly.  Spell it out to the compiler in some cases.
+- * These are only valid for small values of "off" (< 1<<12)
+- */
+-#define __raw_base_writeb(val,base,off)	__arch_base_putb(val,base,off)
+-#define __raw_base_writew(val,base,off)	__arch_base_putw(val,base,off)
+-#define __raw_base_writel(val,base,off)	__arch_base_putl(val,base,off)
+-
+-#define __raw_base_readb(base,off)	__arch_base_getb(base,off)
+-#define __raw_base_readw(base,off)	__arch_base_getw(base,off)
+-#define __raw_base_readl(base,off)	__arch_base_getl(base,off)
+-
+-/*
+- * Clear and set bits in one shot. These macros can be used to clear and
+- * set multiple bits in a register using a single call. These macros can
+- * also be used to set a multiple-bit bit pattern using a mask, by
+- * specifying the mask in the 'clear' parameter and the new bit pattern
+- * in the 'set' parameter.
+- */
+-
+-#define out_arch(type,endian,a,v)	__raw_write##type(cpu_to_##endian(v),a)
+-#define in_arch(type,endian,a)		endian##_to_cpu(__raw_read##type(a))
+-
+-#define out_le32(a,v)	out_arch(l,le32,a,v)
+-#define out_le16(a,v)	out_arch(w,le16,a,v)
+-
+-#define in_le32(a)	in_arch(l,le32,a)
+-#define in_le16(a)	in_arch(w,le16,a)
++#define outb(v,p)	({ __iowmb(); __raw_writeb(v,p); })
++#define outw(v,p)	({ __iowmb(); __raw_writew((__u16)cpu_to_le16(v),p); })
++#define outl(v,p)	({ __iowmb(); __raw_writel((__u32)cpu_to_le32(v),p); })
+ 
+-#define out_be32(a,v)	out_arch(l,be32,a,v)
+-#define out_be16(a,v)	out_arch(w,be16,a,v)
++#define inb(p)	({ __u8 __v = __raw_readb(p); __iormb(); __v; })
++#define inw(p)	({ __u16 __v = le16_to_cpu((__u16) \
++			__raw_readw(p)); __iormb(); __v; })
++#define inl(p)	({ __u32 __v = le32_to_cpu((__u32) \
++			__raw_readl(p)); __iormb(); __v; })
+ 
+-#define in_be32(a)	in_arch(l,be32,a)
+-#define in_be16(a)	in_arch(w,be16,a)
+ 
+-#define out_8(a,v)	__raw_writeb(v,a)
+-#define in_8(a)		__raw_readb(a)
++#define outb_p(val,port)	outb((val),(port))
++#define outw_p(val,port)	outw((val),(port))
++#define outl_p(val,port)	outl((val),(port))
++#define inb_p(port)		inb((port))
++#define inw_p(port)		inw((port))
++#define inl_p(port)		inl((port))
+ 
+-#define clrbits(type, addr, clear) \
+-	out_##type((addr), in_##type(addr) & ~(clear))
++#ifndef readl
++#define readb_relaxed(c) ({ u8  __r = __raw_readb(c); __r; })
++#define readw_relaxed(c) ({ u16 __r = le16_to_cpu((__u16) \
++					__raw_readw(c)); __r; })
++#define readl_relaxed(c) ({ u32 __r = le32_to_cpu((__u32) \
++					__raw_readl(c)); __r; })
+ 
+-#define setbits(type, addr, set) \
+-	out_##type((addr), in_##type(addr) | (set))
++#define writeb_relaxed(v,c)	__raw_writeb(v,c)
++#define writew_relaxed(v,c)	__raw_writew((u16) cpu_to_le16(v),c)
++#define writel_relaxed(v,c)	__raw_writel((u32) cpu_to_le32(v),c)
+ 
+-#define clrsetbits(type, addr, clear, set) \
+-	out_##type((addr), (in_##type(addr) & ~(clear)) | (set))
++#define readb(c)		({ u8  __v = readb_relaxed(c); __iormb(); __v; })
++#define readw(c)		({ u16 __v = readw_relaxed(c); __iormb(); __v; })
++#define readl(c)		({ u32 __v = readl_relaxed(c); __iormb(); __v; })
+ 
+-#define clrbits_be32(addr, clear) clrbits(be32, addr, clear)
+-#define setbits_be32(addr, set) setbits(be32, addr, set)
+-#define clrsetbits_be32(addr, clear, set) clrsetbits(be32, addr, clear, set)
++#define writeb(v,c)		({ __iowmb(); writeb_relaxed(v,c); })
++#define writew(v,c)		({ __iowmb(); writew_relaxed(v,c); })
++#define writel(v,c)		({ __iowmb(); writel_relaxed(v,c); })
++#endif	/* readl */
+ 
+-#define clrbits_le32(addr, clear) clrbits(le32, addr, clear)
+-#define setbits_le32(addr, set) setbits(le32, addr, set)
+-#define clrsetbits_le32(addr, clear, set) clrsetbits(le32, addr, clear, set)
+ 
+-#define clrbits_be16(addr, clear) clrbits(be16, addr, clear)
+-#define setbits_be16(addr, set) setbits(be16, addr, set)
+-#define clrsetbits_be16(addr, clear, set) clrsetbits(be16, addr, clear, set)
++/* access ports */
++#define setbits32(p, v) outl(inl(p) | (v), p)
++#define clrbits32(p, v) outl(inl(p) & ~(v), p)
+ 
+-#define clrbits_le16(addr, clear) clrbits(le16, addr, clear)
+-#define setbits_le16(addr, set) setbits(le16, addr, set)
+-#define clrsetbits_le16(addr, clear, set) clrsetbits(le16, addr, clear, set)
++#define setbits16(p, v) outw(inw(p) | (v), p)
++#define clrbits16(p, v) outw(inw(p) & ~(v), p)
+ 
+-#define clrbits_8(addr, clear) clrbits(8, addr, clear)
+-#define setbits_8(addr, set) setbits(8, addr, set)
+-#define clrsetbits_8(addr, clear, set) clrsetbits(8, addr, clear, set)
++#define setbits8(p, v) outb(inb(p) | (v), p)
++#define clrbits8(p, v) outb(inb(p) & ~(v), p)
+ 
+ #endif	/* __ASM_ARM_IO_H */
+diff --git a/lib/boot/lowlevel_init.c b/lib/boot/lowlevel_init.c
+index c4f0848..5c9a12c 100644
+--- a/lib/boot/lowlevel_init.c
++++ b/lib/boot/lowlevel_init.c
+@@ -50,7 +50,7 @@ void __OS1_reset(void)
+ void lowlevel_init(void)
+ {
+ 	/* remap the SDRAM at lower memory instead on-chip RAM */
+-	writel(0x1, 0xfffefC00);
++	writel(0x1, (void *)0xfffefC00);
+ 
+ 	wakeup_OS1();
+ 
+diff --git a/lib/boot/mm.h b/lib/boot/mm.h
+index 120a624..b765629 100644
+--- a/lib/boot/mm.h
++++ b/lib/boot/mm.h
+@@ -37,7 +37,7 @@
+ 
+ #define PAGE1M_NOMAL		(0x5c1e)
+ #define PAGE1M_NOCACHE		(0xc12)
+-#define PAGE1M_SHARED		(1<<16)
++#define PAGE1M_SHARED		(1 << 16)
+ 
+ /*
+  * The cache doesn't need to be flushed when TLB entries change when
+diff --git a/lib/drivers/clock.c b/lib/drivers/clock.c
+index 2ee594a..47bbcab 100644
+--- a/lib/drivers/clock.c
++++ b/lib/drivers/clock.c
+@@ -70,17 +70,18 @@ u32 BSP_OSC_FREQ;
+ 
+ static u32 cacl_vco_base(enum vco vco)
+ {
+-	u32 addr, val, cnt, denom;
++	void *addr;
++	u32 val, cnt, denom;
+ 
+ 	switch (vco) {
+ 	case main_vco:
+-		addr = CLKMGR_MAINPLLGRP_VCO_ADDRESS;
++		addr = (void *)CLKMGR_MAINPLLGRP_VCO_ADDRESS;
+ 		break;
+ 	case peri_vco:
+-		addr = CLKMGR_PERPLLGRP_VCO_ADDRESS;
++		addr = (void *)CLKMGR_PERPLLGRP_VCO_ADDRESS;
+ 		break;
+ 	case sdram_vco:
+-		addr = CLKMGR_SDRPLLGRP_VCO_ADDRESS;
++		addr = (void *)CLKMGR_SDRPLLGRP_VCO_ADDRESS;
+ 		break;
+ 	default:
+ 		break;
+@@ -94,7 +95,7 @@ static u32 cacl_vco_base(enum vco vco)
+ 	return CONFIG_HPS_CLK_OSC1_HZ * cnt / denom;
+ }
+ 
+-static u32 cacl_divided_clk(u32 scr_clk, u32 addr)
++static u32 cacl_divided_clk(u32 scr_clk, void *addr)
+ {
+ 	u32 val, div;
+ 
+@@ -104,7 +105,7 @@ static u32 cacl_divided_clk(u32 scr_clk, u32 addr)
+ 	return scr_clk / div;
+ }
+ 
+-static inline u32 clk_read32(u32 addr)
++static inline u32 clk_read32(void *addr)
+ {
+ 	return readl(SOCFPGA_CLKMGR_ADDRESS + addr);
+ }
+@@ -119,41 +120,41 @@ int clock_init(void)
+ 	/* clocks derived from main pll */
+ 	clk = cv_clk.main_vco_base;
+ 
+-	cv_clk.mpuclk = cacl_divided_clk(clk / 2, 0x48);
+-	cv_clk.mainclk = cacl_divided_clk(clk / 4, 0x4c);
+-	cv_clk.dbgatclk = cacl_divided_clk(clk / 4, 0x50);
+-	cv_clk.mainqspiclk = cacl_divided_clk(clk, 0x54);
+-	cv_clk.mainnandsdmmcclk = cacl_divided_clk(clk, 0x58);
+-	cv_clk.cfg2fuser0clk = cacl_divided_clk(clk, 0x5c);
++	cv_clk.mpuclk = cacl_divided_clk(clk / 2, (void *)0x48);
++	cv_clk.mainclk = cacl_divided_clk(clk / 4, (void *)0x4c);
++	cv_clk.dbgatclk = cacl_divided_clk(clk / 4, (void *)0x50);
++	cv_clk.mainqspiclk = cacl_divided_clk(clk, (void *)0x54);
++	cv_clk.mainnandsdmmcclk = cacl_divided_clk(clk, (void *)0x58);
++	cv_clk.cfg2fuser0clk = cacl_divided_clk(clk, (void *)0x5c);
+ 
+ 	/* clocks derived from peripheral pll */
+ 	clk = cv_clk.peri_vco_base;
+ 
+-	cv_clk.emac0clk = cacl_divided_clk(clk, 0x88);
+-	cv_clk.emac1clk = cacl_divided_clk(clk, 0x8c);
+-	cv_clk.perqspiclk = cacl_divided_clk(clk, 0x90);
+-	cv_clk.pernandsdmmcclk = cacl_divided_clk(clk, 0x94);
+-	cv_clk.perbaseclk = cacl_divided_clk(clk, 0x98);
+-	cv_clk.s2fuser1clk = cacl_divided_clk(clk, 0x9c);
++	cv_clk.emac0clk = cacl_divided_clk(clk, (void *)0x88);
++	cv_clk.emac1clk = cacl_divided_clk(clk, (void *)0x8c);
++	cv_clk.perqspiclk = cacl_divided_clk(clk, (void *)0x90);
++	cv_clk.pernandsdmmcclk = cacl_divided_clk(clk, (void *)0x94);
++	cv_clk.perbaseclk = cacl_divided_clk(clk, (void *)0x98);
++	cv_clk.s2fuser1clk = cacl_divided_clk(clk, (void *)0x9c);
+ 
+ 	/* clocks derived from sdram pll */
+ 	clk = cv_clk.sdram_vco_base;
+ 
+-	cv_clk.ddrdqsclk = cacl_divided_clk(clk, 0xc8);
+-	cv_clk.ddr2xdqsclk = cacl_divided_clk(clk, 0xcc);
+-	cv_clk.ddrdqclk = cacl_divided_clk(clk, 0xd0);
+-	cv_clk.s2fuser2clk = cacl_divided_clk(clk, 0xd4);
++	cv_clk.ddrdqsclk = cacl_divided_clk(clk, (void *)0xc8);
++	cv_clk.ddr2xdqsclk = cacl_divided_clk(clk, (void *)0xcc);
++	cv_clk.ddrdqclk = cacl_divided_clk(clk, (void *)0xd0);
++	cv_clk.s2fuser2clk = cacl_divided_clk(clk, (void *)0xd4);
+ 
+ 	/* l3 mp and l3 sp */
+-	cv_clk.maindiv = clk_read32(0x64);
+-	cv_clk.dbgdiv = clk_read32(0x68);
+-	cv_clk.tracediv = clk_read32(0x6c);
+-	cv_clk.l4src = clk_read32(0x70);
++	cv_clk.maindiv = clk_read32((void *)0x64);
++	cv_clk.dbgdiv = clk_read32((void *)0x68);
++	cv_clk.tracediv = clk_read32((void *)0x6c);
++	cv_clk.l4src = clk_read32((void *)0x70);
+ 
+ 	/* l4 mp, l4 sp, can0, and can1 */
+-	cv_clk.perdiv = clk_read32(0xa4);
+-	cv_clk.gpiodiv = clk_read32(0xa8);
+-	cv_clk.persrc = clk_read32(0xac);
++	cv_clk.perdiv = clk_read32((void *)0xa4);
++	cv_clk.gpiodiv = clk_read32((void *)0xa8);
++	cv_clk.persrc = clk_read32((void *)0xac);
+ 
+ 	BSP_OSC_FREQ = cv_clk.mpuclk;
+ 	return 0;
+diff --git a/lib/drivers/dwgpio.c b/lib/drivers/dwgpio.c
+index fd4ddae..aa0c8b2 100644
+--- a/lib/drivers/dwgpio.c
++++ b/lib/drivers/dwgpio.c
+@@ -240,8 +240,7 @@ static void gpio_interrupt(void *arg)
+ 			continue;
+ 
+ 		if ((status & pSources[i].pin->mask) != 0) {
+-			unsigned int reg;
+-			reg = (unsigned int)gc->priv + GPIO_INT_EOI_REG_OFFSET;
++			void *reg = gc->priv + GPIO_INT_EOI_REG_OFFSET;
+ 
+ 			pSources[i].handler(pSources[i].pin);
+ 			status &= ~(pSources[i].pin->mask);
+diff --git a/lib/drivers/fpga_dma.c b/lib/drivers/fpga_dma.c
+index 999df6d..4b83ac7 100644
+--- a/lib/drivers/fpga_dma.c
++++ b/lib/drivers/fpga_dma.c
+@@ -43,7 +43,7 @@
+ #define DMA_RLEN_OFFS		0x24
+ 
+ struct fpga_dma {
+-	u32			base;
++	void			*base;
+ 	int			irq;
+ 
+ 	struct mutex		rxlock;
+@@ -130,7 +130,7 @@ int dma_init(void)
+ 		return -ENOMEM;
+ 	}
+ 
+-	__dma->base = CONFIG_DMA_BASE;
++	__dma->base = (void *)CONFIG_DMA_BASE;
+ 	__dma->irq = CONFIG_DMA_IRQ;
+ 	__dma->timeout = 5 * HZ;
+ 
+diff --git a/lib/drivers/fpga_manager.c b/lib/drivers/fpga_manager.c
+index 92a2f60..8e09d2b 100644
+--- a/lib/drivers/fpga_manager.c
++++ b/lib/drivers/fpga_manager.c
+@@ -29,25 +29,28 @@
+ #include <asm/io.h>
+ #include <fpga_manager.h>
+ 
+-static const struct socfpga_fpga_manager *fpga_manager_base =
+-		(void *)SOCFPGA_FPGAMGRREGS_ADDRESS;
+-
+-struct socfpga_reset_manager {
+-	u32	status;
+-	u32	ctrl;
+-	u32	counts;
+-	u32	padding1;
+-	u32	mpu_mod_reset;
+-	u32	per_mod_reset;
+-	u32	per2_mod_reset;
+-	u32	brg_mod_reset;
+-};
+-
+-static const struct socfpga_reset_manager *reset_manager_base =
+-		(void *)SOCFPGA_RSTMGR_ADDRESS;
+-
+-#define L3REGS_REMAP_LWHPS2FPGA_MASK	0x00000010
+-#define L3REGS_REMAP_HPS2FPGA_MASK	0x00000008
++#define RESETMGR_STATUS_OFFS		0x0
++#define RESETMGR_CTRL_OFFS		0x4
++#define RESETMGR_COUNTS_OFFS		0x8
++#define RESETMGR_PADDING1_OFFS		0xc
++#define RESETMGR_MPU_MOD_RESET_OFFS	0x10
++#define RESETMGR_PER_MOD_RESET_OFFS	0x14
++#define RESETMGR_PER2_MOD_RESET_OFFS	0x18
++#define RESETMGR_BRG_MOD_RESET_OFFS	0x1c
++
++#define FPGAMGR_STAT_OFFS		0x0
++#define FPGAMGR_CTRL_OFFS		0x4
++#define FPGAMGR_DCLKCNT_OFFS		0x8
++#define FPGAMGR_DCLKSTAT_OFFS		0xc
++#define FPGAMGR_GPO_OFFS		0x10
++#define FPGAMGR_GPI_OFFS		0x14
++#define FPGAMGR_MISCI_OFFS		0x18
++
++#define L3_REMAP_LWHPS2FPGA_MASK	0x00000010
++#define L3_REMAP_HPS2FPGA_MASK		0x00000008
++
++static void *fpgamgr_base = (void *)SOCFPGA_FPGAMGRREGS_ADDRESS;
++static void *resetmgr_base = (void *)SOCFPGA_RSTMGR_ADDRESS;
+ 
+ void reset_deassert_all_bridges(void)
+ {
+@@ -58,20 +61,20 @@ void reset_deassert_all_bridges(void)
+ 			;
+ 	}
+ 	/* brdmodrst */
+-	writel(0, &reset_manager_base->brg_mod_reset);
++	writel(0, resetmgr_base + RESETMGR_BRG_MOD_RESET_OFFS);
+ 
+ 	/* remap the bridges into memory map */
+-	setbits_le32(SOCFPGA_L3REGS_ADDRESS,
+-		(L3REGS_REMAP_LWHPS2FPGA_MASK | L3REGS_REMAP_HPS2FPGA_MASK));
++	setbits32((void *)SOCFPGA_L3REGS_ADDRESS,
++		(L3_REMAP_LWHPS2FPGA_MASK | L3_REMAP_HPS2FPGA_MASK));
+ }
+ 
+ /* Check whether FPGA Init_Done signal is high */
+ static int is_fpgamgr_initdone_high(void)
+ {
+ 	unsigned long val;
+-	val = readl(SOCFPGA_FPGAMGRREGS_ADDRESS +
+-		FPGAMGRREGS_MON_GPIO_EXT_PORTA_ADDRESS);
+-	if (val & FPGAMGRREGS_MON_GPIO_EXT_PORTA_ID_MASK)
++	val = readl(fpgamgr_base +
++		FPGAMGR_MON_GPIO_EXT_PORTA_OFFS);
++	if (val & FPGAMGR_MON_GPIO_EXT_PORTA_ID_MASK)
+ 		return 1;
+ 	else
+ 		return 0;
+@@ -98,18 +101,18 @@ int is_fpgamgr_fpga_ready(void)
+ static void fpgamgr_set_cd_ratio(unsigned long ratio)
+ {
+ 	unsigned long reg;
+-	reg = readl(&fpga_manager_base->ctrl);
+-	reg = (reg & ~(0x3 << FPGAMGRREGS_CTRL_CDRATIO_LSB)) |
+-		((ratio & 0x3) << FPGAMGRREGS_CTRL_CDRATIO_LSB);
+-	writel(reg, &fpga_manager_base->ctrl);
++	reg = readl(fpgamgr_base + FPGAMGR_CTRL_OFFS);
++	reg = (reg & ~(0x3 << FPGAMGR_CTRL_CDRATIO_LSB)) |
++		((ratio & 0x3) << FPGAMGR_CTRL_CDRATIO_LSB);
++	writel(reg, fpgamgr_base + FPGAMGR_CTRL_OFFS);
+ }
+ 
+ /* Get the FPGA mode */
+ static int fpgamgr_get_mode(void)
+ {
+ 	unsigned long val;
+-	val = readl(&fpga_manager_base->stat);
+-	val = val & FPGAMGRREGS_STAT_MODE_MASK;
++	val = readl(fpgamgr_base + FPGAMGR_STAT_OFFS);
++	val = val & FPGAMGR_STAT_MODE_MASK;
+ 	return val;
+ }
+ 
+@@ -118,16 +121,16 @@ static int fpgamgr_dclkcnt_set(unsigned long cnt)
+ 	unsigned long i;
+ 
+ 	/* clear any existing done status */
+-	if (readl(&fpga_manager_base->dclkstat))
+-		writel(0x1, &fpga_manager_base->dclkstat);
++	if (readl(fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS))
++		writel(0x1, fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS);
+ 	/* write the dclkcnt */
+-	writel(cnt, &fpga_manager_base->dclkcnt);
++	writel(cnt, fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS);
+ 	/*
+ 	 * wait till the dclkcnt done
+ 	 */
+ 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
+-		if (readl(&fpga_manager_base->dclkstat)) {
+-			writel(0x1, &fpga_manager_base->dclkstat);
++		if (readl(fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS)) {
++			writel(0x1, fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS);
+ 			return 0;
+ 		}
+ 	}
+@@ -144,19 +147,19 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
+ 	unsigned long reg, i;
+ 
+ 	/* get the MSEL value */
+-	reg = readl(&fpga_manager_base->stat);
+-	reg = ((reg & FPGAMGRREGS_STAT_MSEL_MASK) >> FPGAMGRREGS_STAT_MSEL_LSB);
++	reg = readl(fpgamgr_base + FPGAMGR_STAT_OFFS);
++	reg = ((reg & FPGAMGR_STAT_MSEL_MASK) >> FPGAMGR_STAT_MSEL_LSB);
+ 
+ 	/*
+ 	 * Set the cfg width
+ 	 * If MSEL[3] = 1, cfg width = 32 bit
+ 	 */
+ 	if (reg & 0x8)
+-		setbits_le32(&fpga_manager_base->ctrl,
+-			FPGAMGRREGS_CTRL_CFGWDTH_MASK);
++		setbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
++			FPGAMGR_CTRL_CFGWDTH_MASK);
+ 	else
+-		clrbits_le32(&fpga_manager_base->ctrl,
+-			FPGAMGRREGS_CTRL_CFGWDTH_MASK);
++		clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
++			FPGAMGR_CTRL_CFGWDTH_MASK);
+ 
+ 	/* To determine the CD ratio */
+ 	/* MSEL[3] = 1 & MSEL[1:0] = 0, CD Ratio = 1 */
+@@ -179,63 +182,61 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
+ 		fpgamgr_set_cd_ratio(CDRATIO_x4);
+ 
+ 	/* to enable FPGA Manager configuration */
+-	clrbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_NCE_MASK);
++	clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS, FPGAMGR_CTRL_NCE_MASK);
+ 
+ 	/* to enable FPGA Manager drive over configuration line */
+-	setbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_EN_MASK);
++	setbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS, FPGAMGR_CTRL_EN_MASK);
+ 
+ 	/* put FPGA into reset phase */
+-	setbits_le32(&fpga_manager_base->ctrl,
+-		FPGAMGRREGS_CTRL_NCONFIGPULL_MASK);
++	setbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
++		FPGAMGR_CTRL_NCONFIGPULL_MASK);
+ 
+ 	/* (1) wait until FPGA enter reset phase */
+ 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
+-		if (fpgamgr_get_mode() == FPGAMGRREGS_MODE_RESETPHASE)
++		if (fpgamgr_get_mode() == FPGAMGR_MODE_RESETPHASE)
+ 			break;
+ 	}
+ 	/* if not in reset state, return error */
+-	if (fpgamgr_get_mode() != FPGAMGRREGS_MODE_RESETPHASE)
++	if (fpgamgr_get_mode() != FPGAMGR_MODE_RESETPHASE)
+ 		return -1;
+ 
+ 	/* release FPGA from reset phase */
+-	clrbits_le32(&fpga_manager_base->ctrl,
+-		FPGAMGRREGS_CTRL_NCONFIGPULL_MASK);
++	clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
++		FPGAMGR_CTRL_NCONFIGPULL_MASK);
+ 
+ 	/* (2) wait until FPGA enter configuration phase */
+ 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
+-		if (fpgamgr_get_mode() == FPGAMGRREGS_MODE_CFGPHASE)
++		if (fpgamgr_get_mode() == FPGAMGR_MODE_CFGPHASE)
+ 			break;
+ 	}
+ 	/* if not in configuration state, return error */
+-	if (fpgamgr_get_mode() != FPGAMGRREGS_MODE_CFGPHASE)
++	if (fpgamgr_get_mode() != FPGAMGR_MODE_CFGPHASE)
+ 		return -2;
+ 
+ 	/* clear all interrupt in CB Monitor */
+-	writel(0xFFF, (SOCFPGA_FPGAMGRREGS_ADDRESS +
+-		FPGAMGRREGS_MON_GPIO_PORTA_EOI_ADDRESS));
++	writel(0xFFF, fpgamgr_base + FPGAMGR_MON_GPIO_PORTA_EOI_OFFS);
+ 
+ 	/* enable AXI configuration */
+-	setbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_AXICFGEN_MASK);
++	setbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
++		       	FPGAMGR_CTRL_AXICFGEN_MASK);
+ 
+ 	/* write to FPGA Manager AXI data */
+ 	for (i = 0; i < rbf_size; i = i + 4) {
+ 		reg = rbf_data[i / 4];
+-		writel(reg, SOCFPGA_FPGAMGRDATA_ADDRESS);
+-		reg = readl(SOCFPGA_FPGAMGRREGS_ADDRESS +
+-			FPGAMGRREGS_MON_GPIO_EXT_PORTA_ADDRESS);
++		writel(reg, (void *)SOCFPGA_FPGAMGRDATA_ADDRESS);
++		reg = readl(fpgamgr_base + FPGAMGR_MON_GPIO_EXT_PORTA_OFFS);
+ 	}
+ 
+ 	/* (3) wait until full config done */
+ 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
+-		reg = readl(SOCFPGA_FPGAMGRREGS_ADDRESS +
+-			FPGAMGRREGS_MON_GPIO_EXT_PORTA_ADDRESS);
++		reg = readl(fpgamgr_base + FPGAMGR_MON_GPIO_EXT_PORTA_OFFS);
+ 		/* config error */
+-		if (!(reg & FPGAMGRREGS_MON_GPIO_EXT_PORTA_NS_MASK) &&
+-			!(reg & FPGAMGRREGS_MON_GPIO_EXT_PORTA_CD_MASK))
++		if (!(reg & FPGAMGR_MON_GPIO_EXT_PORTA_NS_MASK) &&
++			!(reg & FPGAMGR_MON_GPIO_EXT_PORTA_CD_MASK))
+ 			return -3;
+ 		/* config done without error */
+-		if ((reg & FPGAMGRREGS_MON_GPIO_EXT_PORTA_NS_MASK) &&
+-			(reg & FPGAMGRREGS_MON_GPIO_EXT_PORTA_CD_MASK))
++		if ((reg & FPGAMGR_MON_GPIO_EXT_PORTA_NS_MASK) &&
++			(reg & FPGAMGR_MON_GPIO_EXT_PORTA_CD_MASK))
+ 			break;
+ 	}
+ 	/* tiemout happen, return error */
+@@ -243,7 +244,8 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
+ 		return -4;
+ 
+ 	/* disable AXI configuration */
+-	clrbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_AXICFGEN_MASK);
++	clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
++			FPGAMGR_CTRL_AXICFGEN_MASK);
+ 
+ 	/* additional clocks for the CB to enter initialization phase */
+ 	if (fpgamgr_dclkcnt_set(0x4) != 0)
+@@ -251,7 +253,7 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
+ 
+ 	/* (4) wait until FPGA enter init phase */
+ 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
+-		if (fpgamgr_get_mode() == FPGAMGRREGS_MODE_INITPHASE)
++		if (fpgamgr_get_mode() == FPGAMGR_MODE_INITPHASE)
+ 			break;
+ 	}
+ 	/* if not in configuration state, return error */
+@@ -264,7 +266,7 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
+ 
+ 	/* (5) wait until FPGA enter user mode */
+ 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
+-		if (fpgamgr_get_mode() == FPGAMGRREGS_MODE_USERMODE)
++		if (fpgamgr_get_mode() == FPGAMGR_MODE_USERMODE)
+ 			break;
+ 	}
+ 	/* if not in configuration state, return error */
+@@ -272,7 +274,7 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
+ 		return -8;
+ 
+ 	/* to release FPGA Manager drive over configuration line */
+-	clrbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_EN_MASK);
++	clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS, FPGAMGR_CTRL_EN_MASK);
+ 
+ 	/* release bridge from reset in case Preloader skip it */
+ 	reset_deassert_all_bridges();
+diff --git a/lib/drivers/fpga_manager.h b/lib/drivers/fpga_manager.h
+index 2960b85..c1c1ac6 100644
+--- a/lib/drivers/fpga_manager.h
++++ b/lib/drivers/fpga_manager.h
+@@ -40,35 +40,35 @@ struct socfpga_fpga_manager {
+ 	u32	misci;
+ };
+ 
+-#define FPGAMGRREGS_MON_GPIO_PORTA_EOI_ADDRESS	0x84c
+-#define FPGAMGRREGS_MON_GPIO_EXT_PORTA_ADDRESS	0x850
++#define FPGAMGR_MON_GPIO_PORTA_EOI_OFFS		0x84c
++#define FPGAMGR_MON_GPIO_EXT_PORTA_OFFS		0x850
+ 
+-#define FPGAMGRREGS_CTRL_CFGWDTH_MASK		0x200
+-#define FPGAMGRREGS_CTRL_AXICFGEN_MASK		0x100
+-#define FPGAMGRREGS_CTRL_NCONFIGPULL_MASK	0x4
+-#define FPGAMGRREGS_CTRL_NCE_MASK		0x2
+-#define FPGAMGRREGS_CTRL_EN_MASK		0x1
+-#define FPGAMGRREGS_CTRL_CDRATIO_LSB		6
++#define FPGAMGR_CTRL_CFGWDTH_MASK		0x200
++#define FPGAMGR_CTRL_AXICFGEN_MASK		0x100
++#define FPGAMGR_CTRL_NCONFIGPULL_MASK		0x4
++#define FPGAMGR_CTRL_NCE_MASK			0x2
++#define FPGAMGR_CTRL_EN_MASK			0x1
++#define FPGAMGR_CTRL_CDRATIO_LSB		6
+ 
+-#define FPGAMGRREGS_STAT_MODE_MASK		0x7
+-#define FPGAMGRREGS_STAT_MSEL_MASK		0xf8
+-#define FPGAMGRREGS_STAT_MSEL_LSB		3
++#define FPGAMGR_STAT_MODE_MASK			0x7
++#define FPGAMGR_STAT_MSEL_MASK			0xf8
++#define FPGAMGR_STAT_MSEL_LSB			3
+ 
+-#define FPGAMGRREGS_MON_GPIO_EXT_PORTA_CRC_MASK	0x8
+-#define FPGAMGRREGS_MON_GPIO_EXT_PORTA_ID_MASK	0x4
+-#define FPGAMGRREGS_MON_GPIO_EXT_PORTA_CD_MASK	0x2
+-#define FPGAMGRREGS_MON_GPIO_EXT_PORTA_NS_MASK	0x1
++#define FPGAMGR_MON_GPIO_EXT_PORTA_CRC_MASK	0x8
++#define FPGAMGR_MON_GPIO_EXT_PORTA_ID_MASK	0x4
++#define FPGAMGR_MON_GPIO_EXT_PORTA_CD_MASK	0x2
++#define FPGAMGR_MON_GPIO_EXT_PORTA_NS_MASK	0x1
+ 
+ /* Timeout counter */
+ #define FPGA_TIMEOUT_CNT		0x1000000
+ 
+ /* FPGA Mode */
+-#define FPGAMGRREGS_MODE_FPGAOFF	0x0
+-#define FPGAMGRREGS_MODE_RESETPHASE	0x1
+-#define FPGAMGRREGS_MODE_CFGPHASE	0x2
+-#define FPGAMGRREGS_MODE_INITPHASE	0x3
+-#define FPGAMGRREGS_MODE_USERMODE	0x4
+-#define FPGAMGRREGS_MODE_UNKNOWN	0x5
++#define FPGAMGR_MODE_FPGAOFF	0x0
++#define FPGAMGR_MODE_RESETPHASE	0x1
++#define FPGAMGR_MODE_CFGPHASE	0x2
++#define FPGAMGR_MODE_INITPHASE	0x3
++#define FPGAMGR_MODE_USERMODE	0x4
++#define FPGAMGR_MODE_UNKNOWN	0x5
+ 
+ /* FPGA CD Ratio Value */
+ #define CDRATIO_x1	0x0
+diff --git a/lib/drivers/fpga_uart.c b/lib/drivers/fpga_uart.c
+index c4d2686..ae49c99 100644
+--- a/lib/drivers/fpga_uart.c
++++ b/lib/drivers/fpga_uart.c
+@@ -87,15 +87,15 @@ static inline struct __adapter *get_numbered_adapter(int num)
+ 
+ static inline void __irq_enable(struct __adapter *adap, u32 mask)
+ {
+-	setbits_le32(adap->base + UART_IER_OFFS, mask);
++	setbits32(adap->base + UART_IER_OFFS, mask);
+ }
+ static inline void __irq_disable(struct __adapter *adap, u32 mask)
+ {
+-	clrbits_le32(adap->base + UART_IER_OFFS, mask);
++	clrbits32(adap->base + UART_IER_OFFS, mask);
+ }
+ static inline void __irq_clr(struct __adapter *adap, u32 mask)
+ {
+-	setbits_le32(adap->base + UART_CIR_OFFS, mask);
++	setbits32(adap->base + UART_CIR_OFFS, mask);
+ }
+ static inline int __is_bus_busy(struct __adapter *adap, u32 mask)
+ {
+@@ -207,7 +207,7 @@ int uart_write(int adap_num, const void *data, u32 len)
+ 
+ 	if (rval == 0) {
+ 		pr_err("controller timed out\n");
+-		setbits_le32(adap->base + UART_CR_OFFS, mask << 16);
++		setbits32(adap->base + UART_CR_OFFS, mask << 16);
+ 		rval = -ETIMEDOUT;
+ 	} else {
+ 		rval = len;
+diff --git a/lib/drivers/fpga_usb.c b/lib/drivers/fpga_usb.c
+index 309b124..b199b2e 100644
+--- a/lib/drivers/fpga_usb.c
++++ b/lib/drivers/fpga_usb.c
+@@ -67,7 +67,7 @@ struct __msg {
+ };
+ 
+ struct __port {
+-	u32			base;
++	void			*base;
+ 	u32			offs;
+ 	u32			bitmask;
+ 	int			type;
+@@ -88,17 +88,17 @@ static inline struct __port *__get_port(int num)
+ 
+ static inline void __irq_enable(struct __port *port)
+ {
+-	setbits_le32(port->base + USB_IER_OFFS, port->bitmask);
++	setbits32(port->base + USB_IER_OFFS, port->bitmask);
+ }
+ 
+ static inline void __irq_disable(struct __port *port)
+ {
+-	clrbits_le32(port->base + USB_IER_OFFS, port->bitmask);
++	clrbits32(port->base + USB_IER_OFFS, port->bitmask);
+ }
+ 
+ static inline void __irq_clr(struct __port *port)
+ {
+-	setbits_le32(port->base + USB_CIR_OFFS, port->bitmask);
++	setbits32(port->base + USB_CIR_OFFS, port->bitmask);
+ }
+ 
+ static inline int __is_port_busy(struct __port *port)
+@@ -243,7 +243,7 @@ int usb_init(void)
+ 	for (i = 0; i < CONFIG_USB_PORT_CNT; i++) {
+ 		struct __port *port = __get_port(i);
+ 
+-		port->base = CONFIG_USB_BASE;
++		port->base = (void *)CONFIG_USB_BASE;
+ 		port->offs = USB_CTX_OFFS + 4 * i;
+ 		port->bitmask = 1 << i;
+ 		port->burst = BURST;
+diff --git a/lib/drivers/ns16550.c b/lib/drivers/ns16550.c
+index c9b0612..15f4867 100644
+--- a/lib/drivers/ns16550.c
++++ b/lib/drivers/ns16550.c
+@@ -48,7 +48,7 @@ static int ns16550_setup(void)
+ 	}
+ 
+ 	writeb(CONFIG_SYS_NS16550_IER, &port->ier);
+-	writeb(UART_LCR_BKSE | UART_LCRVAL, (u32)&port->lcr);
++	writeb(UART_LCR_BKSE | UART_LCRVAL, &port->lcr);
+ 	writeb(0, &port->dll);
+ 	writeb(0, &port->dlm);
+ 	writeb(UART_LCRVAL, &port->lcr);	/* 8IN1 */
+diff --git a/lib/drivers/timer.c b/lib/drivers/timer.c
+index d6cd58e..30480ad 100644
+--- a/lib/drivers/timer.c
++++ b/lib/drivers/timer.c
+@@ -28,7 +28,7 @@
+ #define TMR_CURR_VAL		0x4
+ #define TMR_CTRL_REG		0x8
+ 
+-static u32 timer1_regs = SOCFPGA_OSC1TIMER0_ADDRESS + 0x1000;
++static void *timer1_regs = (void *)(SOCFPGA_OSC1TIMER0_ADDRESS + 0x1000);
+ 
+ u32 read_timer(void)
+ {

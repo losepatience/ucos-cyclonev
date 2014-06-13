@@ -209,7 +209,6 @@ static  void  App_TaskStart (void *p_arg)
 	printf("\n%s\n", STR1);
 
 
-	mem_malloc_init(0x1000000, 0x1000000);
 
 #if 0
 	LIST_HEAD(list);

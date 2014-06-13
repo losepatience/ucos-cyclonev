@@ -87,15 +87,15 @@ static inline struct __adapter *get_numbered_adapter(int num)
 
 static inline void __irq_enable(struct __adapter *adap, u32 mask)
 {
-	setbits_le32(adap->base + UART_IER_OFFS, mask);
+	setbits32(adap->base + UART_IER_OFFS, mask);
 }
 static inline void __irq_disable(struct __adapter *adap, u32 mask)
 {
-	clrbits_le32(adap->base + UART_IER_OFFS, mask);
+	clrbits32(adap->base + UART_IER_OFFS, mask);
 }
 static inline void __irq_clr(struct __adapter *adap, u32 mask)
 {
-	setbits_le32(adap->base + UART_CIR_OFFS, mask);
+	setbits32(adap->base + UART_CIR_OFFS, mask);
 }
 static inline int __is_bus_busy(struct __adapter *adap, u32 mask)
 {
@@ -207,7 +207,7 @@ int uart_write(int adap_num, const void *data, u32 len)
 
 	if (rval == 0) {
 		pr_err("controller timed out\n");
-		setbits_le32(adap->base + UART_CR_OFFS, mask << 16);
+		setbits32(adap->base + UART_CR_OFFS, mask << 16);
 		rval = -ETIMEDOUT;
 	} else {
 		rval = len;

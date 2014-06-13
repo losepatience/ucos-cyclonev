@@ -29,25 +29,28 @@
 #include <asm/io.h>
 #include <fpga_manager.h>
 
-static const struct socfpga_fpga_manager *fpga_manager_base =
-		(void *)SOCFPGA_FPGAMGRREGS_ADDRESS;
+#define RESETMGR_STATUS_OFFS		0x0
+#define RESETMGR_CTRL_OFFS		0x4
+#define RESETMGR_COUNTS_OFFS		0x8
+#define RESETMGR_PADDING1_OFFS		0xc
+#define RESETMGR_MPU_MOD_RESET_OFFS	0x10
+#define RESETMGR_PER_MOD_RESET_OFFS	0x14
+#define RESETMGR_PER2_MOD_RESET_OFFS	0x18
+#define RESETMGR_BRG_MOD_RESET_OFFS	0x1c
 
-struct socfpga_reset_manager {
-	u32	status;
-	u32	ctrl;
-	u32	counts;
-	u32	padding1;
-	u32	mpu_mod_reset;
-	u32	per_mod_reset;
-	u32	per2_mod_reset;
-	u32	brg_mod_reset;
-};
+#define FPGAMGR_STAT_OFFS		0x0
+#define FPGAMGR_CTRL_OFFS		0x4
+#define FPGAMGR_DCLKCNT_OFFS		0x8
+#define FPGAMGR_DCLKSTAT_OFFS		0xc
+#define FPGAMGR_GPO_OFFS		0x10
+#define FPGAMGR_GPI_OFFS		0x14
+#define FPGAMGR_MISCI_OFFS		0x18
 
-static const struct socfpga_reset_manager *reset_manager_base =
-		(void *)SOCFPGA_RSTMGR_ADDRESS;
+#define L3_REMAP_LWHPS2FPGA_MASK	0x00000010
+#define L3_REMAP_HPS2FPGA_MASK		0x00000008
 
-#define L3REGS_REMAP_LWHPS2FPGA_MASK	0x00000010
-#define L3REGS_REMAP_HPS2FPGA_MASK	0x00000008
+static void *fpgamgr_base = (void *)SOCFPGA_FPGAMGRREGS_ADDRESS;
+static void *resetmgr_base = (void *)SOCFPGA_RSTMGR_ADDRESS;
 
 void reset_deassert_all_bridges(void)
 {
@@ -58,20 +61,20 @@ void reset_deassert_all_bridges(void)
 			;
 	}
 	/* brdmodrst */
-	writel(0, &reset_manager_base->brg_mod_reset);
+	writel(0, resetmgr_base + RESETMGR_BRG_MOD_RESET_OFFS);
 
 	/* remap the bridges into memory map */
-	setbits_le32(SOCFPGA_L3REGS_ADDRESS,
-		(L3REGS_REMAP_LWHPS2FPGA_MASK | L3REGS_REMAP_HPS2FPGA_MASK));
+	setbits32((void *)SOCFPGA_L3REGS_ADDRESS,
+		(L3_REMAP_LWHPS2FPGA_MASK | L3_REMAP_HPS2FPGA_MASK));
 }
 
 /* Check whether FPGA Init_Done signal is high */
 static int is_fpgamgr_initdone_high(void)
 {
 	unsigned long val;
-	val = readl(SOCFPGA_FPGAMGRREGS_ADDRESS +
-		FPGAMGRREGS_MON_GPIO_EXT_PORTA_ADDRESS);
-	if (val & FPGAMGRREGS_MON_GPIO_EXT_PORTA_ID_MASK)
+	val = readl(fpgamgr_base +
+		FPGAMGR_MON_GPIO_EXT_PORTA_OFFS);
+	if (val & FPGAMGR_MON_GPIO_EXT_PORTA_ID_MASK)
 		return 1;
 	else
 		return 0;
@@ -98,18 +101,18 @@ int is_fpgamgr_fpga_ready(void)
 static void fpgamgr_set_cd_ratio(unsigned long ratio)
 {
 	unsigned long reg;
-	reg = readl(&fpga_manager_base->ctrl);
-	reg = (reg & ~(0x3 << FPGAMGRREGS_CTRL_CDRATIO_LSB)) |
-		((ratio & 0x3) << FPGAMGRREGS_CTRL_CDRATIO_LSB);
-	writel(reg, &fpga_manager_base->ctrl);
+	reg = readl(fpgamgr_base + FPGAMGR_CTRL_OFFS);
+	reg = (reg & ~(0x3 << FPGAMGR_CTRL_CDRATIO_LSB)) |
+		((ratio & 0x3) << FPGAMGR_CTRL_CDRATIO_LSB);
+	writel(reg, fpgamgr_base + FPGAMGR_CTRL_OFFS);
 }
 
 /* Get the FPGA mode */
 static int fpgamgr_get_mode(void)
 {
 	unsigned long val;
-	val = readl(&fpga_manager_base->stat);
-	val = val & FPGAMGRREGS_STAT_MODE_MASK;
+	val = readl(fpgamgr_base + FPGAMGR_STAT_OFFS);
+	val = val & FPGAMGR_STAT_MODE_MASK;
 	return val;
 }
 
@@ -118,16 +121,16 @@ static int fpgamgr_dclkcnt_set(unsigned long cnt)
 	unsigned long i;
 
 	/* clear any existing done status */
-	if (readl(&fpga_manager_base->dclkstat))
-		writel(0x1, &fpga_manager_base->dclkstat);
+	if (readl(fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS))
+		writel(0x1, fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS);
 	/* write the dclkcnt */
-	writel(cnt, &fpga_manager_base->dclkcnt);
+	writel(cnt, fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS);
 	/*
 	 * wait till the dclkcnt done
 	 */
 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
-		if (readl(&fpga_manager_base->dclkstat)) {
-			writel(0x1, &fpga_manager_base->dclkstat);
+		if (readl(fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS)) {
+			writel(0x1, fpgamgr_base + FPGAMGR_DCLKSTAT_OFFS);
 			return 0;
 		}
 	}
@@ -144,19 +147,19 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
 	unsigned long reg, i;
 
 	/* get the MSEL value */
-	reg = readl(&fpga_manager_base->stat);
-	reg = ((reg & FPGAMGRREGS_STAT_MSEL_MASK) >> FPGAMGRREGS_STAT_MSEL_LSB);
+	reg = readl(fpgamgr_base + FPGAMGR_STAT_OFFS);
+	reg = ((reg & FPGAMGR_STAT_MSEL_MASK) >> FPGAMGR_STAT_MSEL_LSB);
 
 	/*
 	 * Set the cfg width
 	 * If MSEL[3] = 1, cfg width = 32 bit
 	 */
 	if (reg & 0x8)
-		setbits_le32(&fpga_manager_base->ctrl,
-			FPGAMGRREGS_CTRL_CFGWDTH_MASK);
+		setbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
+			FPGAMGR_CTRL_CFGWDTH_MASK);
 	else
-		clrbits_le32(&fpga_manager_base->ctrl,
-			FPGAMGRREGS_CTRL_CFGWDTH_MASK);
+		clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
+			FPGAMGR_CTRL_CFGWDTH_MASK);
 
 	/* To determine the CD ratio */
 	/* MSEL[3] = 1 & MSEL[1:0] = 0, CD Ratio = 1 */
@@ -179,63 +182,61 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
 		fpgamgr_set_cd_ratio(CDRATIO_x4);
 
 	/* to enable FPGA Manager configuration */
-	clrbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_NCE_MASK);
+	clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS, FPGAMGR_CTRL_NCE_MASK);
 
 	/* to enable FPGA Manager drive over configuration line */
-	setbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_EN_MASK);
+	setbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS, FPGAMGR_CTRL_EN_MASK);
 
 	/* put FPGA into reset phase */
-	setbits_le32(&fpga_manager_base->ctrl,
-		FPGAMGRREGS_CTRL_NCONFIGPULL_MASK);
+	setbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
+		FPGAMGR_CTRL_NCONFIGPULL_MASK);
 
 	/* (1) wait until FPGA enter reset phase */
 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
-		if (fpgamgr_get_mode() == FPGAMGRREGS_MODE_RESETPHASE)
+		if (fpgamgr_get_mode() == FPGAMGR_MODE_RESETPHASE)
 			break;
 	}
 	/* if not in reset state, return error */
-	if (fpgamgr_get_mode() != FPGAMGRREGS_MODE_RESETPHASE)
+	if (fpgamgr_get_mode() != FPGAMGR_MODE_RESETPHASE)
 		return -1;
 
 	/* release FPGA from reset phase */
-	clrbits_le32(&fpga_manager_base->ctrl,
-		FPGAMGRREGS_CTRL_NCONFIGPULL_MASK);
+	clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
+		FPGAMGR_CTRL_NCONFIGPULL_MASK);
 
 	/* (2) wait until FPGA enter configuration phase */
 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
-		if (fpgamgr_get_mode() == FPGAMGRREGS_MODE_CFGPHASE)
+		if (fpgamgr_get_mode() == FPGAMGR_MODE_CFGPHASE)
 			break;
 	}
 	/* if not in configuration state, return error */
-	if (fpgamgr_get_mode() != FPGAMGRREGS_MODE_CFGPHASE)
+	if (fpgamgr_get_mode() != FPGAMGR_MODE_CFGPHASE)
 		return -2;
 
 	/* clear all interrupt in CB Monitor */
-	writel(0xFFF, (SOCFPGA_FPGAMGRREGS_ADDRESS +
-		FPGAMGRREGS_MON_GPIO_PORTA_EOI_ADDRESS));
+	writel(0xFFF, fpgamgr_base + FPGAMGR_MON_GPIO_PORTA_EOI_OFFS);
 
 	/* enable AXI configuration */
-	setbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_AXICFGEN_MASK);
+	setbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
+		       	FPGAMGR_CTRL_AXICFGEN_MASK);
 
 	/* write to FPGA Manager AXI data */
 	for (i = 0; i < rbf_size; i = i + 4) {
 		reg = rbf_data[i / 4];
-		writel(reg, SOCFPGA_FPGAMGRDATA_ADDRESS);
-		reg = readl(SOCFPGA_FPGAMGRREGS_ADDRESS +
-			FPGAMGRREGS_MON_GPIO_EXT_PORTA_ADDRESS);
+		writel(reg, (void *)SOCFPGA_FPGAMGRDATA_ADDRESS);
+		reg = readl(fpgamgr_base + FPGAMGR_MON_GPIO_EXT_PORTA_OFFS);
 	}
 
 	/* (3) wait until full config done */
 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
-		reg = readl(SOCFPGA_FPGAMGRREGS_ADDRESS +
-			FPGAMGRREGS_MON_GPIO_EXT_PORTA_ADDRESS);
+		reg = readl(fpgamgr_base + FPGAMGR_MON_GPIO_EXT_PORTA_OFFS);
 		/* config error */
-		if (!(reg & FPGAMGRREGS_MON_GPIO_EXT_PORTA_NS_MASK) &&
-			!(reg & FPGAMGRREGS_MON_GPIO_EXT_PORTA_CD_MASK))
+		if (!(reg & FPGAMGR_MON_GPIO_EXT_PORTA_NS_MASK) &&
+			!(reg & FPGAMGR_MON_GPIO_EXT_PORTA_CD_MASK))
 			return -3;
 		/* config done without error */
-		if ((reg & FPGAMGRREGS_MON_GPIO_EXT_PORTA_NS_MASK) &&
-			(reg & FPGAMGRREGS_MON_GPIO_EXT_PORTA_CD_MASK))
+		if ((reg & FPGAMGR_MON_GPIO_EXT_PORTA_NS_MASK) &&
+			(reg & FPGAMGR_MON_GPIO_EXT_PORTA_CD_MASK))
 			break;
 	}
 	/* tiemout happen, return error */
@@ -243,7 +244,8 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
 		return -4;
 
 	/* disable AXI configuration */
-	clrbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_AXICFGEN_MASK);
+	clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS,
+			FPGAMGR_CTRL_AXICFGEN_MASK);
 
 	/* additional clocks for the CB to enter initialization phase */
 	if (fpgamgr_dclkcnt_set(0x4) != 0)
@@ -251,7 +253,7 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
 
 	/* (4) wait until FPGA enter init phase */
 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
-		if (fpgamgr_get_mode() == FPGAMGRREGS_MODE_INITPHASE)
+		if (fpgamgr_get_mode() == FPGAMGR_MODE_INITPHASE)
 			break;
 	}
 	/* if not in configuration state, return error */
@@ -264,7 +266,7 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
 
 	/* (5) wait until FPGA enter user mode */
 	for (i = 0; i < FPGA_TIMEOUT_CNT; i++) {
-		if (fpgamgr_get_mode() == FPGAMGRREGS_MODE_USERMODE)
+		if (fpgamgr_get_mode() == FPGAMGR_MODE_USERMODE)
 			break;
 	}
 	/* if not in configuration state, return error */
@@ -272,7 +274,7 @@ int fpgamgr_program_fpga(const unsigned long *rbf_data,
 		return -8;
 
 	/* to release FPGA Manager drive over configuration line */
-	clrbits_le32(&fpga_manager_base->ctrl, FPGAMGRREGS_CTRL_EN_MASK);
+	clrbits32(fpgamgr_base + FPGAMGR_CTRL_OFFS, FPGAMGR_CTRL_EN_MASK);
 
 	/* release bridge from reset in case Preloader skip it */
 	reset_deassert_all_bridges();

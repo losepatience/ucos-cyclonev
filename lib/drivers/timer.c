@@ -28,7 +28,7 @@
 #define TMR_CURR_VAL		0x4
 #define TMR_CTRL_REG		0x8
 
-static u32 timer1_regs = SOCFPGA_OSC1TIMER0_ADDRESS + 0x1000;
+static void *timer1_regs = (void *)(SOCFPGA_OSC1TIMER0_ADDRESS + 0x1000);
 
 u32 read_timer(void)
 {

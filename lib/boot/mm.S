@@ -89,10 +89,10 @@ ENDPROC(armv7_inv_dcache)
 
 
 /*
- * armv7_inv_dcache_range(start, end)
- * Invalidate the data cache within the specified region
+ * __v7_inv_range(start, end)
+ * invalidate the data cache within the specified region
  */
-ENTRY(armv7_inv_dcache_range)
+__v7_inv_range:
 	dcache_line_size r2, r3
 	sub	r3, r2, #1
 	tst	r0, r3
@@ -109,14 +109,14 @@ ENTRY(armv7_inv_dcache_range)
 	blo	1b
 	dsb
 	mov	pc, lr
-ENDPROC(armv7_inv_dcache_range)
+ENDPROC(__v7_inv_range)
 
 /*
- * armv7_clean_dcache_range(start, end)
+ * __v7_clean_range(start, end)
  *  @start: virtual start address of region
  *  @end: virtual end address of region
  */
-ENTRY(armv7_clean_dcache_range)
+__v7_clean_range:
 	dcache_line_size r2, r3
 	sub	r3, r2, #1
 	bic	r0, r0, r3
@@ -127,89 +127,31 @@ ENTRY(armv7_clean_dcache_range)
 	blo	1b
 	dsb
 	mov	pc, lr
-ENDPROC(armv7_clean_dcache_range)
+ENDPROC(__v7_clean_range)
 
 /*
- * __map_memory_region(u32 addr, u32 len, u32 flags)
- * map a memory region with VA = PA, r0 used as VA,
- * r1 as size(M) and r2 as flags.
+ * __v7_flush_range(start, end)
+ * clean&invalidate the data cache within the specified region
  */
-ENTRY(__map_memory_region)
-	orr	r0, r0, r2
-	ldr	r2, =__mmu_table
-	add	r2, r2, r0, lsr #SECTION_SHIFT - 2
-
-1:	str	r0, [r2], #4
-	add	r0, r0, #1 << SECTION_SHIFT
-	subs	r1, r1, #1
-	bne	1b
-
+__v7_flush_range:
+	dcache_line_size r2, r3
+	sub	r3, r2, #1
+	bic	r0, r0, r3
+1:
+	mcr	p15, 0, r0, c7, c14, 1	@ clean & invalidate D / U line
+	add	r0, r0, r2
+	cmp	r0, r1
+	blo	1b
+	dsb
 	mov	pc, lr
-ENDPROC(__map_memory_region)
-
-/* this func is writen for cyclone-V and SOC depended on
- * Corrupted registers: r0-r1
- */
-ENTRY(__enable_l2_cache)
-
-	/* Set ways */
-	@ CPU0 instructions will into WAY0 or WAY1
-	mov	r0, #0x0f
-	ldr	r1, =SOCFPGA_MPUL2_ADDRESS + 0x900
-	str	r0, [r1]
-
-	mov	r0, #0x0f
-	ldr	r1, =SOCFPGA_MPUL2_ADDRESS + 0x904
-	str	r0, [r1]
-
-	@ CPU1 instructions will into WAY2 or WAY3
-	mov	r0, #0xf0
-	ldr	r1, =SOCFPGA_MPUL2_ADDRESS + 0x908
-	str	r0, [r1]
-
-	mov	r0, #0xf0
-	ldr	r1, =SOCFPGA_MPUL2_ADDRESS + 0x90c
-	str	r0, [r1]
-
-	/* Enable prefetching and early BRESP */
-	ldr	r1, =SOCFPGA_MPUL2_ADDRESS + 0x104
-	ldr	r0, [r1]
-	orr	r0, r0, #0x70000000
-	str	r0, [r1]
-
-	/* Setup tag and data ram latencies */
-	mov	r0, #0x0
-	ldr	r1, =SOCFPGA_MPUL2_ADDRESS + 0x108	@ setup tag
-	str	r0, [r1]
-
-	mov	r0, #0x10
-	ldr	r1, =SOCFPGA_MPUL2_ADDRESS + 0x10c	@ setup latencies
-	str	r0, [r1]
-
-	/* Invalidate all entries */
-	mov	r0, #0xff
-	ldr	r1, =SOCFPGA_MPUL2_ADDRESS + 0x77c
-	str	r0, [r1]
-
-	@ wait for the configuration valid
-1:	ldr	r0, [r1]
-	cmp	r0, #0
-	bne	1b
-
-	/* Enable cache */
-	mov	r0, #0x1
-	ldr	r1, =SOCFPGA_MPUL2_ADDRESS + 0x100
-	str	r0, [r1]
-
-	mov	pc, lr
-ENDPROC(__enable_l2_cache)
+ENDPROC(__v7_flush_range)
 
 /*
  * Set up page table: use 1M areas, VA = PA
  * The data cache is not active unless the mmu is enabled too
  */
 ENTRY(__enable_cache)
-	mov	r12, lr			@ save return address
+	push	{lr}
 	bl	__create_page_table	@ get page-table(r0 points to tlb)
 
 	ldr	r0, =__mmu_table
@@ -242,8 +184,41 @@ __turn_mmu_on:
 	isb
 	mov	r0, r0
 	mov	r0, r0
-	mov	pc, r12
+
+	pop	{lr}
+	mov	pc, lr
 ENDPROC(__enable_cache)
+
+	.align
+	.globl	maint_cache
+	.type	maint_cache, %object
+maint_cache:
+	.long	__v7_inv_range
+	.long	__v7_clean_range
+	.long	__v7_flush_range
+
+	.size	maint_cache, . - maint_cache
+
+/*
+ * __map_memory_region(u32 addr, u32 len, u32 flags)
+ * map a memory region with VA = PA, r0 used as VA,
+ * r1 as size(M) and r2 as flags.
+ */
+ENTRY(__map_memory_region)
+	ldr	r3, =(1 << SECTION_SHIFT) - 1
+	bic	r0, r0, r3
+	orr	r0, r0, r2
+	ldr	r2, =__mmu_table
+	add	r2, r2, r0, lsr #SECTION_SHIFT - 2
+
+1:	str	r0, [r2], #4
+	add	r0, r0, #1 << SECTION_SHIFT
+	cmp	r1, #0
+	subne	r1, r1, #1
+	bne	1b
+
+	mov	pc, lr
+ENDPROC(__map_memory_region)
 
 /*
  * The data cache is not active unless the mmu is enabled too
@@ -259,12 +234,9 @@ ENDPROC(__enable_cache)
  *
  * TEX(101): L2 cache write-back, write-allocate
  */
-#define PAGE1M_NOMAL		(0x5c1e)
-#define PAGE1M_NOCACHE		(0xc12)
-#define PAGE1M_SHARED		(1<<16)
 __create_page_table:
 
-	mov	r3, lr
+	push	{lr}
 
  	/* Map the full 4GB memory space(VA = PA) */
 	mov	r0, #0
@@ -272,26 +244,22 @@ __create_page_table:
 	ldr	r2, =PAGE1M_NOCACHE
 	bl	__map_memory_region
 
-	/*
-	 * Map memory region for OS. (including both OSs and
-	 * its malloc regions)
-	 */
-	mov	r0, #0
-	ldr	r1, =__os_end
-	mov	r1, r1, lsr #SECTION_SHIFT
+	/* Map memory region for OS(including both OS) */
+	ldr	r0, =__text_base
+	ldr	r1, =__os_end >> SECTION_SHIFT
+	sub	r1, r0, lsr #SECTION_SHIFT
 	ldr	r2, =PAGE1M_NOMAL
 	bl	__map_memory_region
 
-	/* Reserver 1M for DMA memory region nocacheable */
-
- 	/* Map SDRam */
+ 	/* Map SDRam used by both OS */
 	ldr	r0, =__os_end
 	add	r0, r0, #1 << SECTION_SHIFT
-	ldr	r1, =PHYS_SDRAM_1_SIZE >> SECTION_SHIFT
+	ldr	r1, =PHYS_SDRAM_SIZE >> SECTION_SHIFT
 	sub	r1, r0, lsr #SECTION_SHIFT
 	ldr	r2, =PAGE1M_NOMAL | PAGE1M_SHARED
 	bl	__map_memory_region
 
-	mov	pc, r3
+	pop	{lr}
+	mov	pc, lr
 ENDPROC(__create_page_table)
 

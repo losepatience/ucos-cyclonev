@@ -43,7 +43,7 @@
 #define DMA_RLEN_OFFS		0x24
 
 struct fpga_dma {
-	u32			base;
+	void			*base;
 	int			irq;
 
 	struct mutex		rxlock;
@@ -130,7 +130,7 @@ int dma_init(void)
 		return -ENOMEM;
 	}
 
-	__dma->base = CONFIG_DMA_BASE;
+	__dma->base = (void *)CONFIG_DMA_BASE;
 	__dma->irq = CONFIG_DMA_IRQ;
 	__dma->timeout = 5 * HZ;
 

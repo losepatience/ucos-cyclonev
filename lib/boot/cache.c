@@ -19,10 +19,25 @@
  * MA 02111-1307 USA
  */
 
-/* invalidate */
-void flush_dcache_all(void)
-{
-	v7_maint_dcache_all(ARMV7_DCACHE_INVAL_ALL);
+#include <cache.h>
 
-	v7_outer_cache_inval_all();
+struct outer_cache_fns outer_cache;
+
+void inv_dcache_range(unsigned long start, unsigned long end)
+{
+	maint_inv_range(start, end);
+	outer_inv_range(start, end);
 }
+
+void clean_dcache_range(unsigned long start, unsigned long end)
+{
+	maint_clean_range(start, end);
+	outer_clean_range(start, end);
+}
+
+void flush_dcache_range(unsigned long start, unsigned long end)
+{
+	maint_flush_range(start, end);
+	outer_flush_range(start, end);
+}
+

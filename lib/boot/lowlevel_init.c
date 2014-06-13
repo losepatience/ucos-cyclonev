@@ -1,5 +1,7 @@
 #include <asm/io.h>
 #include <asm/regs.h>
+#include <malloc.h>
+#include "cache.h"
 #include "mm.h"
 
 static volatile unsigned int __OS1_awake;
@@ -50,7 +52,11 @@ void __OS1_reset(void)
 void lowlevel_init(void)
 {
 	/* remap the SDRAM at lower memory instead on-chip RAM */
-	writel(0x1, 0xfffefC00);
+	writel(0x1, (void *)0xfffefC00);
+
+	mem_malloc_init(0x1000000, 0x1000000);
+	__enable_cache();
+	pl310_init(0U, ~0UL);
 
 	wakeup_OS1();
 

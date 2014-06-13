@@ -77,10 +77,6 @@ setup_stack:
         msr	cpsr_c, #Mode_SVC | I_Bit | F_Bit
 	/*XXX dont do anything that needs a stack in the other modes */
 
-	@ enable i,d cache
-	bl	__enable_cache
-	bl	__enable_l2_cache
-
 clear_bss:
 	ldr	r0, =__bss_start	@ find start of bss segment
 	ldr	r1, =__bss_end		@ stop here
