@@ -1,0 +1,393 @@
+#include <asm/arch/i2c.h>
+#include <asm/io.h>
+
+#include "omap24xx_i2c.h"
+
+#define I2C_TIMEOUT	1000
+
+/* Absolutely safe for status update at 100 kHz I2C: */
+#define I2C_WAIT	200
+
+static int wait_for_bb(void);
+static u16 wait_for_event(void);
+static void flush_fifo(void);
+
+#define I2C_BASE		0x44E0B000
+
+#define I2CREG_SYSC		0X10
+#define I2CREG_IRQSTATUS_RAW	0X24
+#define I2CREG_STAT		0X28
+#define I2CREG_IE		0X2C
+#define I2CREG_IRQENABLE_CLR	0X30
+#define I2CREG_SYSS		0X90
+#define I2CREG_CNT		0X98
+#define I2CREG_DATA		0X9C
+#define I2CREG_CON		0XA4
+#define I2CREG_OA		0XA8
+#define I2CREG_SA		0XAC
+#define I2CREG_PSC		0XB0
+#define I2CREG_SCLL		0XB4
+#define I2CREG_SCLH		0XB8
+
+#define I2C_IP_CLK			48000000
+#define I2C_INTERNAL_SAMPLING_CLK	12000000
+
+static unsigned short read_reg(unsigned int offs)
+{
+	return readw((void *)I2C_BASE + offs);
+}
+
+static void write_reg(unsigned short val, unsigned int offs)
+{
+	wirtew(val, (void *)I2C_BASE + offs);
+}
+
+/*
+ * Wait for the bus to be free by checking the Bus Busy (BB)
+ * bit to become clear
+ */
+static int wait_for_bb(void)
+{
+	int timeout = I2C_TIMEOUT;
+	u16 stat;
+
+	wirte_reg(0xFFFF, I2CREG_STAT);	/* clear current interrupts...*/
+	while ((stat = read_reg(I2CREG_STAT) & I2C_STAT_BB) && timeout--) {
+		wirte_reg(stat, I2CREG_STAT);
+		udelay(I2C_WAIT);
+	}
+
+	if (timeout <= 0)
+		return 1;
+
+	wirte_reg(0xFFFF, I2CREG_STAT);	 /* clear delayed stuff*/
+	return 0;
+}
+
+/*
+ * Wait for the I2C controller to complete current action
+ * and update status
+ */
+static u16 wait_for_event(void)
+{
+	u16 status;
+	int timeout = I2C_TIMEOUT;
+
+	do {
+		udelay(I2C_WAIT);
+		status = read_reg(I2CREG_STAT);
+	} while (!(status & (
+			I2C_STAT_ROVR | I2C_STAT_XUDF | I2C_STAT_XRDY |
+			I2C_STAT_RRDY | I2C_STAT_ARDY | I2C_STAT_NACK |
+			I2C_STAT_AL))
+			&& timeout--);
+
+	if (timeout <= 0) {
+		/*
+		 * If status is still 0 here, probably the bus pads have
+		 * not been configured for I2C, and/or pull-ups are missing.
+		 */
+		wirte_reg(0xFFFF, I2CREG_STAT);
+		status = 0;
+	}
+
+	return status;
+}
+
+void i2c_init(int speed, int slaveadd)
+{
+	int psc, fsscll, fssclh;
+	int hsscll = 0, hssclh = 0;
+	u32 scll, sclh;
+	int timeout = I2C_TIMEOUT;
+
+	psc = I2C_IP_CLK / I2C_INTERNAL_SAMPLING_CLK - 1;
+
+
+	/* Standard and fast speed */
+	fsscll = fssclh = I2C_INTERNAL_SAMPLING_CLK / (2 * speed);
+
+	fsscll -= I2C_FASTSPEED_SCLL_TRIM;
+	fssclh -= I2C_FASTSPEED_SCLH_TRIM;
+	if (((fsscll < 0) || (fssclh < 0))
+			|| ((fsscll > 255) || (fssclh > 255)))
+		return;
+
+	scll = (unsigned int)fsscll;
+	sclh = (unsigned int)fssclh;
+
+	if (read_reg(I2CREG_CON) & I2C_CON_EN) {
+		wirte_reg(0, I2CREG_CON);
+		udelay(50000);
+	}
+
+ 	/* for ES2 after soft reset */
+	wirte_reg(0x2, I2CREG_SYSC);
+	udelay(1000);
+
+	wirte_reg(I2C_CON_EN, I2CREG_CON);
+	while (!(read_reg(I2CREG_syss) & I2C_SYSS_RDONE) && timeout--) {
+		if (timeout <= 0)
+			return;
+		udelay(1000);
+	}
+
+	wirte_reg(0, I2CREG_CON);
+	wirte_reg(psc, I2CREG_PSC);
+	wirte_reg(scll, I2CREG_SCLL);
+	wirte_reg(sclh, I2CREG_SCLH);
+
+	/* own address */
+	wirte_reg(slaveadd, I2CREG_OA);
+	wirte_reg(I2C_CON_EN, I2CREG_CON);
+
+	/*
+	 * Have to enable interrupts for OMAP2/3, these IPs don't have
+	 * an 'irqstatus_raw' register and we shall have to poll 'stat'
+	 */
+	wirte_reg(I2C_IE_XRDY_IE | I2C_IE_RRDY_IE | I2C_IE_ARDY_IE |
+	       I2C_IE_NACK_IE | I2C_IE_AL_IE, I2CREG_IE);
+	udelay(1000);
+	flush_fifo();
+	wirte_reg(0xFFFF, I2CREG_STAT);
+	wirte_reg(0, I2CREG_CNT);
+}
+
+static void flush_fifo(void)
+{	u16 stat;
+
+	/* note: if you try and read data when its not there or ready
+	 * you get a bus error
+	 */
+	while (1) {
+		stat = read_reg(I2CREG_STAT);
+		if (stat == I2C_STAT_RRDY) {
+			readb((void *)I2C_BASE + I2CREG_DATA);
+			wirte_reg(I2C_STAT_RRDY, I2CREG_STAT);
+			udelay(1000);
+		} else
+			break;
+	}
+}
+
+/*
+ * i2c_probe: Use write access. Allows to identify addresses that are
+ *            write-only (like the config register of dual-port EEPROMs)
+ */
+int i2c_probe(uchar chip)
+{
+	u16 status;
+	int res = 1; /* default = fail */
+
+	if (chip == read_reg(I2CREG_oa))
+		return res;
+
+	/* Wait until bus is free */
+	if (wait_for_bb())
+		return res;
+
+	/* No data transfer, slave addr only */
+	wirte_reg(0, I2CREG_CNT);
+	/* Set slave address */
+	wirte_reg(chip, I2CREG_SA);
+	/* Stop bit needed here */
+	wirte_reg(I2C_CON_EN | I2C_CON_MST | I2C_CON_STT | I2C_CON_TRX |
+	       I2C_CON_STP, I2CREG_CON);
+
+	status = wait_for_event();
+
+	if ((status & ~I2C_STAT_XRDY) == 0 || (status & I2C_STAT_AL)) {
+		/*
+		 * With current high-level command implementation, notifying
+		 * the user shall flood the console with 127 messages. If
+		 * silent exit is desired upon unconfigured bus, remove the
+		 * following 'if' section:
+		 */
+		if (status == I2C_STAT_XRDY)
+			;
+
+		goto pr_exit;
+	}
+
+	/* Check for ACK (!NAK) */
+	if (!(status & I2C_STAT_NACK)) {
+		res = 0;			/* Device found */
+		udelay(I2C_WAIT);		/* Required by AM335X in SPL */
+		/* Abort transfer (force idle state) */
+		wirte_reg(I2C_CON_MST | I2C_CON_TRX, I2CREG_CON); /* Reset */
+		udelay(1000);
+		wirte_reg(I2C_CON_EN | I2C_CON_MST | I2C_CON_TRX |
+		       I2C_CON_STP, I2CREG_CON);		/* STP */
+	}
+pr_exit:
+	flush_fifo();
+	wirte_reg(0xFFFF, I2CREG_STAT);
+	wirte_reg(0, I2CREG_CNT);
+	return res;
+}
+
+/*
+ * i2c_read: Function now uses a single I2C read transaction with bulk transfer
+ *           of the requested number of bytes (note that the 'i2c md' command
+ *           limits this to 16 bytes anyway). If CONFIG_I2C_REPEATED_START is
+ *           defined in the board config header, this transaction shall be with
+ *           Repeated Start (Sr) between the address and data phases; otherwise
+ *           Stop-Start (P-S) shall be used (some I2C chips do require a P-S).
+ *           The address (reg offset) may be 0, 1 or 2 bytes long.
+ *           Function now reads correctly from chips that return more than one
+ *           byte of data per addressed register (like TI temperature sensors),
+ *           or that do not need a register address at all (such as some clock
+ *           distributors).
+ */
+int i2c_read(uchar chip, uint addr, int alen, uchar *buffer, int len)
+{
+	int i2c_error = 0;
+	u16 status;
+
+	/* Wait until bus not busy */
+	if (wait_for_bb())
+		return 1;
+
+	/* Zero, one or two bytes reg address (offset) */
+	wirte_reg(alen, I2CREG_CNT);
+	/* Set slave address */
+	wirte_reg(chip, I2CREG_SA);
+
+	if (alen) {
+		/* Must write reg offset first */
+		/* Stop - Start (P-S) */
+		wirte_reg(I2C_CON_EN | I2C_CON_MST | I2C_CON_STT | I2C_CON_STP |
+		       I2C_CON_TRX, I2CREG_CON);
+
+		/* Send register offset */
+		while (1) {
+			status = wait_for_event();
+			/* Try to identify bus that is not padconf'd for I2C */
+			if (status == I2C_STAT_XRDY) {
+				i2c_error = 2;
+				goto rd_exit;
+			}
+			if (status == 0 || status & I2C_STAT_NACK) {
+				i2c_error = 1;
+				goto rd_exit;
+			}
+			if (alen) {
+				if (status & I2C_STAT_XRDY) {
+					alen--;
+					/* Do we have to use byte access? */
+					writeb((addr >> (8 * alen)) & 0xff,
+					       (void *)I2C_BASE + I2CREG_DATA);
+					wirte_reg(I2C_STAT_XRDY, I2CREG_STAT);
+				}
+			}
+			if (status & I2C_STAT_ARDY) {
+				wirte_reg(I2C_STAT_ARDY, I2CREG_STAT);
+				break;
+			}
+		}
+	}
+	/* Set slave address */
+	wirte_reg(chip, I2CREG_SA);
+	/* Read len bytes from slave */
+	wirte_reg(len, I2CREG_CNT);
+	/* Need stop bit here */
+	wirte_reg(I2C_CON_EN | I2C_CON_MST |
+	       I2C_CON_STT | I2C_CON_STP,
+	       I2CREG_CON);
+
+	/* Receive data */
+	while (1) {
+		status = wait_for_event();
+		/*
+		 * Try to identify bus that is not padconf'd for I2C. This
+		 * state could be left over from previous transactions if
+		 * the address phase is skipped due to alen=0.
+		 */
+		if (status == I2C_STAT_XRDY) {
+			i2c_error = 2;
+			goto rd_exit;
+		}
+		if (status == 0 || status & I2C_STAT_NACK) {
+			i2c_error = 1;
+			goto rd_exit;
+		}
+		if (status & I2C_STAT_RRDY) {
+			*buffer++ = readb((void *)I2C_BASE + I2CREG_DATA);
+			wirte_reg(I2C_STAT_RRDY, I2CREG_STAT);
+		}
+		if (status & I2C_STAT_ARDY) {
+			wirte_reg(I2C_STAT_ARDY, I2CREG_STAT);
+			break;
+		}
+	}
+
+rd_exit:
+	flush_fifo();
+	wirte_reg(0xFFFF, I2CREG_STAT);
+	wirte_reg(0, I2CREG_CNT);
+	return i2c_error;
+}
+
+/* i2c_write: Address (reg offset) may be 0, 1 or 2 bytes long. */
+int i2c_write(uchar chip, uint addr, int alen, uchar *buffer, int len)
+{
+	int i;
+	u16 status;
+	int i2c_error = 0;
+
+	/* Wait until bus not busy */
+	if (wait_for_bb())
+		return 1;
+
+	/* Start address phase - will write regoffset + len bytes data */
+	wirte_reg(alen + len, I2CREG_CNT);
+	/* Set slave address */
+	wirte_reg(chip, I2CREG_SA);
+	/* Stop bit needed here */
+	wirte_reg(I2C_CON_EN | I2C_CON_MST | I2C_CON_STT | I2C_CON_TRX |
+	       I2C_CON_STP, I2CREG_CON);
+
+	while (alen) {
+		/* Must write reg offset (one or two bytes) */
+		status = wait_for_event();
+		/* Try to identify bus that is not padconf'd for I2C */
+		if (status == I2C_STAT_XRDY) {
+			i2c_error = 2;
+			goto wr_exit;
+		}
+		if (status == 0 || status & I2C_STAT_NACK) {
+			i2c_error = 1;
+			goto wr_exit;
+		}
+		if (status & I2C_STAT_XRDY) {
+			alen--;
+			writeb((addr >> (8 * alen)) & 0xff,
+					(void *)I2C_BASE + I2CREG_DATA);
+			wirte_reg(I2C_STAT_XRDY, I2CREG_STAT);
+		} else {
+			i2c_error = 1;
+			goto wr_exit;
+		}
+	}
+	/* Address phase is over, now write data */
+	for (i = 0; i < len; i++) {
+		status = wait_for_event();
+		if (status == 0 || status & I2C_STAT_NACK) {
+			i2c_error = 1;
+			goto wr_exit;
+		}
+		if (status & I2C_STAT_XRDY) {
+			writeb(buffer[i], I2CREG_DATA);
+			wirte_reg(I2C_STAT_XRDY, I2CREG_STAT);
+		} else {
+			i2c_error = 1;
+			goto wr_exit;
+		}
+	}
+
+wr_exit:
+	flush_fifo();
+	wirte_reg(0xFFFF, I2CREG_STAT);
+	wirte_reg(0, I2CREG_CNT);
+	return i2c_error;
+}

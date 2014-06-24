@@ -101,6 +101,6 @@ static inline u32 __raw_readl(const volatile void *addr)
 /* access ports */
 #define setbits(p, v) outl(inl(p) | (v), p)
 #define clrbits(p, v) outl(inl(p) & ~(v), p)
-#define clrsetbits(addr, clr, set) outl((addr), (inl(addr) & ~(clr)) | (set))
+#define clrsetbits(addr, clr, set) outl((inl(addr) & ~(clr)) | (set), (addr))
 
 #endif	/* __ASM_ARM_IO_H */

@@ -19,12 +19,12 @@
  * MA 02111-1307 USA
  */
 
-#define CR_V	(1 << 13)	/* Vectors relocated to 0xffff0000	*/
+/* Vectors relocated to 0xffff0000 */
+#define CR_V			(1 << 13)
+#define SYS_INIT_SP_ADDR	0x1000
 
 .globl _start
-_start:
-	b	reset
-
+_start: b	reset
 	.rept	7
 	b	.	@ infinite loop
 	.endr
@@ -67,12 +67,24 @@ reset:
 	orr	r0, r0, #0x00001000	@ set bit 12 (I) I-cache
 	mcr	p15, 0, r0, c1, c0, 0
 
-	ldr	sp, =CONFIG_SYS_INIT_SP_ADDR
+setup_stack:
+	ldr	sp, =SYS_INIT_SP_ADDR
 	bic	sp, sp, #7		@ 8-byte alignment for ABI compliance
 
-	bl	cpu_init_crit
+clear_bss:
+	ldr	r0, =__bss_start	@ find start of bss segment
+	ldr	r1, =__bss_end		@ stop here
+	mov	r2, #0x0		@ clear value
 
-	bl	_main
+clbss_l:
+	str	r2, [r0]		@ clear BSS location
+	cmp	r0, r1			@ are we at the end yet
+
+	add	r0, r0, #4		@ increment clear index pointer
+	bne	clbss_l			@ keep clearing till at end
+clbss_e:
+
+	bl	lowlevel_init
 
 /* --------------------------------------------------------------------------- */
 

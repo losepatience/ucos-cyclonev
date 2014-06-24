@@ -1,4 +1,3 @@
-#include <config.h>
 
 OUTPUT_FORMAT("elf32-littlearm", "elf32-littlearm", "elf32-littlearm")
 OUTPUT_ARCH(arm)
@@ -6,7 +5,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-	. = __text_base;
+	/*. = __text_base; */
 	.text : {
 		*(.stext)
 		*(.text)

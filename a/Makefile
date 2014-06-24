@@ -38,9 +38,9 @@ export CC CFLAGS TOPDIR
 # All objects
 #   Add what you want
 #####################################################################
-INCDIRS := $(TOPDIR)
+INCDIRS := $(TOPDIR)/include
 
-CS_SRCS := $(shell find $(TOPDIR) -name "*.S" -o -name "*.c")
+CS_SRCS := $(shell find $(TOPDIR)/src -name "*.S" -o -name "*.c")
 CS_OBJS := $(CS_SRCS:%.c=%.o)
 CS_OBJS := $(CS_OBJS:%.S=%.o)
 

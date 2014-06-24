@@ -33,15 +33,6 @@
 #define CM_DLL_CTRL_NO_OVERRIDE	0x0
 #define CM_DLL_READYST		0x4
 
-extern void enable_dmm_clocks(void);
-extern const struct dpll_params dpll_core_opp100;
-extern struct dpll_params dpll_mpu_opp100;
-
-
-
-
-#define LDELAY 1000000
-
 /*CM_<clock_domain>__CLKCTRL */
 #define CD_CLKCTRL_CLKTRCTRL_SHIFT		0
 #define CD_CLKCTRL_CLKTRCTRL_MASK		3
@@ -80,9 +71,6 @@ extern struct dpll_params dpll_mpu_opp100;
 #define CM_CLKMODE_DPLL_EN_SHIFT		0
 #define CM_CLKMODE_DPLL_EN_MASK			(0x7 << 0)
 
-#define CM_CLKMODE_DPLL_DPLL_EN_SHIFT		0
-#define CM_CLKMODE_DPLL_DPLL_EN_MASK		7
-
 #define DPLL_EN_STOP			1
 #define DPLL_EN_MN_BYPASS		4
 #define DPLL_EN_LOW_POWER_BYPASS	5
@@ -100,40 +88,17 @@ extern struct dpll_params dpll_mpu_opp100;
 struct dpll_params {
 	u32 m;
 	u32 n;
-	s8 m2;
-	s8 m3;
-	s8 m4;
-	s8 m5;
-	s8 m6;
+	s8 m2[5];	/* m2 - m6 */
 };
 
 struct dpll_regs {
-	u32 cm_clkmode_dpll;
-	u32 cm_idlest_dpll;
-	u32 cm_autoidle_dpll;
-	u32 cm_clksel_dpll;
-	u32 cm_div_m2_dpll;
-	u32 cm_div_m3_dpll;
-	u32 cm_div_m4_dpll;
-	u32 cm_div_m5_dpll;
-	u32 cm_div_m6_dpll;
+	void *cm_clkmode_dpll;
+	void *cm_idlest_dpll;
+	void *cm_autoidle_dpll;
+	void *cm_clksel_dpll;
+	void *cm_div_m2_dpll[5];
 };
 
-extern const struct dpll_regs dpll_mpu_regs;
-extern const struct dpll_regs dpll_core_regs;
-extern const struct dpll_regs dpll_per_regs;
-extern const struct dpll_regs dpll_ddr_regs;
-
-extern struct cm_wkuppll *const cmwkup;
-
-const struct dpll_params *get_dpll_mpu_params(void);
-const struct dpll_params *get_dpll_core_params(void);
-const struct dpll_params *get_dpll_per_params(void);
-const struct dpll_params *get_dpll_ddr_params(void);
-void scale_vcores(void);
-void do_setup_dpll(const struct dpll_regs *, const struct dpll_params *);
 void prcm_init(void);
-void enable_basic_clocks(void);
-void do_enable_clocks(u32 *const *, u32 *const *, u8);
 
 #endif
