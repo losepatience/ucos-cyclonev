@@ -34,27 +34,31 @@
 #define M_NAND_GPMC_CONFIG6	0x16000f80
 #define M_NAND_GPMC_CONFIG7	0x00000008
 
-void enable_gpmc_cs_config(const u32 *cfg, u32 *cs, u32 base, u32 size)
+void enable_gpmc_cs_config(u32 *cfg, void *cs_base, u32 base, u32 size)
 {
 	int i;
 
-	writel(0, &cs[6]);
+	writel(0, cs_base + GPMC_CS_CONFIG7);
 	sdelay(1000);
 
-	/* Delay for settling */
+	/* delay for settling */
 	for (i = 0; cfg[i] != 0; i++)
-		writel(cfg[i], &cs[i]);
+		writel(cfg[i], cs_base + (0x4 * i));
 
-	/* Enable the config */
-	writel((((size & 0xF) << 8) | ((base >> 24) & 0x3F) | (1 << 6)), &cs[6]);
+	/* enable the config */
+	writel(((size & 0xF) << 8)
+		| ((base >> 24) & 0x3F)
+		| (1 << 6),
+		cs_base + GPMC_CS_CONFIG7);
+
 	sdelay(2000);
 }
 
-void gpmc_init(void)
+void gpmc_init(int cs)
 {
 	/* putting a blanket check on GPMC based on ZeBu for now */
 	void *gpmc_base = (void *)GPMC_BASE;
-	u32 *cs_base = gpmc_base + GPMCREG_CS0_CONFIG1;
+	void *gpmc_cs_base = gpmc_base + GPMC_CS0 + (0x30 * cs);
 
 	/* configure GPMC for NAND */
 	const u32 gpmc_regs[7] = {
@@ -78,7 +82,7 @@ void gpmc_init(void)
 	writel(0x00000012, gpmc_base + GPMCREG_CONFIG);
 
 	/* enable chip-select specific configurations */
-	enable_gpmc_cs_config(gpmc_regs, cs_base, base, size);
+	enable_gpmc_cs_config(gpmc_regs, gpmc_cs_base, base, size);
 }
 
 
@@ -97,7 +101,7 @@ void lowlevel_init(void)
 
 #if 0
 	config_ddr(303, MT41J512M8RH125_IOCTRL_VALUE, &ddr3_evm_data,
-			   &ddr3_evm_cmd_ctrl_data, &ddr3_evm_emif_reg_data, 0);
+			&ddr3_evm_cmd_ctrl_data, &ddr3_evm_emif_reg_data, 0);
 #endif
 	/*s_init end*/
 

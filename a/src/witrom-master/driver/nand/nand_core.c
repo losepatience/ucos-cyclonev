@@ -1,3 +1,24 @@
+/* ~.~ *-c-*
+ *
+ * Copyright (c) 2013, John Lee <furious_tauren@163.com>
+ * Wed Jun 25 22:14:49 CST 2014
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+ * MA 02111-1307 USA
+ */
+
 #include <io.h>
 #include <stdio.h>
 #include <delay.h>
@@ -190,33 +211,23 @@ int nand_probe(struct nand_chip *nand)
 #define NAND_CTRL_ALE		(NAND_NCE | NAND_ALE)
 
 
-/*
- * omap_nand_hwcontrol - Set the address pointers corretly for the
- *			following address/data/command operation
- */
-static void omap_nand_hwcontrol(struct mtd_info *mtd, int32_t cmd,
-				uint32_t ctrl)
+static void __cmd_ctrl(struct nand_chip *chip, s32 cmd, u32 ctrl)
 {
-	register struct nand_chip *this = mtd->priv;
+	void *base = (void *)GPMC_BASE + GPMC_CS0 + (0x30 * cs);
 
-	/*
-	 * Point the IO_ADDR to DATA and ADDRESS registers instead
-	 * of chip address
-	 */
 	switch (ctrl) {
-	case NAND_CTRL_CHANGE | NAND_CTRL_CLE:
-		this->IO_ADDR_W = (void __iomem *)&gpmc_cfg->cs[cs].nand_cmd;
+	case NAND_CTRL_CLE:
+		chip->IO_ADDR_W = base + GPMC_CS_NAND_CMD;
 		break;
-	case NAND_CTRL_CHANGE | NAND_CTRL_ALE:
-		this->IO_ADDR_W = (void __iomem *)&gpmc_cfg->cs[cs].nand_adr;
+	case NAND_CTRL_ALE:
+		chip->IO_ADDR_W = base + GPMC_CS_NAND_ADR;
 		break;
-	case NAND_CTRL_CHANGE | NAND_NCE:
-		this->IO_ADDR_W = (void __iomem *)&gpmc_cfg->cs[cs].nand_dat;
+	case NAND_NCE:
+		chip->IO_ADDR_W = base + GPMC_CS_NAND_DAT;
 		break;
 	}
 
-	if (cmd != NAND_CMD_NONE)
-		writeb(cmd, this->IO_ADDR_W);
+	writeb(cmd, chip->IO_ADDR_W);
 }
 
 /* read 8bit buswidth nands */
@@ -239,39 +250,8 @@ static void nand_read_buf16(struct nand_chip *chip, u8 *buf, int len)
 		p[i] = readw(chip->IO_ADDR_R);
 }
 
-#if 1
 void *nand_read_page(struct nand_chip *nand, __u32 page, void *buff)
 {
 	nand_command(nand, NAND_CMMD_READ0, page, 0);
 	return nand->read_buff(nand, buff, nand->write_size);
 }
-#else
-int nand_read(struct nand_chip *nand, __u8 *buff, size_t size, loff_t offset)
-{
-	int wshift;
-	int cur, end;
-
-	if (offset & (nand->write_size - 1)) {
-		GEN_DBG("invalid start address 0x%x\n", offset);
-		return -1;
-	}
-
-	for (wshift = 0; wshift < WORD_BITS; wshift++) {
-		if ((1 << wshift) == nand->write_size)
-			break;
-	}
-
-	cur = offset >> wshift;
-	end = (offset + size - 1) >> wshift;
-
-	while (cur <= end) {
-		nand_command(nand, NAND_CMMD_READ0, cur, 0);
-		nand->read_buff(nand, buff, nand->write_size);
-
-		buff += nand->write_size;
-		cur++;
-	}
-
-	return 0;
-}
-#endif

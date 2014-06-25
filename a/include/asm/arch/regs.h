@@ -136,17 +136,47 @@
 #define	RTCREG_KICK1R			0x70
 
 /* gpmc registers */
-#define GPMCREG_SYSCONFIG		0X10
-#define GPMCREG_IRQSTATUS		0X18
-#define GPMCREG_IRQENABLE		0X1C
-#define GPMCREG_CONFIG			0X50
-#define GPMCREG_CS0_CONFIG1		0X60
-#define GPMCREG_CS0_CONFIG2		0x64
-#define GPMCREG_CS0_CONFIG3		0x68
-#define GPMCREG_CS0_CONFIG4		0x6C
-#define GPMCREG_CS0_CONFIG5		0x70
-#define GPMCREG_CS0_CONFIG6		0x74
-#define GPMCREG_CS0_CONFIG7		0x78
+
+#define GPMC_SYSCONFIG			0x010
+#define GPMC_IRQSTATUS			0x018
+#define GPMC_IRQENABLE			0x01C
+#define GPMC_TIMEOUT_CONTROL		0x040
+#define GPMC_CONFIG			0x050
+#define GPMC_STATUS			0x054
+#define GPMC_CS0			0x060
+#define GPMC_CS1			0x090
+#define GPMC_CS2			0x0C0
+#define GPMC_CS3			0x0F0
+#define GPMC_CS4			0x120
+#define GPMC_CS5			0x150
+#define GPMC_CS6			0x180
+#define GPMC_CS7			0x1B0
+#define GPMC_ECC_CONFIG			0x1F4
+#define GPMC_ECC_CONTROL		0x1F8
+#define GPMC_ECC_SIZE_CONFIG		0x1FC
+#define GPMC_ECC1_RESULT		0x200
+#define GPMC_ECC2_RESULT		0x204
+#define GPMC_ECC3_RESULT		0x208
+#define GPMC_ECC4_RESULT		0x20C
+#define GPMC_ECC5_RESULT		0x210
+#define GPMC_ECC6_RESULT		0x214
+#define GPMC_ECC7_RESULT		0x218
+#define GPMC_ECC8_RESULT		0x21C
+#define GPMC_ECC9_RESULT		0x220
+#define GPMC_TESTMOMDE_CTRL		0x230
+#define GPMC_BCH_RES1_0_3		0x240
+#define GPMC_BCH_RES2_0_3		0x250
+
+#define GPMC_CS_CONFIG1			0x000
+#define GPMC_CS_CONFIG2			0x004
+#define GPMC_CS_CONFIG3			0x008
+#define GPMC_CS_CONFIG4			0x00C
+#define GPMC_CS_CONFIG5			0x010
+#define GPMC_CS_CONFIG6			0x014
+#define GPMC_CS_CONFIG7			0x018
+#define GPMC_CS_NAND_CMD		0x01C
+#define GPMC_CS_NAND_ADR		0x020
+#define GPMC_CS_NAND_DAT		0x024
 
 /* ----------------------------------
  * clock manager registers
