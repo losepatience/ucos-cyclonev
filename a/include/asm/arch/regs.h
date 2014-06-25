@@ -109,6 +109,13 @@
 #define AM33XX_ECAP0_BASE		0x48300100
 
 
+/* I2C */
+#define  I2C0_BASE			0x44E0B000
+#define  I2C1_BASE			0x4802A000
+#define  I2C2_BASE			0x4819C000
+#define	 I2C_BUS_MAX			3
+
+#define I2C_DEFAULT_BASE		I2C_BASE1
 /* -------------------------------------------------------------
  * offsets
  * -------------------------------------------------------------
@@ -452,5 +459,102 @@ struct pad_signals {
 	int vrefp;
 	int vrefn;
 };
+
+
+/* ----------------------------------
+ * control device registers
+ * ----------------------------------
+ */
+#define CDEV_DEVICEID			0x000
+#define CDEV_USB_CTRL0			0x020
+#define CDEV_USB_CTRL1			0x028
+#define CDEV_MACID0L			0x030
+#define CDEV_MACID0H			0x034
+#define CDEV_MACID1L			0x038
+#define CDEV_MACID1H			0x03c
+#define CDEV_MIISEL			0x050
+#define CDEV_EFUSE_SMA			0x1FC
+
+/* ----------------------------------
+ * ddr registers
+ * ----------------------------------
+ */
+#define DDRCMD_CM0CSRATIO		0x01C
+#define DDRCMD_CM0ICLKOUT		0x02C
+#define DDRCMD_CM1CSRATIO		0x050
+#define DDRCMD_CM1ICLKOUT		0x060
+#define DDRCMD_CM2CSRATIO		0x084
+#define DDRCMD_CM2ICLKOUT		0x094
+
+#define DDRDAT_DT0RDSRATIO0		0x0C8
+#define DDRDAT_DT0WDSRATIO0		0x0DC
+#define DDRDAT_DT0WIRATIO0		0x0F0
+#define DDRDAT_DT0WIMODE0		0x0F8
+#define DDRDAT_DT0GIRATIO0		0x0FC
+#define DDRDAT_DT0GIMODE0		0x104
+#define DDRDAT_DT0FWSRATIO0		0x108
+#define DDRDAT_DT0DQOFFSET		0x11C
+#define DDRDAT_DT0WRSRATIO0		0x120
+#define DDRDAT_DT0RDELAYS0		0x134
+#define DDRDAT_DT0DLDIFF0		0x138
+
+#define DDRCON_CM0IOCTL			0x000
+#define DDRCON_CM1IOCTL			0x004
+#define DDRCON_CM2IOCTL			0x008
+#define DDRCON_DT0IOCTL			0x03C
+#define DDRCON_DT1IOCTL			0x040
+#define DDRCON_DT2IOCTRL		0x044
+#define DDRCON_DT3IOCTRL		0x048
+
+#define DDR_CTRL_DDRIOCTRL		0x000
+#define DDR_CTRL_DDRCKECTRL		0x514
+
+/* ----------------------------------
+ * emif registers
+ * ----------------------------------
+ */
+#define EMIF_SDRAM_CONFIG		0x008
+#define EMIF_SDRAM_REF_CTRL		0x010
+#define EMIF_SDRAM_REF_CTRL_SHDW	0x014
+#define EMIF_SDRAM_TIM_1		0x018
+#define EMIF_SDRAM_TIM_1_SHDW		0x01C
+#define EMIF_SDRAM_TIM_2		0x020
+#define EMIF_SDRAM_TIM_2_SHDW		0x024
+#define EMIF_SDRAM_TIM_3		0x028
+#define EMIF_SDRAM_TIM_3_SHDW		0x02C
+#define EMIF_L3_CONFIG			0x054
+#define EMIF_ZQ_CONFIG			0x0CC
+#define EMIF_DDR_PHY_CTRL_1		0x0E8
+#define EMIF_DDR_PHY_CTRL_1_SHDW	0x0EC
+
+/* ctrl registers */
+#define SECURE_EMIF_SDRAM_CONFIG	0x0110
+
+
+/* ----------------------------------
+ * i2c registers
+ * ----------------------------------
+ */
+#define I2CREG_REVNB_LO			0x00
+#define I2CREG_REVNB_HI			0x04
+#define I2CREG_SYSC			0x10
+#define I2CREG_IRQSTATUS_RAW		0x24
+#define I2CREG_STAT			0x28
+#define I2CREG_IE			0x2C
+#define I2CREG_IRQENABLE_CLR		0x30
+#define I2CREG_IV			0x34
+#define I2CREG_SYSS			0x90
+#define I2CREG_BUF			0x94
+#define I2CREG_CNT			0x98
+#define I2CREG_DATA			0x9C
+#define I2CREG_RES14			0xA0
+#define I2CREG_CON			0xA4
+#define I2CREG_OA			0xA8
+#define I2CREG_SA			0xAC
+#define I2CREG_PSC			0xB0
+#define I2CREG_SCLL			0xB4
+#define I2CREG_SCLH			0xB8
+#define I2CREG_SYSTEST			0xBC
+#define I2CREG_BUFSTAT			0xC0
 
 #endif /* __REGS_H__ */

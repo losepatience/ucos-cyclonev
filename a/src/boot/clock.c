@@ -56,24 +56,23 @@ static const struct dpll_regs dpll_ddr_regs = {
 	.cm_div_m2_dpll[2]	= (void *)CM_WKUP + 0xA0,
 };
 
-static const struct dpll_params dpll_mpu = {
-	300, OSC - 1,
-	{ 1, -1, -1, -1, -1 }
+const struct dpll_params dpll_mpu_opp100 = {
+	550, OSC - 1, {1, -1, -1, -1, -1 }
 };
-
-static const struct dpll_params dpll_core = {
-	50, OSC - 1,
-	{ -1, -1, 1, 1, 1 }
+const struct dpll_params dpll_core_opp100 = {
+	1000, OSC - 1, {-1, -1, 10, 8, 4 }
 };
-
-static const struct dpll_params dpll_per = {
-	960, OSC - 1,
-	{ 5, -1, -1, -1, -1 }
+const struct dpll_params dpll_mpu = {
+	300, OSC - 1, { 1, -1, -1, -1, -1 }
 };
-
-static const struct dpll_params dpll_ddr_evm_sk = {
-	303, OSC - 1,
-	{ 1, -1, -1, -1, -1 }
+const struct dpll_params dpll_core = {
+	50, OSC - 1, { -1, -1, 1, 1, 1 }
+};
+const struct dpll_params dpll_per = {
+	960, OSC - 1, { 5, -1, -1, -1, -1 }
+};
+const struct dpll_params dpll_ddr_evm_sk = {
+	303, OSC - 1, { 1, -1, -1, -1, -1 }
 };
 
 

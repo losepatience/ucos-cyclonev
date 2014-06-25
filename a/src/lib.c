@@ -81,46 +81,6 @@ void gpmc_init(void)
 	enable_gpmc_cs_config(gpmc_regs, cs_base, base, size);
 }
 
-#if 0
-struct ctrl_dev {
-	unsigned int deviceid;		/* offset 0x00 */
-	unsigned int resv1[7];
-	unsigned int usb_ctrl0;		/* offset 0x20 */
-	unsigned int resv2;
-	unsigned int usb_ctrl1;		/* offset 0x28 */
-	unsigned int resv3;
-	unsigned int macid0l;		/* offset 0x30 */
-	unsigned int macid0h;		/* offset 0x34 */
-	unsigned int macid1l;		/* offset 0x38 */
-	unsigned int macid1h;		/* offset 0x3c */
-	unsigned int resv4[4];
-	unsigned int miisel;		/* offset 0x50 */
-	unsigned int resv5[106];
-	unsigned int efuse_sma;		/* offset 0x1FC */
-};
-
-
-int am335x_get_tps65910_mpu_vdd(int sil_rev, int frequency)
-{
-	/* For PG2.1 and later, we have one set of values. */
-	if (sil_rev >= 2) {
-		switch (frequency) {
-		case MPUPLL_M_1000:
-			return TPS65910_OP_REG_SEL_1_3_2_5;
-		case MPUPLL_M_800:
-			return TPS65910_OP_REG_SEL_1_2_6;
-		case MPUPLL_M_720:
-			return TPS65910_OP_REG_SEL_1_2_0;
-		case MPUPLL_M_600:
-		case MPUPLL_M_300:
-			return TPS65910_OP_REG_SEL_1_1_3;
-		}
-	}
-
-	/* Default to PG1.0/PG2.0 values. */
-	return TPS65910_OP_REG_SEL_1_1_3;
-}
-#endif
 
 void lowlevel_init(void)
 {

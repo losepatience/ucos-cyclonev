@@ -1,0 +1,10 @@
+include/autoconf.h
+.config
+witrom.bin
+witrom.elf
+witrom.dis
+*.o
+*.dis
+*.elf
+*.pdf
+*.pyc
