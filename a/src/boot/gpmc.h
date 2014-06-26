@@ -1,7 +1,7 @@
 /* ~.~ *-c-*
  *
  * Copyright (c) 2013, John Lee <furious_tauren@163.com>
- * Wed Jun 11 17:58:47 CST 2014
+ * Thu Jun 26 19:09:25 CST 2014
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -18,31 +18,22 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
  * MA 02111-1307 USA
  */
+
+#ifndef __GPMC_H__
+#define __GPMC_H__
+
 #include <asm/arch/regs.h>
-#include <asm/io.h>
-#include "boot/delay.h"
-#include "boot/mux.h"
 
-
-
-void lowlevel_init(void)
+static inline void *gpmc_reg(unsigned int reg)
 {
-
-	/*s_init*/
-	watchdog_disable();
-	timer_init();
-	prcm_init();
-
-	configure_module_pin_mux(nand_pin_mux);
-	configure_module_pin_mux(i2c0_pin_mux);
-
-
-
-#if 0
-	config_ddr(303, MT41J512M8RH125_IOCTRL_VALUE, &ddr3_evm_data,
-			&ddr3_evm_cmd_ctrl_data, &ddr3_evm_emif_reg_data, 0);
-#endif
-	/*s_init end*/
-
+	return (void *)GPMC_BASE + reg;
 }
 
+static inline void *gpmc_cs(int cs)
+{
+	return gpmc_reg(GPMC_CS0) + (0x30 * cs);
+}
+
+void gpmc_init(int cs);
+
+#endif

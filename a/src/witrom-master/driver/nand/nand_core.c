@@ -23,6 +23,8 @@
 #include <asm/io.h>
 #include <flash/nand.h>
 
+static void *base_address = (void *)GPMC_BASE + GPMC_CS0;
+
 static int omap3_nand_ready(struct nand_chip *chip)
 {
 	void *gpmc = (void *)GPMC_BASE;
@@ -32,26 +34,23 @@ static int omap3_nand_ready(struct nand_chip *chip)
 
 static void omap3_cmd_ctrl(struct nand_chip *chip, u32 cmd, u32 ctrl)
 {
-	void *base = (void *)GPMC_BASE + GPMC_CS0 + (0x30 * cs);
-
 	switch (ctrl) {
+
 	case NAND_CTRL_CLE:
-		chip->IO_ADDR_W = base + GPMC_CS_NAND_CMD;
+		writeb(cmd, chip->cmd_port);
 		break;
+
 	case NAND_CTRL_ALE:
-		chip->IO_ADDR_W = base + GPMC_CS_NAND_ADR;
+		writeb(cmd, chip->adr_port);
 		break;
+
 	case NAND_NCE:
-		chip->IO_ADDR_W = base + GPMC_CS_NAND_DAT;
+		writeb(cmd, chip->dat_port);
 		break;
 	}
 
 	writeb(cmd, chip->IO_ADDR_W);
 }
-
-
-
-
 
 
 
@@ -140,8 +139,8 @@ static void config_nand(struct nand_chip *chip, const struct nand_desc *desc)
 	chip->write_size = desc->size & 0x000FFFFF;
 
 	if (!chip->write_size) {
-		ext_id = readb(chip->IO_ADDR_R);
-		ext_id = readb(chip->IO_ADDR_R);
+		ext_id = readb(chip->dat_port);
+		ext_id = readb(chip->dat_port);
 
 		chip->write_size = KB(1) << (ext_id & 0x3);
 	}
@@ -226,7 +225,7 @@ static void nand_read_buf(struct nand_chip *chip, u8 *buf, int len)
 	int i;
 
 	for (i = 0; i < len; i++)
-		buf[i] = readb(chip->IO_ADDR_R);
+		buf[i] = readb(chip->dat_port);
 }
 
 /* read 16bit buswidth nands */
@@ -237,11 +236,34 @@ static void nand_read_buf16(struct nand_chip *chip, u8 *buf, int len)
 	len >>= 1;
 
 	for (i = 0; i < len; i++)
-		p[i] = readw(chip->IO_ADDR_R);
+		p[i] = readw(chip->dat_port);
 }
 
 void *nand_read_page(struct nand_chip *chip, int page, void *buf)
 {
 	nand_command(chip, NAND_CMD_READ0, page, 0);
 	return nand->read_buf(chip, buf, nand->write_size);
+}
+
+void nand_init(void)
+{
+	void *base_addr = base_address;	
+	u8 dev_id, ven_id;
+
+	chip->dat_port = base_addr + GPMC_CS_NAND_DAT;
+
+	/* reset the chip */
+	nand_cmd(chip, NAND_CMD_RESET, -1, -1);
+
+	/* read vendor ID and device ID */
+	nand_cmd(chip, NAND_CMD_READID, -1, 0);
+	ven_id = readb(nand->data_port);
+	dev_id = readb(nand->data_port);
+
+	for (i = 0; i < ARRAY_ELEM_NUM(g_nand_chip_desc); i++) {
+		if (g_nand_chip_desc[i].id == dev_id) {
+			config_nand(nand, &g_nand_chip_desc[i]);
+			return 0;
+		}
+	}
 }
