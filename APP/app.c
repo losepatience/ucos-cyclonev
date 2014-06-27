@@ -216,8 +216,6 @@ static  void  App_TaskStart (void *p_arg)
 	list_add_tail(&list2, &list);
 #endif
 
-	timer_init();
-
 #if 0
 #include <dwgpio.h>
 	PIO_InitializeInterrupts(1);
@@ -225,30 +223,27 @@ static  void  App_TaskStart (void *p_arg)
 	PIO_Configure(&pin, 1);
 #endif
 
-#define	SPI_MODE_3	(SPI_CPOL|SPI_CPHA)
+#include <string.h>
+	char *wrbuf = "good good study!";
+	char rdbuf[32];
+	int len = strlen(wrbuf) + 1;
 
-	char sfrbuf[12];
-	char *sfwbuf = "good good study!";
-	struct spi_flash *flash;
-	flash = spi_flash_probe(0, 0, 50000000, SPI_MODE_3);
-	if (!flash) {
-		puts("SPI probe failed.\n");
-	} else {
-		spi_flash_erase(flash, 0, 64 * 1024);
-		spi_flash_write(flash, 0, 0xF, (void *)sfwbuf);
-		int i;
-		for (i = 0; i < 1000; i++)
-			spi_flash_read(flash, 0, 12, (void *)sfrbuf);
-	}
+#include <at24.h>
+	at24_write(wrbuf, 0, len);
+	at24_read(rdbuf, 0, len);
+
+
+#include <flash.h>
+	memset(rdbuf, 0, len);
+	flash_write(wrbuf, 0, len);
+	flash_read(rdbuf, 0, len);
+
+	lwip_entry(NULL);
+
+
 	//int fpret = fpgamgr_program_fpga(0x0, 0x0);
 	unsigned int end_time = OSTimeGet();
 	printf("time %x\n", end_time - start_time);
-
-	char msbuf[128];
-	char sbbuf[128];
-	int i;
-	for (i = 0; i < 128; i++)
-		msbuf[i] = i;
 
 #if 0
 	USB_Init();

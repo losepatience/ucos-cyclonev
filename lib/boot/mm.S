@@ -245,15 +245,13 @@ __create_page_table:
 	bl	__map_memory_region
 
 	/* Map memory region for OS(including both OS) */
-	ldr	r0, =__text_base
-	ldr	r1, =__os_end >> SECTION_SHIFT
-	sub	r1, r0, lsr #SECTION_SHIFT
+	ldr	r0, =__os_base
+	ldr	r1, =__os_size >> SECTION_SHIFT
 	ldr	r2, =PAGE1M_NOMAL
 	bl	__map_memory_region
 
  	/* Map SDRam used by both OS */
-	ldr	r0, =__os_end
-	add	r0, r0, #1 << SECTION_SHIFT
+	ldr	r0, =__os_base + __os_size
 	ldr	r1, =PHYS_SDRAM_SIZE >> SECTION_SHIFT
 	sub	r1, r0, lsr #SECTION_SHIFT
 	ldr	r2, =PAGE1M_NOMAL | PAGE1M_SHARED

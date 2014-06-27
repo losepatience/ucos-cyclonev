@@ -33,7 +33,6 @@
 #include <malloc.h>
 #include <string.h>
 
-
 struct flash {
 	struct spi_flash	*chip;
 	char			*wrbuf;

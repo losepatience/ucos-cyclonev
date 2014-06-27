@@ -9,6 +9,9 @@
 #define I_Bit    0x80
 #define F_Bit    0x40
 
+/* used by mem_malloc_init in lowlevel.c */
+.globl bss_end
+
 	.section	.stext, "ax"
 
 .globl _start
@@ -28,7 +31,7 @@ _data_abort:		.word OS_CPU_ARM_ExceptDataAbortHndlr
 _not_used:		.word _not_used
 _irq:			.word OS_CPU_ARM_ExceptIrqHndlr
 _fiq:			.word OS_CPU_ARM_ExceptFiqHndlr
-_pad:			.word 0x12345678 /* now 16*4=64 */
+bss_end:		.word __bss_end	/* now 16*4=64 */
 
 reset:
 
@@ -92,8 +95,7 @@ clbss_e:
 
 
 jump_2_C:
-	@ldr	pc, =lowlevel_init	@ jump to OS entry
-	ldr	pc, =main		@ jump to OS entry
+	ldr	pc, =lowlevel_init	@ jump to OS entry
 	nop
 	nop
 

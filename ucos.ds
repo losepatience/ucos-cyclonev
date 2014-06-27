@@ -29,7 +29,7 @@ start
 
 #
 # set breakpoint at start of code that relocates uboot
-thbreak main
+thbreak lowlevel_init
 cont
 wait 60s
 

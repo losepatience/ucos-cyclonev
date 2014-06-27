@@ -57,7 +57,6 @@ int i2c_is_numbered_adapter_registered(int busnum);
 int i2c_register_adapter(struct i2c_adapter *adap, int busnum);
 struct i2c_adapter *i2c_get_adapter(int busnum);
 int i2c_transfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num);
-int __i2c_init(void);
 
 #endif
 

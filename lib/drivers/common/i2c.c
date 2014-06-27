@@ -21,36 +21,38 @@
 #include <errno.h>
 #include "i2c.h"
 
-static struct mutex __i2c_lock;
+static spinlock_t __i2c_lock;
 static LIST_HEAD(i2c_adap_list);
 
 int i2c_is_numbered_adapter_registered(int busnum)
 {
 	struct i2c_adapter *tmp;
+	unsigned long flags = 0;
 
-	mutex_lock(&__i2c_lock);
+	spin_lock_irqsave(&__i2c_lock, flags);
 	list_for_each_entry(tmp, &i2c_adap_list, list) {
 		if (tmp->busnum == busnum) {
-			mutex_unlock(&__i2c_lock);
+			spin_unlock_irqrestore(&__i2c_lock, flags);
 			pr_info("i2c adapter%d already registered\n");
 			return 1;
 		}
 	}
-
-	mutex_unlock(&__i2c_lock);
+	spin_unlock_irqrestore(&__i2c_lock, flags);
 	return 0;
 }
 
 int i2c_register_adapter(struct i2c_adapter *adap, int busnum)
 {
+	unsigned long flags = 0;
+
 	if (!adap->xfer) {
 		pr_err("i2c: Attempt to register adapter with no xfer!\n");
 		return -EINVAL;
 	}
 
-	mutex_lock(&__i2c_lock);
+	spin_lock_irqsave(&__i2c_lock, flags);
 	if (i2c_is_numbered_adapter_registered(busnum)) {
-		mutex_unlock(&__i2c_lock);
+		spin_unlock_irqrestore(&__i2c_lock, flags);
 		return -EINVAL;
 	}
 
@@ -58,25 +60,26 @@ int i2c_register_adapter(struct i2c_adapter *adap, int busnum)
 	mutex_init(&adap->lock);
 	list_add_tail(&adap->list, &i2c_adap_list);
 
-	mutex_unlock(&__i2c_lock);
+	spin_unlock_irqrestore(&__i2c_lock, flags);
 	return 0;
 }
 
 struct i2c_adapter *i2c_get_adapter(int busnum)
 {
 	struct i2c_adapter *tmp;
+	unsigned long flags = 0;
 
 	/* this lock is unneccessary for now, it is here for to add del func */
-	mutex_lock(&__i2c_lock);
+	spin_lock_irqsave(&__i2c_lock, flags);
 	list_for_each_entry(tmp, &i2c_adap_list, list) {
 		if (tmp->busnum == busnum) {
-			mutex_unlock(&__i2c_lock);
+			spin_unlock_irqrestore(&__i2c_lock, flags);
 			return tmp;
 		}
 
 	}
 
-	mutex_unlock(&__i2c_lock);
+	spin_unlock_irqrestore(&__i2c_lock, flags);
 	return NULL;
 }
 
@@ -94,10 +97,4 @@ int i2c_transfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	mutex_unlock(&adap->lock);
 
 	return rval;
-}
-
-int __i2c_init(void)
-{
-	mutex_init(&__i2c_lock);
-	return 0;
 }

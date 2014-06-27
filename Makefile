@@ -96,7 +96,7 @@ LWIP_PORT_OBJS := $(addprefix $(LWIPDIR)/port/,$(LWIP_PORT_OBJS))
 LWIP_PORT_OBJS += $(LWIPDIR)/netif/etharp.o
 
 LWIP_OBJS := $(LWIP_CORE_OBJS) $(LWIP_API_OBJS) $(LWIP_IPV4_OBJS) $(LWIP_PORT_OBJS)
-#CS_OBJS += $(LWIP_OBJS)
+CS_OBJS += $(LWIP_OBJS)
 
 #####################################################################
 # All objects end

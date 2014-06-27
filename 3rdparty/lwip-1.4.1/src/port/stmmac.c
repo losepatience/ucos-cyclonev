@@ -1,5 +1,4 @@
-#include <csp.h>
-#include <ucos_ii.h>
+#include <platform.h>
 
 #include <stdio.h>
 #include <arch/stmmac.h>
@@ -355,10 +354,10 @@ int stmmac_eth_init(struct netif *netif)
 	pr_info("hello world\n");
 
 	/* Clearing emac0 PHY interface select to 0 */
-	clrbits_le32(CONFIG_SYSMGR_EMAC_CTRL, 0x3 << 2);
+	clrbits32((void *)CONFIG_SYSMGR_EMAC_CTRL, 0x3 << 2);
 
 	/* configure to PHY interface select choosed */
-	setbits_le32(CONFIG_SYSMGR_EMAC_CTRL, 0x1 << 2);
+	setbits32((void *)CONFIG_SYSMGR_EMAC_CTRL, 0x1 << 2);
 
 	eif->mac_regs = (struct stmmac_mac_regs *)0xff702000;
 	eif->dma_regs = (struct stmmac_dma_regs *)0xff703000;
