@@ -183,12 +183,7 @@ static  void  App_TaskStart (void *p_arg)
 {
 
 	//BSP_PostInit();                                             /* Initialize BSP functions   */
-#include <clock.h>
-	clock_init();
 	OS_CSP_TickInit();                                          /* Initialize the Tick interrupt                        */
-	unsigned int start_time = OSTimeGet();
-	Mem_Init();                                                 /* Initialize memory managment module                   */
-	Math_Init();                                                /* Initialize mathematical module                       */
 
 #if (OS_TASK_STAT_EN > 0u)
 	OSStatInit();                                               /* Determine CPU capacity                               */
@@ -198,23 +193,6 @@ static  void  App_TaskStart (void *p_arg)
 	CPU_IntDisMeasMaxCurReset();
 #endif
 
-#ifdef __STDC__
-#  define STR1	"hello world\n"
-#else
-#  define STR1	"bye world\n"
-#endif
-
-	ns16550_init();
-
-	printf("\n%s\n", STR1);
-
-
-
-#if 0
-	LIST_HEAD(list);
-	LIST_HEAD(list2);
-	list_add_tail(&list2, &list);
-#endif
 
 #if 0
 #include <dwgpio.h>

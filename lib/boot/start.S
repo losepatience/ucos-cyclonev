@@ -1,13 +1,25 @@
-#define Mode_USR 0x10
-#define Mode_FIQ 0x11
-#define Mode_IRQ 0x12
-#define Mode_SVC 0x13
-#define Mode_ABT 0x17
-#define Mode_UND 0x1B
-#define Mode_SYS 0x1F
+/* ~.~ *-c-*
+ *
+ * Copyright (c) 2013, John Lee <furious_tauren@163.com>
+ * Mon Jun 30 11:00:59 CST 2014
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+ * MA 02111-1307 USA
+ */
 
-#define I_Bit    0x80
-#define F_Bit    0x40
+#include <config.h>
 
 /* used by mem_malloc_init in lowlevel.c */
 .globl bss_end
@@ -73,12 +85,9 @@ reset:
 	mcr	p15, 0, r0, c12, c0, 1	@ mvbar
 
 setup_stack:
-	ldr	sp, =usr_stack_end
-
-	msr	cpsr_c, #Mode_IRQ | I_Bit | F_Bit
-	ldr	sp, =irq_stack_end
-        msr	cpsr_c, #Mode_SVC | I_Bit | F_Bit
 	/*XXX dont do anything that needs a stack in the other modes */
+	ldr	sp, =SYS_INIT_SP_ADDR
+	bic	sp, sp, #7		@ 8-byte alignment for ABI compliance
 
 clear_bss:
 	ldr	r0, =__bss_start	@ find start of bss segment
@@ -123,12 +132,3 @@ __OS1_exceptions_end:
 
 
 /*----------------------------------------------------------------------------*/
-	.data
-	.align 5
-fiq_stack_start:
-	.space 1024
-fiq_stack_end:
-	.space 1024
-irq_stack_end:
-	.space 4096
-usr_stack_end:

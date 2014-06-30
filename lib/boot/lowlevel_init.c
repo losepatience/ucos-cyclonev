@@ -28,6 +28,7 @@
 #include <dwgpio.h>
 #include <at24.h>
 #include <flash.h>
+#include <clock.h>
 #include "cache.h"
 #include "mm.h"
 
@@ -80,6 +81,36 @@ void __OS1_reset(void)
 
 extern int dwi2c_add_numbered_adapter(int num);
 
+/* call this after OS initialized and this is only for OS0 */
+int hardware_init(void)
+{
+	int rval;
+
+	PIO_InitializeInterrupts(0);
+
+	/* do it before at24_init */
+	rval = dwi2c_add_numbered_adapter(0);
+	if (rval) {
+		pr_err("%s: failed to probe i2c0\n", __func__);
+		return rval;
+	}
+
+	rval = at24_init();
+	if (rval) {
+		pr_err("%s: failed to init eeprom\n", __func__);
+		return rval;
+	}
+
+	rval = flash_init();
+	if (rval) {
+		pr_err("%s: failed to init flash\n", __func__);
+		return rval;
+	}
+
+	return 0;
+}
+
+
 void lowlevel_init(void)
 {
 	ulong start, size;
@@ -96,25 +127,7 @@ void lowlevel_init(void)
 	pl310_init(0U, ~0UL);		/* enable L2 cache*/
 
 	timer_init();			/* initialize timer */
-
-	/* XXX only for OS0 */
-	PIO_InitializeInterrupts(0);
-
-	/* do it before at24_init */
-	if (dwi2c_add_numbered_adapter(0)) {
-		pr_err("%s: failed to probe i2c0\n", __func__);
-		goto out;
-	}
-
-	if (at24_init()) {
-		pr_err("%s: failed to init eeprom\n", __func__);
-		goto out;
-	}
-
-	if (flash_init()) {
-		pr_err("%s: failed to init flash\n", __func__);
-		goto out;
-	}
+	clock_init();			/* get clock info */
 
 out:
 	/* wakeup_OS1(); */	/* not for now */
