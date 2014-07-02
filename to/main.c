@@ -206,11 +206,8 @@ void HUMAN_Y_STATUS_DOWN_Interrupt(const Pin * pin)
 #if defined(HEAD_RICOH_G4)
 INT8U Hardmap_to_PM_map[MAX_HEAD_NUMBER_CALIBRATION * NOZZLE_LINE_COUNT_PER_HEAD * NOZZLE_BIT_DEEP] ={0} ;
 
-//INT8U Hardmap_to_PM_map_4C2G[MAX_HEAD_NUMBER_CALIBRATION * NOZZLE_LINE_COUNT_PER_HEAD * NOZZLE_BIT_DEEP] ={3,11,7,15,2,10,6,14,1,9,5,13,0,8,4,12,} ;
-//INT8U Hardmap_to_PM_map_4C1G[MAX_HEAD_NUMBER_CALIBRATION * NOZZLE_LINE_COUNT_PER_HEAD * NOZZLE_BIT_DEEP] ={3,7,8,9,2,6,10,11,1,5,12,13,0,4,14,15,} ;
 INT8U Hardmap_to_PM_map_8C1G2G[MAX_HEAD_NUMBER_CALIBRATION * NOZZLE_LINE_COUNT_PER_HEAD * NOZZLE_BIT_DEEP] ={6,7,14,15,4,5,12,13,2,3,10,11,0,1,8,9,} ;
 INT8U Hardmap_to_PM_map_8C1G2G_NEG[MAX_HEAD_NUMBER_CALIBRATION * NOZZLE_LINE_COUNT_PER_HEAD * NOZZLE_BIT_DEEP] ={6,7,14,15,4,5,12,13,2,3,10,11,0,1,8,9,} ;
-//INT8U Hardmap_to_PM_map_8C1G2G_NEG[MAX_HEAD_NUMBER_CALIBRATION * NOZZLE_LINE_COUNT_PER_HEAD * NOZZLE_BIT_DEEP] ={0,1,8,9,2,3,10,11,4,5,12,13,6,7,14,15,} ; need test
 
 INT8U Hardmap_to_PM_map_3H_6C4C1G[6] ={4,5,2,3,0,1} ;
 INT8U Hardmap_to_PM_map_3H_G5[] ={2,1,0};
@@ -422,31 +419,25 @@ void TaskStart (void *data)
 #ifdef BYHX_TEST_BOARD
 	CONSOL_Printf("Enter Start Task\n");
 #endif		
-	
-	OSStatInit();                           /* Initialize uC/OS-II's statistics */
+	OS_CSP_TickInit();	/* Initialize the Tick interrupt */
+	OSStatInit();		/* Initialize uC/OS's statistics */
 	
 	Global_Init();
+
+	device_init();	/*XXX*/
 	
-	//PIO_InitializeInterrupts(IRQ_PRI_PORT);
+	BELL_OFF();
 	
-	BELL_OFF();   
 	
-	//OSTimeDly(10000);//only for debug 
-	
+	/*FIXME*/
 	securityChipInit = Init_OneWire();
 	
 #ifdef UV_PRINTER		
 	uv_Init();
 #endif
 	
-	//******************** Test Perormance ********************//
-	//OSTimeDly(1000);
-	//*********************************************************//  		
-	
 	mix_FLAG_GRP = OSFlagCreate(0x0000, &err); //USB Communication Flags      	
 	mix_FLAG_GRP_2 = OSFlagCreate(0x0000, &err); //USB Communication Flags      
-	
-	IIC_Init();        
 	
 	status_Init();  
 #if defined(MICOLOR_AUTOFUCTION) &&  defined(EPSON_BOTTOM_BOARD_V3)
@@ -2748,27 +2739,6 @@ else
 	}
 	OS_EXIT_CRITICAL();
 #endif
-#if 0
-			no_clean = False;
-			if (OSFlagAccept(status_FLAG_GRP, STATUS_PRINT, OS_FLAG_WAIT_SET_ALL,&err), err == OS_NO_ERR)
-			{
-				no_clean = True;
-				if (OSFlagAccept(status_FLAG_GRP, STATUS_PAUSE, OS_FLAG_WAIT_SET_ALL,&err), err == OS_NO_ERR)
-				{
-					if (OSFlagAccept(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)
-						no_clean = False;
-				}
-			}
-			
-			if(no_clean)
-			{
-				PIO_Set(&CLEAN_STATUS_LED);
-			}
-			else
-			{
-				PIO_Clear(&CLEAN_STATUS_LED);
-			}
-#endif		
 #ifdef SUPPORT_MOTOR_CONTROL 		
 			if(bMotionCfgDirty)
 			{
@@ -3063,249 +3033,43 @@ else
 #endif
 			}
 #endif
-			
 			OSTimeDly(sleep);
-			
-			//        {
-			//            INT8U mybuf[0x32];
-			//            
-			//            *(INT32U*)mybuf = OSTimeGet();
-			//            PushCommPipeData(3, mybuf, 4, True);
-			//        }
-			
-			//        {   //only for testing.
-			//            OS_ENTER_CRITICAL();
-			//            rFPGA_EPSON_RegAddr = EPSON_REGADDR_X_MOTOR_COOR;
-			//            i = (INT32U)rFPGA_EPSON_RegPort;
-			//            rFPGA_EPSON_RegAddr = EPSON_REGADDR_X_PRT_COOR;
-			//            //i = (INT32U)rFPGA_EPSON_RegPort;
-			//            j= rFPGA_EPSON_RegPort - 0x200000;
-			//            
-			//            OS_EXIT_CRITICAL();
-			//        }
 		}
 }
-
-#define DDR2_BASE_ADDR  ((void*)AT91C_DDR2)
-
-#if 0
-INT8U TestDDR2Type()
-{
-	INT32U i,j,k,step;
-	unsigned char * pByte;
-	unsigned short * pShort;
-	unsigned int * pInt;
-	INT8U mask = 0;
-	
-	for(k =0; k<5; k++)
-	{
-		switch(k)
-		{
-		case 0:
-			//test 64M*8bit*2pcs(total 128M valid).
-			BOARD_ConfigureDdram(DDR_MICRON_MT47H64M8, 16);
-			step = 32;
-			break;
-		case 1:
-			//test 128M*8bit*2pcs(total 128M valid).
-			BOARD_ConfigureDdram(DDR_MICRON_MT47H128M8, 16);
-			step = 32;
-			break;
-		case 2:
-			//test 128M*16bit*1pcs(total 128M valid).
-			BOARD_ConfigureDdram(DDR_MICRON_MT47H128M16, 16);
-			step = 32;
-			break;
-		case 3:
-			//test 32M*16bit*1pcs(total 64M valid).
-			BOARD_ConfigureDdram(DDR_MICRON_MT47H32M16, 16);
-			step = 16;
-			break;
-		case 4:
-			//test 64M*16bit*1pcs(total 64M valid).
-			BOARD_ConfigureDdram(DDR_MICRON_MT47H64M16, 16);
-			step = 16;
-			break;
-		}
-		
-		//test byte.
-		for( j=0; j<4; j++)
-		{
-			pByte = (unsigned char *)(AT91C_DDR2 + j * step * 1024 *1024);
-			for( i= 0; i< 1024; i++)
-			{
-				*pByte = (unsigned char)i;
-				pByte++;
-			}
-		}
-		
-		for( j=0; j<4; j++)
-		{
-			pByte = (unsigned char *)(AT91C_DDR2 + j * step * 1024 *1024);
-			for( i= 0; i< 1024; i++)
-			{
-				if((unsigned char)i != *pByte) 
-				{
-					goto TestNext1;
-				}
-				pByte++;
-			}
-		}
-		
-		//Test short
-		for( j=0; j<4; j++)
-		{
-			pShort = (unsigned short *)(AT91C_DDR2 + j * step * 1024 *1024 + (step/2)*1024*1024);
-			for( i= 0; i< 1024; i++)
-			{
-				*pShort = (unsigned short)(i + (((INT32U)pShort)>>0x16) );
-				pShort++;
-			}
-		}
-		
-		for( j=0; j<4; j++)
-		{
-			pShort = (unsigned short *)(AT91C_DDR2 + j * step * 1024 *1024 + (step/2)*1024*1024);
-			for( i= 0; i< 1024; i++)
-			{
-				if(*pShort != (unsigned short)(i + (((INT32U)pShort)>>0x16) ) )
-				{
-					goto TestNext1;
-				}
-				pShort++;
-			}
-		}
-		
-		//Test Int
-		pInt = (unsigned int *)(AT91C_DDR2);
-		for( i= 0; i< 4*step*1024*1024/sizeof(int)/128; i++)
-		{
-			*pInt = (unsigned int)(pInt);
-			pInt+=128;
-		}
-		
-		pInt = (unsigned int *)(AT91C_DDR2);
-		for( i= 0; i< 4*step*1024*1024/sizeof(int)/128; i++)
-		{
-			if(*pInt != (unsigned int)(pInt))
-			{
-				goto TestNext1;
-			}
-			pInt+=128;
-		}
-		
-		mask |= 1<<k;
-		
-	TestNext1:
-		continue;
-	}
-	
-	if((mask & 0x18) != 0 && (mask & 0x7) == 0)
-	{
-		if(mask & 0x10)
-			return 4;
-		else
-			return 3;
-	}
-	else if((mask & 0x7) != 0)
-	{
-		if(mask & 4)
-			return 2;
-		else if(mask & 2)
-			return 1;
-		else
-			return 0;
-	}
-	else
-		return -1;
-	
-}
-#endif
 
 /* ********************************************************************* */
 /* Global functions */
 
-void main1 (void)
-{		
-	INT8U err;
-	
-	///Cheney:
-	/// For 2410, CLKOUT1 = 96Mhz, CLKOUT0 = 48Mhz
-	/// For AT91SAM9G45, CLKOUT1 = 100Mhz, CLKOUT0 = 50Mhz
-	//PMC_SetProgrammableClock(1, AT91C_PMC_CLKSRC_PCK|AT91C_PMC_PRESCALER_4);
-	//PMC_SetProgrammableClock(0, AT91C_PMC_CLKSRC_PCK|AT91C_PMC_PRESCALER_8);
-	/// For AT91SAM9G45, CLKOUT1 = 133Mhz, CLKOUT0 = 66Mhz
-	//PMC_SetProgrammableClock(1, AT91C_PMC_CLKSRC_SLCKMCK|AT91C_PMC_PRESCALER_1|AT91C_PMC_SLCKMCK_MCK);
-	//PMC_SetProgrammableClock(0, AT91C_PMC_CLKSRC_SLCKMCK|AT91C_PMC_PRESCALER_2|AT91C_PMC_SLCKMCK_MCK);
-	
-	//reset DSP and FPGA.
-	//  AT91C_BASE_RSTC->RSTC_RMR = 0xA5000000 | (6<<8) ;
-	//  AT91C_BASE_RSTC->RSTC_RCR = 0xA5000000 | AT91C_RSTC_EXTRST;
-	
-	PIO_InitializeInterrupts(IRQ_PRI_PORT);  
-	
-	// Configure the DBGU
-	//TRACE_CONFIGURE(DBGU_STANDARD, 115200, BOARD_MCK);
-	CONSOL_Printf("A+ V2 Start main: \n");
-#if 0 //!defined(ddram)
-	switch(TestDDR2Type())
-	{
-	case 0:
-		//test 64M*8bit*2pcs(total 128M valid).
-		BOARD_ConfigureDdram(DDR_MICRON_MT47H64M8, 16);
-		BOARD_DDRAM_SIZE = 128 * 1024 * 1024;
-		break;
-	case 1:
-		//test 128M*8bit*2pcs(total 128M valid).
-		BOARD_ConfigureDdram(DDR_MICRON_MT47H128M8, 16);
-		BOARD_DDRAM_SIZE = 128 * 1024 * 1024;
-		break;
-	case 2:
-		//test 128M*16bit*1pcs(total 128M valid).
-		BOARD_ConfigureDdram(DDR_MICRON_MT47H128M16, 16);
-		BOARD_DDRAM_SIZE = 128 * 1024 * 1024;
-		break;
-	case 3:
-		//test 32M*16bit*1pcs(total 64M valid).
-		BOARD_ConfigureDdram(DDR_MICRON_MT47H32M16, 16);
-		BOARD_DDRAM_SIZE = 64 * 1024 * 1024;
-		break;
-	case 4:
-		//test 64M*16bit*1pcs(total 64M valid).
-		BOARD_ConfigureDdram(DDR_MICRON_MT47H64M16, 16);
-		BOARD_DDRAM_SIZE = 64 * 1024 * 1024;
-		break;
-	default:
-		BOARD_DDRAM_SIZE = 16 *1024 * 1024; //it is a safe size for update.
-		break;
-	}
-#endif
-	
-	OSInit();  
+void main(void)
+{
+	PIO_InitializeInterrupts(IRQ_PRI_PORT);
+
+	CPU_INT08U  err;
+
+	CPU_IntDis();
+	CSP_IntInit();
+	CPU_Init();
+	CPU_IntDis();
+
+	OSInit();
 	IICSem = OSSemCreate(1);             /* Random number semaphore */
 	IIC_KeyboardSem = OSSemCreate(1);
 	CleaningParamSem = OSSemCreate(1);
 	CalibrationParamSem = OSSemCreate(1);
-	//    PMCaliSettingSem = OSSemCreate(1);
 	LCDMenuConfigureSem = OSSemCreate(1);
-	//OSTaskCreate(TaskStart, (void *)0, (void *)&TaskStartStk[START_TASK_STK_SIZE - 1], START_TASK_PRIO);
 	(void)OSTaskCreateExt(TaskStart,
-						  (void *)0,                                 /* No arguments passed to OS_TaskIdle() */
-						  &TaskStartStk[START_TASK_STK_SIZE - 1], /* Set Top-Of-Stack                     */
-						  START_TASK_PRIO,                            
-						  START_TASK_ID,
-						  &TaskStartStk[0],                         /* Set Bottom-Of-Stack                  */
-						  START_TASK_STK_SIZE,
-						  (void *)0,                                 /* No TCB extension                     */
-						  OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);/* Enable stack checking + clear stack  */
-	 OSTaskNameSet(START_TASK_PRIO, (INT8U *)"Start", &err);
-	 
-	 ///LED initialization.
-	 //LED_Configure(FALSE);
-	 
-	 /* Initialize uC/OS-II. Herebefore, all interrupt is masked. */
-	 //FRMWRK_vStartTicker(OS_TICKS_PER_SEC);  /* os_cfg.h, Enable PIT interrupt, this is the first interrupt enabled. */
-	 
+			(void *)0,
+			&TaskStartStk[START_TASK_STK_SIZE - 1],
+			START_TASK_PRIO,
+			START_TASK_ID,
+			&TaskStartStk[0],
+			START_TASK_STK_SIZE,
+			(void *)0,
+			OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
+
+#if (OS_TASK_NAME_EN > 0u)
+	OSTaskNameSet(APP_CFG_TASK_START_PRIO, (INT8U *)"Start", &err);
+#endif
 	 OSStart();                              /* Start multitasking                                       */
 }
 

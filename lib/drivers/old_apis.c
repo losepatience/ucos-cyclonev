@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <i2c.h>
-#include "at24.h"
-#include "flash.h"
+#include <at24.h>
+#include <flash.h>
 #include <old_apis.h>
 #include <fpga_uart.h>
 #include <errno.h>
@@ -331,6 +331,7 @@ void IIC_Init(void)
 	if (adap_max11614 == NULL)
 		return;
 
+	at24_init();
 }
 
 
@@ -436,7 +437,7 @@ static int SA_find_packet_st(int num)
 {
 	u8 ch;
 
-	while (uart_read(num, &ch, 1) == 1)
+	while (fpga_uart_read(num, &ch, 1) == 1)
 		if (ch == 0xaa)
 			return 0;
 
@@ -544,7 +545,7 @@ inline void UART_Init(u8 flag)
 	}
 
 	SA_chans[chan].txfifo = fifo_init(buf, 1, sizeof(buf));
-	uart_init();
+	fpga_uart_init();
 }
 
 void UART_SetCheckModel(u8 num, u8 model)
@@ -641,7 +642,7 @@ u8 UART_SendCMD(u8 num, u8 *data)
 
 	SA_chans[num].toggle = !SA_chans[num].toggle;
 
-	if (uart_write(num, buf, l) != l) {
+	if (fpga_uart_write(num, buf, l) != l) {
 		mutex_unlock(&SA_chans[num].mutex);
 		return false;
 	}
@@ -1040,6 +1041,26 @@ u8 FPGA_SendData(u8 first)
 
 	spin_unlock_irqrestore(&dma_lock, flags);
 	return true;
+}
+
+
+/* call this after OS initialized and this is only for OS0 */
+int device_init(void)
+{
+	int rval;
+
+	PIO_InitializeInterrupts(0);
+
+	/* init i2c adapter and devices on i2c bus, like at24 */
+	IIC_Init();
+
+	rval = flash_init();
+	if (rval) {
+		pr_err("%s: failed to init flash\n", __func__);
+		return rval;
+	}
+
+	return 0;
 }
 
 #endif /* INCOMPATIBLE_WITH_ATMEL */

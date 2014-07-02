@@ -24,8 +24,8 @@
 
 #include <asm/types.h>
 
-int uart_read(int adap_num, void *data, u32 len);
-int uart_write(int adap_num, const void *data, u32 len);
-int uart_init(void);
+int fpga_uart_read(int adap_num, void *data, u32 len);
+int fpga_uart_write(int adap_num, const void *data, u32 len);
+int fpga_uart_init(void);
 
 #endif

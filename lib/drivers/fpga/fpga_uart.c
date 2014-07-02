@@ -162,7 +162,7 @@ static void irq_handler(void *arg)
 }
 
 /* TODO: now, only support non-blocking I/O. */
-int uart_read(int adap_num, void *data, u32 len)
+int fpga_uart_read(int adap_num, void *data, u32 len)
 {
 	struct __adapter *adap = get_numbered_adapter(adap_num);
 	int retry = 5;
@@ -186,7 +186,7 @@ out:
 	return rval;
 }
 
-int uart_write(int adap_num, const void *data, u32 len)
+int fpga_uart_write(int adap_num, const void *data, u32 len)
 {
 	struct __adapter *adap = get_numbered_adapter(adap_num);
 	u32 mask = 1 << adap->num;
@@ -217,7 +217,7 @@ int uart_write(int adap_num, const void *data, u32 len)
 	return rval;
 }
 
-int uart_init(void)
+int fpga_uart_init(void)
 {
 	int adap_num;
 

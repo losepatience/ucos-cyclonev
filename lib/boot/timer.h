@@ -1,6 +1,7 @@
-/* ~.~ *-h-*
+/* ~.~ *-c-*
  *
  * Copyright (c) 2013, John Lee <furious_tauren@163.com>
+ * Mon Jun 30 16:44:29 CST 2014
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -18,11 +19,8 @@
  * MA 02111-1307 USA
  */
 
-#ifndef __dElAy_H__
-#define __dElAy_H__
+#ifndef __TIMER_H
+#define __TIMER_H
 
-void udelay(unsigned long usec);
-void mdelay(unsigned long msec);
-void msleep(unsigned int msecs);
-
+int timer_init(void);
 #endif

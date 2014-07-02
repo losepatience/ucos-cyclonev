@@ -19,18 +19,13 @@
  * MA 02111-1307 USA
  */
 
-#include <asm/regs.h>
 #include <asm/io.h>
-#include <stdio.h>
 #include <malloc.h>
 #include <config.h>
-#include <delay.h>
-#include <dwgpio.h>
-#include <at24.h>
-#include <flash.h>
+#include <timer.h>
 #include <clock.h>
-#include "cache.h"
-#include "mm.h"
+#include <cache.h>
+#include <mm.h>
 
 static volatile unsigned int __OS1_awake;
 extern unsigned int __OS1_exceptions;
@@ -78,39 +73,6 @@ void __OS1_reset(void)
 		;
 }
 
-
-extern int dwi2c_add_numbered_adapter(int num);
-
-/* call this after OS initialized and this is only for OS0 */
-int hardware_init(void)
-{
-	int rval;
-
-	PIO_InitializeInterrupts(0);
-
-	/* do it before at24_init */
-	rval = dwi2c_add_numbered_adapter(0);
-	if (rval) {
-		pr_err("%s: failed to probe i2c0\n", __func__);
-		return rval;
-	}
-
-	rval = at24_init();
-	if (rval) {
-		pr_err("%s: failed to init eeprom\n", __func__);
-		return rval;
-	}
-
-	rval = flash_init();
-	if (rval) {
-		pr_err("%s: failed to init flash\n", __func__);
-		return rval;
-	}
-
-	return 0;
-}
-
-
 void lowlevel_init(void)
 {
 	ulong start, size;
@@ -129,8 +91,7 @@ void lowlevel_init(void)
 	timer_init();			/* initialize timer */
 	clock_init();			/* get clock info */
 
-out:
-	/* wakeup_OS1(); */	/* not for now */
+	/* wakeup_OS1(); */		/* not for now */
 	main();
 }
 

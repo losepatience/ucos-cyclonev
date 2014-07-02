@@ -220,8 +220,6 @@ static  void  App_TaskStart (void *p_arg)
 
 
 	//int fpret = fpgamgr_program_fpga(0x0, 0x0);
-	unsigned int end_time = OSTimeGet();
-	printf("time %x\n", end_time - start_time);
 
 #if 0
 	USB_Init();

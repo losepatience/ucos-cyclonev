@@ -30,7 +30,7 @@
 
 static void *timer1_regs = (void *)(SOCFPGA_OSC1TIMER0_ADDRESS + 0x1000);
 
-u32 read_timer(void)
+static u32 read_timer(void)
 {
 	return readl(timer1_regs + TMR_CURR_VAL);
 }
