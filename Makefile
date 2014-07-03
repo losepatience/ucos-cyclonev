@@ -35,7 +35,7 @@ CPPFLAGS += -DRICOH_VSD2 -DUV_PRINTER -DCOORD_NEW_UV -DWAVE_SET_FUN
 CPPFLAGS += -DRIPSTAR_FLAT_EX -DOLD_UV -DRICOH_G5_4H -DFUNC_MAINTAIN
 CPPFLAGS += -DIIC_Key_Board_LCD -DEPSON_BOTTOM_BOARD_V2 -DFPGA_MAINTAIN_COOR
 
-CPPFLAGS += -DMANUFACTURER_DYSS	-DDYSS_UV_CLEAN -DSUPPORT_MOTOR_CONTROL
+CPPFLAGS += -DMANUFACTURER_DYSS	-DDYSS_UV_CLEAN #-DSUPPORT_MOTOR_CONTROL
 
 CPPFLAGS += -DnoDEBUG -D__noDEBUG_WITH_IDE -D__noDEBUG_MOTION
 CPPFLAGS += -DnoSUPPORT_MOTOR_CONTROL -DnoEPSON_CLEAN_UPDOWN_TATE_8H_RICOH -DnoEPSON_CLEAN_INTEGRATE_2
@@ -43,7 +43,6 @@ CPPFLAGS += -DnoEPSON_CLEAN_UPDOWN -DnoSUPPORT_MOTOR_CONTROL_ONLY_STEP
 endif
 
 CFLAGS := $(CPPFLAGS) -Wall -Wstrict-prototypes -fno-stack-protector
-#CFLAGS := $(CPPFLAGS) -Wall -fno-stack-protector -Wno-unused-variable -Wno-pointer-sign -Wno-missing-braces -Wno-unused-but-set-variable -Wno-multichar -Wno-switch -Wno-implicit-function-declaration
 CFLAGS += -std=gnu99 -fgnu89-inline 
 ############################################################
 # User config section
@@ -71,7 +70,7 @@ INCDIRS := $(sort $(INCDIRS))
 INCDIRS += $(TOPDIR)/include $(TOPDIR)/include/Ripstar 
 INCDIRS += $(TOPDIR)/APP $(TOPDIR)/to $(TOPDIR)/to/porting
 
-CS_DIRS := $(TOPDIR)/APP $(TOPDIR)/OS $(TOPDIR)/lib #$(TOPDIR)/to
+CS_DIRS := $(TOPDIR)/APP $(TOPDIR)/OS $(TOPDIR)/lib $(TOPDIR)/to
 CS_SRCS := $(shell find $(CS_DIRS) -name "*.S" -o -name "*.c")
 CS_OBJS := $(CS_SRCS:%.c=%.o)
 CS_OBJS := $(CS_OBJS:%.S=%.o)

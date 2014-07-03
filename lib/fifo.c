@@ -26,20 +26,21 @@
 #include <errno.h>
 #include <fifo.h>
 
-inline u32 fifo_unused(struct fifo *fifo)
+inline unsigned long fifo_unused(struct fifo *fifo)
 {
 	return fifo->unused;
 }
 
-inline u32 fifo_cached(struct fifo *fifo)
+inline unsigned long fifo_cached(struct fifo *fifo)
 {
 	return fifo->count - fifo->unused;
 }
 
-static void __fifo_in(struct fifo *fifo, const void *src, u32 len, u32 off)
+static void __fifo_in(struct fifo *fifo, const void *src,
+			unsigned long len, unsigned long off)
 {
-	u32 size;
-	u32 l;
+	unsigned long size;
+	unsigned long l;
 
 	if (src == NULL)
 		return;
@@ -54,12 +55,9 @@ static void __fifo_in(struct fifo *fifo, const void *src, u32 len, u32 off)
 	memcpy(fifo->data, src + l, len - l);
 }
 
-size_t fifo_in(struct fifo *fifo, const void *src, u32 cnt)
+unsigned long fifo_in(struct fifo *fifo, const void *src, unsigned long cnt)
 {
-	unsigned long flags = 0;
-	u32 unused;
-
-	spin_lock_irqsave(&fifo->lock, flags);
+	unsigned long unused;
 
 	unused = fifo_unused(fifo);
 	if (cnt > unused)
@@ -69,14 +67,14 @@ size_t fifo_in(struct fifo *fifo, const void *src, u32 cnt)
 	fifo->in = (fifo->in + cnt) % fifo->count;
 	fifo->unused -= cnt;
 
-	spin_unlock_irqrestore(&fifo->lock, flags);
 	return cnt;
 }
 
-static void __fifo_out(struct fifo *fifo, void *des, u32 len, u32 off)
+static void __fifo_out(struct fifo *fifo, void *des,
+			unsigned long len, unsigned long off)
 {
-	u32 size;
-	u32 l;
+	unsigned long size;
+	unsigned long l;
 
 	if (des == NULL)
 		return;
@@ -95,12 +93,9 @@ static void __fifo_out(struct fifo *fifo, void *des, u32 len, u32 off)
  * a spinlock could be a waste of the system,
  * but it makes this routine could be called in irq.
  */
-u32 fifo_out(struct fifo *fifo, void *des, u32 cnt)
+unsigned long fifo_out(struct fifo *fifo, void *des, unsigned long cnt)
 {
-	unsigned long flags = 0;
-	u32 cached;
-
-	spin_lock_irqsave(&fifo->lock, flags);
+	unsigned long cached;
 
 	cached = fifo_cached(fifo);
 	if (cnt > cached)
@@ -112,73 +107,50 @@ u32 fifo_out(struct fifo *fifo, void *des, u32 cnt)
 	fifo->out = (fifo->out + cnt) % fifo->count;
 	fifo->unused += cnt;
 
-	spin_unlock_irqrestore(&fifo->lock, flags);
 	return cnt;
 }
 
 void *fifo_iaddr(struct fifo *fifo)
 {
-	void *addr;
-	unsigned long flags = 0;
-
-	spin_lock_irqsave(&fifo->lock, flags);
-	addr = fifo->data + fifo->in * fifo->esize;
-	spin_unlock_irqrestore(&fifo->lock, flags);
-
-	return addr;
+	return fifo->data + fifo->in * fifo->esize;
 }
 
-void *fifo_oaddr(struct fifo *fifo)
+inline void *fifo_oaddr(struct fifo *fifo)
 {
-	void *addr;
-	unsigned long flags = 0;
-
-	spin_lock_irqsave(&fifo->lock, flags);
-	addr = fifo->data + fifo->out * fifo->esize;
-	spin_unlock_irqrestore(&fifo->lock, flags);
-
-	return addr;
+	return fifo->data + fifo->out * fifo->esize;
 }
 
-u32 fifo_cnt2size(struct fifo *fifo, int cnt)
+unsigned long fifo_cnt2size(struct fifo *fifo, int cnt)
 {
 	return cnt * fifo->esize;
 }
 
-int fifo_size2cnt(struct fifo *fifo, u32 size)
+int fifo_size2cnt(struct fifo *fifo, unsigned long size)
 {
 	return size / fifo->esize;
 }
 
 void fifo_reset(struct fifo *fifo)
 {
-	unsigned long flags = 0;
-
-	spin_lock_irqsave(&fifo->lock, flags);
 	fifo->unused	= fifo->count;
 	fifo->in	= 0;
 	fifo->out	= 0;
-	spin_unlock_irqrestore(&fifo->lock, flags);
 }
 
-struct fifo *fifo_init(void *buffer, u32 esize, u32 cnt)
+struct fifo *fifo_init(void *buffer, unsigned long esize, unsigned long cnt)
 {
-	unsigned long flags = 0;
-
 	struct fifo *fifo = malloc(sizeof(struct fifo));
 	if (fifo == NULL) {
 		pr_err("%s(line%d): no memory\n", __func__, __LINE__);
 		return NULL;
 	}
 
-	spin_lock_irqsave(&fifo->lock, flags);
 	fifo->data	= buffer;
 	fifo->esize	= esize;
 	fifo->count	= cnt;
 	fifo->unused	= cnt;
 	fifo->in	= 0;
 	fifo->out	= 0;
-	spin_unlock_irqrestore(&fifo->lock, flags);
 
 	return fifo;
 }

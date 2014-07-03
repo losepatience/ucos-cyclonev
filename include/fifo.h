@@ -22,35 +22,30 @@
 #ifndef __FIFO_H__
 #define __FIFO_H__
 
-#include <asm/types.h>
-#include <platform.h>
-
 struct fifo {
-	void		*data;
-	u32		esize;
+	void			*data;
+	unsigned long		esize;
 
-	u32		count;	/* element count */
-	u32		unused;
+	unsigned long		count;	/* element count */
+	unsigned long		unused;
 
-	u32		in;
-	u32		out;
-
-	spinlock_t	lock;
+	unsigned long		in;
+	unsigned long		out;
 };
 
-inline u32 fifo_unused(struct fifo *fifo);
-inline u32 fifo_cached(struct fifo *fifo);
+inline unsigned long fifo_unused(struct fifo *fifo);
+inline unsigned long fifo_cached(struct fifo *fifo);
 
-u32 fifo_in(struct fifo *fifo, const void *src, u32 cnt);
-u32 fifo_out(struct fifo *fifo, void *des, u32 cnt);
+unsigned long fifo_in(struct fifo *fifo, const void *src, unsigned long cnt);
+unsigned long fifo_out(struct fifo *fifo, void *des, unsigned long cnt);
 
 void *fifo_iaddr(struct fifo *fifo);
 void *fifo_oaddr(struct fifo *fifo);
 
-u32 fifo_cnt2size(struct fifo *fifo, int cnt);
-int fifo_size2cnt(struct fifo *fifo, u32 size);
+unsigned long fifo_cnt2size(struct fifo *fifo, int cnt);
+int fifo_size2cnt(struct fifo *fifo, unsigned long size);
 
 void fifo_reset(struct fifo *fifo);
-struct fifo *fifo_init(void *buffer, u32 esize, u32 cnt);
+struct fifo *fifo_init(void *buffer, unsigned long esize, unsigned long cnt);
 
 #endif

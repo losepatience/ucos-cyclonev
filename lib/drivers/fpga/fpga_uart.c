@@ -21,7 +21,7 @@
 
 /* XXX
  * 1. this uart has a pre-setting and could not be configured
- * 2. 4 channels, each channel binds to an adapter
+ * 2. 4 channels, each channel binds to an portter
  */
 
 #include <stdio.h>
@@ -39,7 +39,6 @@
 #define CONFIG_UART_IRQ		77
 #define CONFIG_UART_FIFO_SIZE	64
 #define CONFIG_UART_CNT		0x4
-#define CONFIG_UART_BUFSIZE	256
 
 #define UART_SR_OFFS		0x00
 #define UART_CR_OFFS		0x04
@@ -52,202 +51,110 @@
 #define UART_HEAD2_COM_OFFS	0x28
 #define UART_HEAD3_COM_OFFS	0x2c
 
-#define UFLAG_RX		1
-#define UFLAG_TX		0
-
-struct __msg {
-	char	*buf;
-	int	len;
-	int	idx;
-};
-
-struct __adapter {
+struct __port {
 	void			*base;
-	void			*dreg;		/* fifo r/w reg addr */
+	void			*dreg;	/* fifo r/w reg addr */
 	int			num;
 
-	char			rxbuf[CONFIG_UART_BUFSIZE];
-	struct fifo		*rxfifo;
-	struct completion	rxwait;
-	struct mutex		rx_mutex;
+	u32			rxmask;
+	u32			txmask;
 
-	struct __msg		tx_msg;
-	struct completion	txwait;
-	struct mutex		tx_mutex;
+	struct mutex            rxmutex;
+	struct mutex            txmutex;
 
-	unsigned long		timeout;
+	unsigned long		retries;
 };
 
-static struct __adapter *__adapters;
+struct __port *__ports[10];
 
-static inline struct __adapter *get_numbered_adapter(int num)
+static inline struct __port *get_numbered_port(int num)
 {
-	return &__adapters[num];
-}
-
-static inline void __irq_enable(struct __adapter *adap, u32 mask)
-{
-	setbits32(adap->base + UART_IER_OFFS, mask);
-}
-static inline void __irq_disable(struct __adapter *adap, u32 mask)
-{
-	clrbits32(adap->base + UART_IER_OFFS, mask);
-}
-static inline void __irq_clr(struct __adapter *adap, u32 mask)
-{
-	setbits32(adap->base + UART_CIR_OFFS, mask);
-}
-static inline int __is_bus_busy(struct __adapter *adap, u32 mask)
-{
-	return readl(adap->base + UART_SR_OFFS) & mask;
+	return __ports[num];
 }
 
-/*
- * cache data rxed to the uart ring fifo
- * if the ring is full, then stop rxirq and so rx is disabled.
- * we will enable it while read out data from the fifo.
- */
-static void rx_handler(struct __adapter *adap, u32 mask)
+static inline int is_rxfifo_empty(struct __port *port)
 {
-	while (!__is_bus_busy(adap, mask)) {
-		u8 val;
+	return readl(port->base + UART_SR_OFFS) & port->rxmask;
+}
 
-		if (fifo_unused(adap->rxfifo) == 0) {
-			__irq_disable(adap, mask);
-			break;
+static inline int is_txfifo_full(struct __port *port)
+{
+	return readl(port->base + UART_SR_OFFS) & port->txmask;
+}
+
+int fpga_uart_read(int num, char *buf, int len)
+{
+	struct __port *port = get_numbered_port(num);
+	int idx = 0;
+
+	mutex_lock(&port->rxmutex);
+
+	while (idx < len) {
+		int retries = port->retries;
+
+		if (is_rxfifo_empty(port)) {
+			if (retries == 0) {
+				break;
+			} else {
+				retries--;
+				msleep(1);
+			}
 		}
 
-		val = readb(adap->dreg);
-		fifo_in(adap->rxfifo, &val, 1);
+		buf[idx++] = readb(port->dreg);
 	}
-	__irq_clr(adap, mask);
+
+	mutex_unlock(&port->rxmutex);
+	return idx;
 }
 
-static void tx_handler(struct __adapter *adap, u32 mask)
+int fpga_uart_write(int num, const char *buf, int len)
 {
-	struct __msg *msg = &adap->tx_msg;
+	struct __port *port = get_numbered_port(num);
+	int idx = 0;
 
-	while (!__is_bus_busy(adap, mask)) {
+	mutex_lock(&port->txmutex);
 
-		if (msg->idx >= msg->len) {
-			__irq_disable(adap, mask);
-			complete(&adap->txwait);
-			break;
-		} else {
-			writeb(msg->buf[msg->idx++], adap->dreg);
+	while (idx < len) {
+		int retries = port->retries;
+
+		if (is_txfifo_full(port)) {
+			if (retries == 0) {
+				break;
+			} else {
+				retries--;
+				msleep(1);
+			}
 		}
+
+		writeb(buf[idx++], port->dreg);
 	}
 
-	__irq_clr(adap, mask);
+	mutex_unlock(&port->txmutex);
+	return idx;
 }
 
-static void irq_handler(void *arg)
+int fpga_uart_init(int num)
 {
-	u32 stat;
-	int adap_num;
-	struct __adapter *adap0 = get_numbered_adapter(0);
+	struct __port *port;
 
-	stat = readl(adap0->base + UART_IR_OFFS);
-	for (adap_num = 0; adap_num < CONFIG_UART_CNT; adap_num++) {
-		struct __adapter *adap = get_numbered_adapter(adap_num);
-
-		/* txfifo is not full */
-		if (stat & (1 << adap->num))
-			tx_handler(adap, 1 << adap->num);
-
-		/* rxfifo is not empty */
-		if (stat & (1 << (adap->num + 4)))
-			rx_handler(adap, 1 << (adap->num + 4));
-	}
-}
-
-/* TODO: now, only support non-blocking I/O. */
-int fpga_uart_read(int adap_num, void *data, u32 len)
-{
-	struct __adapter *adap = get_numbered_adapter(adap_num);
-	int retry = 5;
-	int rval;
-
-	mutex_lock(&adap->tx_mutex);
-	while (len > fifo_cached(adap->rxfifo)) {
-		retry--;
-		if (!retry) {
-			rval = -EAGAIN;
-			goto out;
-		}
-		msleep(1);
-	}
-
-	rval = fifo_out(adap->rxfifo, data, len);
-	__irq_enable(adap, 1 << (adap_num + 4));
-
-out:
-	mutex_unlock(&adap->tx_mutex);
-	return rval;
-}
-
-int fpga_uart_write(int adap_num, const void *data, u32 len)
-{
-	struct __adapter *adap = get_numbered_adapter(adap_num);
-	u32 mask = 1 << adap->num;
-	int rval;
-
-	mutex_lock(&adap->tx_mutex);
-
-	INIT_COMPLETION(adap->txwait);
-	adap->tx_msg.idx = 0;
-	adap->tx_msg.len = len;
-	adap->tx_msg.buf = (char *)data;
-
-	__irq_enable(adap, mask);
-	rval = wait_for_completion_timeout(&adap->txwait, adap->timeout);
-
-	__irq_disable(adap, mask);
-	__irq_clr(adap, mask);
-
-	if (rval == 0) {
-		pr_err("controller timed out\n");
-		setbits32(adap->base + UART_CR_OFFS, mask << 16);
-		rval = -ETIMEDOUT;
-	} else {
-		rval = len;
-	}
-
-	mutex_unlock(&adap->tx_mutex);
-	return rval;
-}
-
-int fpga_uart_init(void)
-{
-	int adap_num;
-
-	__adapters = calloc(CONFIG_UART_CNT, sizeof(struct __adapter));
-	if (__adapters == NULL) {
-		pr_err("%s: no memory for adapters\n", __func__);
+	port = calloc(1, sizeof(struct __port));
+	if (port == NULL) {
+		pr_err("%s: no memory aveilable\n", __func__);
 		return -ENOMEM;
 	}
 
-	for (adap_num = 0; adap_num < CONFIG_UART_CNT; adap_num++) {
-		struct __adapter *adap = get_numbered_adapter(adap_num);
+	port->base = (void *)CONFIG_UART_BASE;;
+	port->dreg = port->base + UART_HEAD0_COM_OFFS + 4 * num;
+	port->num = num;
+	port->txmask = 1 << num;
+	port->rxmask = 1 << (num + 4);
 
-		adap->base = (void *)CONFIG_UART_BASE;
-		adap->dreg = adap->base + UART_HEAD0_COM_OFFS + 4 * adap_num;
-		adap->num = adap_num;
+	mutex_init(&port->rxmutex);
+	mutex_init(&port->txmutex);
+	port->retries = 5;
 
-		adap->rxfifo = fifo_init(adap->rxbuf, 1, sizeof(adap->rxbuf));
-		init_completion(&adap->rxwait);
-		mutex_init(&adap->rx_mutex);
-
-		init_completion(&adap->txwait);
-		mutex_init(&adap->tx_mutex);
-
-		adap->timeout = 5 * HZ;
-	}
-
-	writel(0xf0, __adapters->base + UART_IER_OFFS);	/* enable all rx irq */
-	writel(0xf0, __adapters->base + UART_CR_OFFS);	/* enable all rx */
-
-	request_irq(CONFIG_UART_IRQ, irq_handler, __adapters);
+	__ports[num] = port;
 
 	return 0;
 }

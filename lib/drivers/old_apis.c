@@ -353,7 +353,7 @@ void IIC_Init(void)
 /*
  * SA protocol:
  *
- * SA if short for simple-abc. this name comes from its simpleness
+ * SA is short for simple-abc. this name comes from its simpleness
  *  1. packet is the xfer basic unit. there are 2 kinds of packet.
  *     normal packet and ACK packet, as show in the table below.
  *     .-------.-------.-------.---------------.
@@ -373,7 +373,7 @@ void IIC_Init(void)
  *  3. RX: recv 1 Pakeck --> send 1 ACK
  */
 
-struct fpga_uart_channel {
+struct SA_channel {
 	u8		rxbuf[512];
 	struct fifo	*rxfifo;
 	struct fifo	*txfifo;
@@ -388,7 +388,7 @@ struct fpga_uart_channel {
 	struct mutex	mutex;
 };
 
-static struct fpga_uart_channel *SA_chans;
+static struct SA_channel *SA_chans;
 
 static u8 SA_gen_chksum(u8 *data, int len, int flag)
 {
@@ -411,31 +411,23 @@ static bool SA_is_valid_packet(int num, void *data, int len, u8 chksum)
 {
 	u8 tmp;
 
-	if (len > MAX_SAPACKET_LEN || len < 5)
-		return false;
-
-	if (data == NULL)
-		return true;
-
 	*((u8 *)data + 2) = 0;	/* XXX ignore the chksum byte */
 
-	if (SA_chans[num].chkmod == CHKMOD_SUM) {
-		return chksum == SA_gen_chksum(data, len, CHKMOD_SUM);
-	} else if (SA_chans[num].chkmod == CHKMOD_CRC) {
-		return chksum == SA_gen_chksum(data, len, CHKMOD_CRC);
-	} else {
+	if (SA_chans[num].chkmod == CHKMOD_ANY) {
 		tmp = SA_gen_chksum(data, len, CHKMOD_SUM);
 		if (tmp != chksum)
 			tmp = SA_gen_chksum(data, len, CHKMOD_CRC);
 
-		return tmp == chksum;
+		return chksum == tmp;
 	}
+
+	return chksum == SA_gen_chksum(data, len, SA_chans[num].chkmod);
 }
 
 /* @return: 1:at cmd head, 0:cmd head not found */
 static int SA_find_packet_st(int num)
 {
-	u8 ch;
+	char ch;
 
 	while (fpga_uart_read(num, &ch, 1) == 1)
 		if (ch == 0xaa)
@@ -446,7 +438,7 @@ static int SA_find_packet_st(int num)
 
 static int SA_recv_packet(int num)
 {
-	static u8 cmd[MAX_SAPACKET_LEN] = { 0xaa };
+	static char cmd[MAX_SAPACKET_LEN] = { 0xaa };
 	int rval;
 	int len;
 
@@ -464,7 +456,7 @@ static int SA_recv_packet(int num)
 		goto __out;
 	}
 
-	len = uart_read(num, &cmd[1], 1);
+	len = fpga_uart_read(num, &cmd[1], 1);
 	if (len != 1) {
 		rval = -EAGAIN;
 		goto __out;
@@ -473,20 +465,20 @@ static int SA_recv_packet(int num)
 		goto __out;
 	}
 
-	len = uart_read(num, &cmd[2], 2);
+	len = fpga_uart_read(num, &cmd[2], 2);
 	if (len != 2 || !SA_is_valid_packet(num, NULL, cmd[3], 0)) {
 		rval = -EAGAIN;
 		goto __out;
 	}
 
-	len = uart_read(num, &cmd[4], cmd[3]);
+	len = fpga_uart_read(num, &cmd[4], cmd[3]);
 	if (len != cmd[3] || !SA_is_valid_packet(num, cmd, len, cmd[2])) {
 		rval = -EAGAIN;
 	} else {
-		u8 buf[2] = { 0xaa, 0x55 };
+		char buf[2] = { 0xaa, 0x55 };
 		cmd[3] -= 3;
 		fifo_in(SA_chans[num].rxfifo, &cmd[3], cmd[3]);
-		uart_write(num, buf, 2);	/* ACK */
+		fpga_uart_write(num, buf, 2);	/* ACK */
 	}
 
 __out:
@@ -517,13 +509,13 @@ static bool SA_check_ACK(int num)
 	return ret;
 }
 
-inline void UART_Init(u8 flag)
+void UART_Init(u8 flag)
 {
 	int chan = UART_MOTION_CHANNEL; 
 	char *buf;
 	int i;
 
-	SA_chans = calloc(UART_CHNUM, sizeof(struct fpga_uart_channel));
+	SA_chans = calloc(UART_CHNUM, sizeof(struct SA_channel));
 	if (SA_chans == NULL) {
 		pr_err("%s: no memory!", __func__);
 		return;
@@ -545,7 +537,7 @@ inline void UART_Init(u8 flag)
 	}
 
 	SA_chans[chan].txfifo = fifo_init(buf, 1, sizeof(buf));
-	fpga_uart_init();
+	fpga_uart_init(0);
 }
 
 void UART_SetCheckModel(u8 num, u8 model)
