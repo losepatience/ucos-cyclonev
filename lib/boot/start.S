@@ -21,6 +21,12 @@
 
 #include <config.h>
 
+#define Mode_IRQ	0x12
+#define Mode_SVC	0x13
+
+#define I_Bit		0x80
+#define F_Bit		0x40
+
 /* used by mem_malloc_init in lowlevel.c */
 .globl bss_end
 
@@ -32,7 +38,7 @@ _start: b	reset
 	ldr	pc, _software_interrupt
 	ldr	pc, _prefetch_abort
 	ldr	pc, _data_abort
-        nop     @ Reserved for secure montor calls
+	nop	 @ Reserved for secure montor calls
 	ldr	pc, _irq
 	ldr	pc, _fiq
 
@@ -53,11 +59,12 @@ reset:
 	orr	r0, r0, #0xd3
 	msr	cpsr, r0
 
-	@ disable watchdog
-	ldr	r0, =0xffd05014
-	ldr	r1, [r0]
-	add	r1, r1, #0xc0
-	str	r1, [r0]
+
+       @ disable watchdog
+       ldr     r0, =0xffd05014
+       ldr     r1, [r0]
+       add     r1, r1, #0xc0
+       str     r1, [r0]
 
 	mrc	p15, 0, r0, c1, c0, 0
 	bic	r0, r0, #0x00002000	@ clear bits 13 (--V-)
@@ -70,13 +77,13 @@ reset:
 	isb
 
 	@ set cp10, cp11 privileged and user mode access
-        mrc     p15, 0, r0, c1, c0, 2
-        orr     r0, r0, #(0x3 << 20)
-        orr     r0, r0, #(0x3 << 22)
-        mcr     p15, 0, r0, c1, c0, 2
-        isb
+	mrc	p15, 0, r0, c1, c0, 2
+	orr	r0, r0, #(0x3 << 20)
+	orr	r0, r0, #(0x3 << 22)
+	mcr	p15, 0, r0, c1, c0, 2
+	isb
 
-        mov     r0, #(0x1 << 30)
+	mov	r0, #(0x1 << 30)
 	mcr	p10, 7, r0, cr8, cr0, 0	@ enable FPU
 
 	@ set vbar and mvbar
@@ -86,8 +93,14 @@ reset:
 
 setup_stack:
 	/*XXX dont do anything that needs a stack in the other modes */
-	ldr	sp, =SYS_INIT_SP_ADDR
+	ldr	sp, =__svc_stack
 	bic	sp, sp, #7		@ 8-byte alignment for ABI compliance
+#if 0
+	msr	cpsr_c, #Mode_IRQ | I_Bit | F_Bit
+	ldr	sp, =__irq_stack 
+	bic	sp, sp, #7		@ 8-byte alignment for ABI compliance
+	msr	cpsr_c, #Mode_SVC | I_Bit | F_Bit
+#endif
 
 clear_bss:
 	ldr	r0, =__bss_start	@ find start of bss segment

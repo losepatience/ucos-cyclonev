@@ -15,6 +15,25 @@ static struct i2c_adapter *adap_zlg7290;
 static struct i2c_adapter *adap_lcd;
 static struct i2c_adapter *adap_max11614;
 
+/* call this after OS initialized and this is only for OS0 */
+int device_init(void)
+{
+	int rval;
+
+	PIO_InitializeInterrupts(0);
+
+	/* init i2c adapter and devices on i2c bus, like at24 */
+	IIC_Init();
+
+	rval = flash_init();
+	if (rval) {
+		pr_err("%s: failed to init flash\n", __func__);
+		return rval;
+	}
+
+	return 0;
+}
+
 /* ------------------------------------------------------------------------
  * APIS for 24c32
  * ------------------------------------------------------------------------
@@ -204,7 +223,7 @@ float IIC_Read_Max11614(u8 Flag)
  * APIS for led
  * ------------------------------------------------------------------------
  */
-
+#if 0
 #include <dwgpio.h>
 
 static u8 writebuf[256];
@@ -300,7 +319,7 @@ u8 IIC_Read_LCD(u8 reg, u8 *buf, u8 cnt)
 
 	return true;
 }
-
+#endif
 
 /* ------------------------------------------------------------------------
  *  Setup i2c bus
@@ -316,22 +335,18 @@ void IIC_Init(void)
 		return;
 	}
 
+	adap_zlg7290 = i2c_get_adapter(0);
+	adap_lcd = adap_zlg7290;
+
+	if (at24_init())
+		return;
+
 	if (dwi2c_add_numbered_adapter(1)) {
 		pr_err("%s: fails to add i2c adapter 1\n", __func__);
 		return;
 	}
 
-	adap_zlg7290 = i2c_get_adapter(0);
-	if (adap_zlg7290 == NULL)
-		return;
-
-	adap_lcd = adap_zlg7290;
-
 	adap_max11614 = i2c_get_adapter(1);
-	if (adap_max11614 == NULL)
-		return;
-
-	at24_init();
 }
 
 
@@ -348,7 +363,7 @@ void IIC_Init(void)
 #  define MAX_SAPACKET_LEN	(32)
 #endif
 
-#define UART_CHNUM	3
+#define UART_CHNUM	4
 
 /*
  * SA protocol:
@@ -439,12 +454,12 @@ static int SA_find_packet_st(int num)
 static int SA_recv_packet(int num)
 {
 	static char cmd[MAX_SAPACKET_LEN] = { 0xaa };
+	char ack[2] = { 0xaa, 0x55 };
 	int rval;
-	int len;
 
 	mutex_lock(&SA_chans[num].mutex);
 
-	if (fifo_cached(SA_chans[num].rxfifo) < MAX_SAPACKET_LEN) {
+	if (fifo_unused(SA_chans[num].rxfifo) < MAX_SAPACKET_LEN) {
 		pr_err("%s: rxfifo is full!", __func__);
 		rval = -EBUSY;
 		goto __out;
@@ -456,30 +471,34 @@ static int SA_recv_packet(int num)
 		goto __out;
 	}
 
-	len = fpga_uart_read(num, &cmd[1], 1);
-	if (len != 1) {
-		rval = -EAGAIN;
+	rval = fpga_uart_read(num, &cmd[1], 1);
+	if (rval != 1)
 		goto __out;
-	} else if (cmd[1] == 0x55) {
+
+	/* this is a ACK from headboard */
+	if (cmd[1] == 0x55) {
 		SA_chans[num].txACK = true;
+		rval = 0;
 		goto __out;
 	}
 
-	len = fpga_uart_read(num, &cmd[2], 2);
-	if (len != 2 || !SA_is_valid_packet(num, NULL, cmd[3], 0)) {
+	rval = fpga_uart_read(num, &cmd[2], 2);
+	if (rval != 2)
+		goto __out;
+
+	/* cmd[3] is the length of the received packet */
+	rval = fpga_uart_read(num, &cmd[4], cmd[3]);
+	if (rval != cmd[3])
+		goto __out;
+
+	/* cmd[2] is the check sum of the received packet */
+ 	if (!SA_is_valid_packet(num, cmd, cmd[3], cmd[2])) {
 		rval = -EAGAIN;
 		goto __out;
 	}
 
-	len = fpga_uart_read(num, &cmd[4], cmd[3]);
-	if (len != cmd[3] || !SA_is_valid_packet(num, cmd, len, cmd[2])) {
-		rval = -EAGAIN;
-	} else {
-		char buf[2] = { 0xaa, 0x55 };
-		cmd[3] -= 3;
-		fifo_in(SA_chans[num].rxfifo, &cmd[3], cmd[3]);
-		fpga_uart_write(num, buf, 2);	/* ACK */
-	}
+	fifo_in(SA_chans[num].rxfifo, &cmd[3], cmd[3] - 3);
+	fpga_uart_write(num, ack, 2);	/* ACK */
 
 __out:
 	mutex_unlock(&SA_chans[num].mutex);
@@ -511,9 +530,7 @@ static bool SA_check_ACK(int num)
 
 void UART_Init(u8 flag)
 {
-	int chan = UART_MOTION_CHANNEL; 
-	char *buf;
-	int i;
+	int i = 0;
 
 	SA_chans = calloc(UART_CHNUM, sizeof(struct SA_channel));
 	if (SA_chans == NULL) {
@@ -521,23 +538,14 @@ void UART_Init(u8 flag)
 		return;
 	}
 
-	buf = calloc(1, 512);
-	if (buf == NULL) {
-		pr_err("%s: no memory!", __func__);
-		free(SA_chans);
-		return;
-	}
-
-	for (i = 0; i < UART_CHNUM; i++) {
+	do {
 		mutex_init(&SA_chans[i].mutex);
 		SA_chans[i].chkmod = 0;
 		SA_chans[i].toggle = 0;
 		SA_chans[i].txACK = false;
 		SA_chans[i].rxfifo = fifo_init(SA_chans[i].rxbuf, 1, 512);
-	}
-
-	SA_chans[chan].txfifo = fifo_init(buf, 1, sizeof(buf));
-	fpga_uart_init(0);
+		fpga_uart_init(i);
+	} while (++i < UART_CHNUM);
 }
 
 void UART_SetCheckModel(u8 num, u8 model)
@@ -584,7 +592,7 @@ u8 UART_SendMotionCMD(u8 *data)
 	}
 
 	fifo_in(SA_chans[num].txfifo, data, len);
-	OSFlagPost(mix_FLAG_GRP, MOTION_SEND_CMD, OS_FLAG_SET, &err);
+	//OSFlagPost(mix_FLAG_GRP, MOTION_SEND_CMD, OS_FLAG_SET, &err);
 
 	mutex_unlock(&SA_chans[num].mutex);
 	return true;
@@ -661,13 +669,13 @@ u8 UART_MotionReportCMD(u8 *data)
 	}
 
 	fifo_in(SA_chans[num].rxfifo, data, len);
-	OSFlagPost(mix_FLAG_GRP, MOTION_REPORT_CMD, OS_FLAG_SET, &err);
+	//OSFlagPost(mix_FLAG_GRP, MOTION_REPORT_CMD, OS_FLAG_SET, &err);
 	mutex_unlock(&SA_chans[num].mutex);
 
 	return true;
 }
 
-
+#if 0
 /* ------------------------------------------------------------------------
  * APIS for USB
  * ------------------------------------------------------------------------
@@ -1036,23 +1044,5 @@ u8 FPGA_SendData(u8 first)
 }
 
 
-/* call this after OS initialized and this is only for OS0 */
-int device_init(void)
-{
-	int rval;
-
-	PIO_InitializeInterrupts(0);
-
-	/* init i2c adapter and devices on i2c bus, like at24 */
-	IIC_Init();
-
-	rval = flash_init();
-	if (rval) {
-		pr_err("%s: failed to init flash\n", __func__);
-		return rval;
-	}
-
-	return 0;
-}
-
+#endif /* INCOMPATIBLE_WITH_ATMEL */
 #endif /* INCOMPATIBLE_WITH_ATMEL */

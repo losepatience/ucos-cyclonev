@@ -184,7 +184,8 @@ static  void  App_TaskStart (void *p_arg)
 
 	//BSP_PostInit();                                             /* Initialize BSP functions   */
 	OS_CSP_TickInit();                                          /* Initialize the Tick interrupt                        */
-
+	Mem_Init();                                                 /* Initialize memory managment module                   */
+ 	Math_Init();
 #if (OS_TASK_STAT_EN > 0u)
 	OSStatInit();                                               /* Determine CPU capacity                               */
 #endif
@@ -201,6 +202,7 @@ static  void  App_TaskStart (void *p_arg)
 	PIO_Configure(&pin, 1);
 #endif
 
+	device_init();
 #include <string.h>
 	char *wrbuf = "good good study!";
 	char rdbuf[32];
@@ -213,10 +215,13 @@ static  void  App_TaskStart (void *p_arg)
 
 #include <flash.h>
 	memset(rdbuf, 0, len);
-	flash_write(wrbuf, 0, len);
+	//flash_write(wrbuf, 0, len);
 	flash_read(rdbuf, 0, len);
 
-	lwip_entry(NULL);
+#include <old_apis.h>
+	UART_Init(0);
+	UART_GetCMD(0, rdbuf);
+	//lwip_entry(NULL);
 
 
 	//int fpret = fpgamgr_program_fpga(0x0, 0x0);

@@ -19,6 +19,7 @@
  * MA 02111-1307 USA
  */
 
+#include <asm/regs.h>
 #include <asm/io.h>
 #include <malloc.h>
 #include <config.h>
@@ -47,7 +48,7 @@ static void wakeup_OS1(void)
 	}
 
 	/* Reset core1, it will execute the command in address 0 */
-	*((volatile unsigned int *)0xFFD05010) = 0;
+	writel(0, (void *)(SOCFPGA_RSTMGR_ADDRESS + 0x10));
 
 	/* Wait for core1 to wake up */
 	while (__OS1_awake == 0) {
@@ -73,12 +74,20 @@ void __OS1_reset(void)
 		;
 }
 
+static void disable_watchdog(void)
+{
+	volatile void *reg = (void *)(SOCFPGA_RSTMGR_ADDRESS + 0x14);
+	writel(readl(reg) + 0xc0, reg);
+}
+
 void lowlevel_init(void)
 {
 	ulong start, size;
 
+	//disable_watchdog();
+#if 1
 	/* remap the SDRAM at lower memory instead on-chip RAM */
-	writel(0x1, (void *)0xfffefC00);
+	writel(0x1, (void *)SOCFPGA_MPUL2_ADDRESS + 0xC00);
 
 	/* do this before pl310_init */
 	start = bss_end;
@@ -90,7 +99,7 @@ void lowlevel_init(void)
 
 	timer_init();			/* initialize timer */
 	clock_init();			/* get clock info */
-
+#endif
 	/* wakeup_OS1(); */		/* not for now */
 	main();
 }

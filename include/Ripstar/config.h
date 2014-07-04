@@ -8,17 +8,18 @@
 #define PHYS_SDRAM_SIZE		(0x20000000)
 
 /*
- * os0:	0x100000--0x600000(0x4F0000(os) + 0x010000(pt) + 0x010000(stack))
- * os1:	0x600000--0xB00000(0x4F0000(os) + 0x010000(pt) + 0x010000(stack))
+ * os0:	0x100000--0x600000(0x4F8000(os) + 0x4000(pt) + 0x4000(stack))
+ * os1:	0x600000--0xB00000(0x4F8000(os) + 0x4000(pt) + 0x4000(stack))
  */
 #ifndef OS1
-# define __text_base		0x00120000
+# define __text_base		0x00108000
 #else
-# define __text_base		0x00620000
+# define __text_base		0x00608000
 #endif
 
-#define __mmu_table		(__text_base - 0x00010000)
-#define SYS_INIT_SP_ADDR	(__mmu_table - 0x3)
+#define __mmu_table		(__text_base - 0x4000)
+#define __svc_stack		(__mmu_table - 0x2000)
+#define __irq_stack		(__text_base - 0x8000)
 
 /* -------------------------------------------------------------- */
 /* XXX: Plz verify it according to pll_config.h */

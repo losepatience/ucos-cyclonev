@@ -72,9 +72,19 @@ static inline struct __port *get_numbered_port(int num)
 	return __ports[num];
 }
 
-static inline int is_rxfifo_empty(struct __port *port)
+static int wait_for_clrbits(struct __port *port, u32 bits)
 {
-	return readl(port->base + UART_SR_OFFS) & port->rxmask;
+		int retries = port->retries;
+
+		do {
+			u32 val = readl(port->base + UART_SR_OFFS);
+ 			if ((val & bits) == 0)
+				return 1;
+
+			msleep(1);
+		} while (--retries);
+
+		return 0;
 }
 
 static inline int is_txfifo_full(struct __port *port)
@@ -90,22 +100,15 @@ int fpga_uart_read(int num, char *buf, int len)
 	mutex_lock(&port->rxmutex);
 
 	while (idx < len) {
-		int retries = port->retries;
 
-		if (is_rxfifo_empty(port)) {
-			if (retries == 0) {
-				break;
-			} else {
-				retries--;
-				msleep(1);
-			}
-		}
-
-		buf[idx++] = readb(port->dreg);
+		if (!wait_for_clrbits(port, port->rxmask))
+			break;
+		else
+			buf[idx++] = readb(port->dreg);
 	}
 
 	mutex_unlock(&port->rxmutex);
-	return idx;
+	return idx == 0 ? -EIO : idx;
 }
 
 int fpga_uart_write(int num, const char *buf, int len)
@@ -116,27 +119,20 @@ int fpga_uart_write(int num, const char *buf, int len)
 	mutex_lock(&port->txmutex);
 
 	while (idx < len) {
-		int retries = port->retries;
-
-		if (is_txfifo_full(port)) {
-			if (retries == 0) {
-				break;
-			} else {
-				retries--;
-				msleep(1);
-			}
-		}
-
-		writeb(buf[idx++], port->dreg);
+		if (!wait_for_clrbits(port, port->txmask))
+			break;
+		else
+			writeb(buf[idx++], port->dreg);
 	}
 
 	mutex_unlock(&port->txmutex);
-	return idx;
+	return idx == 0 ? -EIO : idx;
 }
 
 int fpga_uart_init(int num)
 {
 	struct __port *port;
+	u32 val;
 
 	port = calloc(1, sizeof(struct __port));
 	if (port == NULL) {
@@ -155,6 +151,11 @@ int fpga_uart_init(int num)
 	port->retries = 5;
 
 	__ports[num] = port;
+
+	/* enable rx */
+	val = readl(port->base + UART_CR_OFFS);
+	val |= port->rxmask;
+	writel(val, port->base + UART_CR_OFFS);
 
 	return 0;
 }
