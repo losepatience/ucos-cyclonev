@@ -221,6 +221,16 @@ static  void  App_TaskStart (void *p_arg)
 #include <old_apis.h>
 	UART_Init(0);
 	UART_GetCMD(0, rdbuf);
+	UART_SetCheckModel(0, 2);
+
+	char cmd[] = {2, 0x90};
+
+#ifdef CONVERSION_BOARD
+	cmd[3] = cmd[0];
+	cmd[0] = 4;
+#endif				
+
+	while (!UART_SendCMD(0, UartCMD)) ;
 	//lwip_entry(NULL);
 
 
