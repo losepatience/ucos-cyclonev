@@ -70,7 +70,7 @@ INCDIRS := $(sort $(INCDIRS))
 INCDIRS += $(TOPDIR)/include $(TOPDIR)/include/Ripstar 
 INCDIRS += $(TOPDIR)/APP $(TOPDIR)/to $(TOPDIR)/to/porting
 
-CS_DIRS := $(TOPDIR)/APP $(TOPDIR)/OS $(TOPDIR)/lib #$(TOPDIR)/to
+CS_DIRS := $(TOPDIR)/APP $(TOPDIR)/OS $(TOPDIR)/lib $(TOPDIR)/co #$(TOPDIR)/to
 CS_SRCS := $(shell find $(CS_DIRS) -name "*.S" -o -name "*.c")
 CS_OBJS := $(CS_SRCS:%.c=%.o)
 CS_OBJS := $(CS_OBJS:%.S=%.o)

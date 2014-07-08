@@ -22,8 +22,10 @@
 #ifndef __FPGA_UART_H__
 #define __FPGA_UART_H__
 
-int fpga_uart_read(int num, char *buf, int len);
-int fpga_uart_write(int num, const char *buf, int len);
+#include <asm/regs.h>
+
+int fpga_uart_read(int num, u8 *buf, int len);
+int fpga_uart_write(int num, const u8 *buf, int len);
 int fpga_uart_init(int num);
 
 #endif

@@ -30,7 +30,6 @@
 #include <errno.h>
 #include <fifo.h>
 #include <delay.h>
-#include <asm/regs.h>
 #include <asm/io.h>
 #include <platform.h>
 #include <fpga_uart.h>
@@ -92,7 +91,7 @@ static inline int is_txfifo_full(struct __port *port)
 	return readl(port->base + UART_SR_OFFS) & port->txmask;
 }
 
-int fpga_uart_read(int num, char *buf, int len)
+int fpga_uart_read(int num, u8 *buf, int len)
 {
 	struct __port *port = get_numbered_port(num);
 	int idx = 0;
@@ -111,7 +110,7 @@ int fpga_uart_read(int num, char *buf, int len)
 	return idx == 0 ? -EIO : idx;
 }
 
-int fpga_uart_write(int num, const char *buf, int len)
+int fpga_uart_write(int num, const u8 *buf, int len)
 {
 	struct __port *port = get_numbered_port(num);
 	int idx = 0;
