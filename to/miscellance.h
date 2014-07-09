@@ -3,12 +3,15 @@
 
 #include "global.h"
 #include "../LCD_GUI/resources.h"
+#if 0
 #if defined(MOTION_Y_DSP)||defined(SUPPORT_MOTOR_CONTROL_ONLY_STEP)
 #define UART_MOTION_CHANNEL	2
 #define UART_DSP_CHANNEL	1
 #else
 #define UART_MOTION_CHANNEL 1
 #endif
+#endif
+#define UART_MOTION_CHANNEL	4
 #define UART_HEAD_CHANNEL	0
 
 //COM Command

@@ -24,13 +24,11 @@
 
 #include <asm/types.h>
 
-ssize_t usb_read(int num, void *buf, ssize_t len);
-inline ssize_t usb_write(int num, const void *buf, ssize_t len);
-inline ssize_t usb_send_cmd(int num, const void *buf, ssize_t len);
-int usb_init(void);
-inline void usb_flush_fifo(int num);
-inline void usb_disable(void);
-inline void usb_enable(void);
-inline void usb_register_callback(int (*func)(void *));
+ssize_t fx3_read(int num, void *buf, ssize_t len);
+inline ssize_t fx3_write(int num, const void *buf, ssize_t len);
+inline ssize_t fx3_send_cmd(int num, const void *buf, ssize_t len);
+int fx3_init(void);
+inline void fx3_flush_fifo(int num);
+inline void fx3_register_request_cb(int (*func)(void *));
 
 #endif

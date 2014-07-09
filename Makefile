@@ -42,7 +42,8 @@ CPPFLAGS += -DnoSUPPORT_MOTOR_CONTROL -DnoEPSON_CLEAN_UPDOWN_TATE_8H_RICOH -DnoE
 CPPFLAGS += -DnoEPSON_CLEAN_UPDOWN -DnoSUPPORT_MOTOR_CONTROL_ONLY_STEP
 endif
 
-CFLAGS := $(CPPFLAGS) -Wall -Wstrict-prototypes -fno-stack-protector
+#CFLAGS := $(CPPFLAGS) -Wall -Wstrict-prototypes -fno-stack-protector
+CFLAGS := $(CPPFLAGS) -Wall -fno-stack-protector
 CFLAGS += -std=gnu99 -fgnu89-inline 
 ############################################################
 # User config section

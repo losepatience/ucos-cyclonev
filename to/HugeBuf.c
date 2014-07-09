@@ -2,7 +2,6 @@
 #include "frmwrk_cfg.h"
 #include "HugeBuf.h"
 #include "FPGA.h"
-#include "consol.h"
 #include "status.h"
 #include "job.h"
 #include "global.h"
@@ -16,13 +15,8 @@
 #include "uv.h"
 #endif
 
-#include "dmad/dmad.h"
 #include "pio/pio_it.h"
 
-INT32U BOARD_DDRAM_SIZE;
-
-extern INT32U FPGA_FileLen;
-extern INT32U FPGA_File;
 extern INT32U cur_step_distance;
 /******************************************************************************
 *	Process DMA transfer EP2 FIFO => SDRAM									  *
@@ -30,57 +24,10 @@ extern INT32U cur_step_distance;
 *	For test purpose	 SDRAM	  => EP6 FIFO, must set FLAGB first  		  *	
 *	All functions must run in one task								          * 		
 ******************************************************************************/
-static INT16U *HugeBufReceiveAddr;
-static INT16U *HugeBufSendAddr;
-static INT16U *HugeBufNextHeader = 0;
-static INT16U *HugeBufLastHeader;
-static INT32U HugeBufLastBandSize = 0;
 extern INT16U *CurHugeBufDataAddr;
 static volatile INT8U FPGADMA_manualStop = False;
 volatile INT8U USBDMA_manualStop = False;
 
-static volatile INT32S HugeBufSize = 0; //Left in buffer, unit:bytes, 512 bytes aligned
-
-static unsigned int USBDMA_SendCount; //Not use, for SX2 IN transfer
-
-//USB
-#define USBDMA_TRANS_COUNT 		512
-#define USBDMA_BYTES_PER_TRANS 	sizeof(INT16U)
-
-#define FPGADMA_TRANS_DOUBLE_COUNT 	1024
-#define USBDMA_BytesCount_Min (USBDMA_TRANS_COUNT*USBDMA_BYTES_PER_TRANS)
-#define USBDMA_WordsCount_Min (USBDMA_TRANS_COUNT*USBDMA_BYTES_PER_TRANS/sizeof(INT16U))
-static INT16U USBDMA_BytesCount = USBDMA_BytesCount_Min;
-static INT16U USBDMA_WordsCount = USBDMA_WordsCount_Min;
-static INT8U USBDMA_IsFirstTransfer = True;
-static INT32U USBDMA_PackageSize = 0;
-
-static const INT16U FPGADMA_BytesCount = FPGADMA_TRANS_COUNT*FPGADMA_BYTES_PER_TRANS;
-static const INT16U FPGADMA_WordsCount = FPGADMA_TRANS_COUNT*FPGADMA_BYTES_PER_TRANS/sizeof(INT16U);
-
-static const INT16U FPGADMA_Double_BytesCount = FPGADMA_TRANS_DOUBLE_COUNT*FPGADMA_BYTES_PER_TRANS;
-static const INT16U FPGADMA_Double_WordsCount = FPGADMA_TRANS_DOUBLE_COUNT*FPGADMA_BYTES_PER_TRANS/sizeof(INT16U);
-
-
-#ifdef ADOPT_COMPRESS_DATA
-#error "A+ doesn't support compress data"
-#endif
-
-static INT16U cur_FPGADMA_BytesCount = 0;
-//static INT16U cur_FPGADMA_WordsCount = 0;
-static INT16U cur_FPGADMA_TransCount = 0;
-
-#ifdef HEAD_EPSON_GEN5
-static INT8U bStartPreFill = 0;
-static INT8U bStartPostFill = 0;
-static INT32U bPreFilledSize = 0;
-static INT32S bPreFillLength = 0;
-static INT32U bPostFilledSize = 0;
-static INT32U bPostFillLength = 0;
-static INT16U * FillBuffer;
-#endif
-
-unsigned int tick_1=0, tick_2 = 0, tick_3 =0;
 
 #if 0
 void FPGADMA_stop()
@@ -101,8 +48,8 @@ void HugeBuf_CancelJob(void) //Need rewrite this function
 #endif
 
 #ifdef FULGENCY_FUN
-		UV_CTR_PRT_START_CLEAR();
-		UV_CTR_PRT_FINISH_SET();
+	UV_CTR_PRT_START_CLEAR();
+	UV_CTR_PRT_FINISH_SET();
 #endif
 
 #ifdef MANUFACTURER_DYSS
@@ -213,10 +160,8 @@ void HugeBuf_CancelJob(void) //Need rewrite this function
 #endif
 	
 	g_shakehandPassed = False;
-	HugeBufLastBandSize = 0;
 	
 	OSTimeDly(10);		
-
 }
 
 
@@ -325,202 +270,6 @@ void FPGADMA_Done_Interrupt(void)
 	}
 }
 
-INT8U FPGA_RESET()	
-{
-	INT16U i, times = 0,err_count = 0, err_count1 = 0;
-	volatile INT16U data, fpga_data;	
-	Pin nRstPin = PIN_FPGA_nRST;
-	
-#if defined(HEAD_EPSON_GEN5) //Epson gen5, 8.31M/16.625M, support FAST_BUS
-	//Bit 15~13, default 000. Bit 13: X π”√µƒ±‡¬Î∆˜ 1/0 = À≈∑˛/π‚’§; Bit14: Y ±‡¬Î∆˜, ƒø«∞Œﬁ”√
-	//Bit 12~8,  Specific use. Refer to FPGA program
-	//Bit 7~0,  ≤¢◊™¥Æ–æ∆¨µƒπ§◊˜∆µ¬  = FPGAπ§◊˜∆µ¬ (48M)/(2*(F+1)). Default = 0x001, º»12M
-	
-#ifdef EPSON_4H
-#ifdef MOTION_Y_DSP
-	//if DSP get the right encoder, it will report "π‚’§≥ˆ¥Ì" for MOTION_Y_DSP case. so, i map a null encoder signal to avoid this error. 
-	data = 0x7 | ((headboardInfo.headBoardType & 0x6) << 8) | (0x3 << 13)|(1<<8); 
-#else
-	if (printer.xEncoder)
-		data = 0x7 | ((headboardInfo.headBoardType & 0x6) << 8) | (0x0 << 13)|(1<<8); 
-	else	
-		data = 0x7 | ((headboardInfo.headBoardType & 0x6) << 8) | (0x1 << 13)|(1<<8); 
-#endif
-#ifndef SUPPORT_MOTOR_CONTROL
-	data = (0x3<<11) | data;
-#else
-	data = ((~(0x1<<12)) & data) | (0x1<<11);
-#endif
-	
-#else
-#ifdef MOTION_Y_DSP
-	//if DSP get the right encoder, it will report "π‚’§≥ˆ¥Ì" for MOTION_Y_DSP case. so, i map a null encoder signal to avoid this error. 
-	data = 0x3 | ((headboardInfo.headBoardType & 0x7) << 8) | (0x3 << 13); 
-#else
-	if (printer.xEncoder)
-		data = 0x3 | ((headboardInfo.headBoardType & 0x7) << 8) | (0x0 << 13); 
-	else	
-		data = 0x3 | ((headboardInfo.headBoardType & 0x7) << 8) | (0x1 << 13); 
-#endif
-	
-#ifndef SUPPORT_MOTOR_CONTROL
-	data = (0x1<<12) | data;
-#endif
-#endif
-#elif defined(HEAD_RICOH_G4) //ricoh gen4, 8.31M
-	//bit15. read only. config locked flag. Fpga config register only write  one time, then this register is protected and bit 15 is true.
-	//bit14. read only. FPGA enable flag. this version is always true.
-	//bit13. same as old design. map liner encoder/servo feedback as DSP's X input encoder signal.
-	//bit12~8. print data channel map. based on head board type. for ricoh fpga, it is not used and default value is 0.
-	//bit7~0. lvds freq's divider. default is 7(about 8.3Mhz). lvds_freq = FPGA_freq/2*(F+1).  
-	//#ifndef LIUBO_TEST  
-#if defined(RICOH_G4_16H)
-	if(headboardInfo.headBoardType != HEAD_BOARD_TYPE_RICOH_GEN4_DA_16H && headboardInfo.headBoardType != HEAD_BOARD_TYPE_RICOH_GEN4_PULSE_16H)
-	{
-		if (printer.xEncoder)
-			data = 0x3 | ((0x2 & 0x1F) << 8) | (0x0 << 13); 
-		else	
-			data = 0x3 | ((0x2 & 0x1F) << 8) | (0x1 << 13); 
-	}
-	else
-	{
-		if (printer.xEncoder)
-			data = 0x3 | ((0x2 & 0x1F) << 8) | (0x0 << 13); 
-		else
-			data = 0x3 | ((0x2 & 0x1F) << 8) | (0x1 << 13); 
-	}
-#elif defined(RICOH_G5_4H)
-	if (printer.xEncoder)
-		data = 0x5 | ((0x1 & 0x1F) << 8) | (0x0 << 13); 
-	else	
-		data = 0x5 | ((0x1 & 0x1F) << 8) | (0x1 << 13); 
-#else
-	if(headboardInfo.headBoardType != HEAD_BOARD_TYPE_RICOH_GEN4_DA_16H && headboardInfo.headBoardType != HEAD_BOARD_TYPE_RICOH_GEN4_PULSE_16H)
-	{
-		//#ifndef MOTION_Y_DSP
-		if (printer.xEncoder)
-			data = 0x7 | ((0x1 & 0x1F) << 8) | (0x0 << 13); 
-		else	
-			//#endif        
-			data = 0x7 | ((0x1 & 0x1F) << 8) | (0x1 << 13); 
-	}
-	else
-	{
-		//#ifndef MOTION_Y_DSP  
-		if (printer.xEncoder)
-			data = 0x7 | ((0x2 & 0x1F) << 8) | (0x0 << 13); 
-		else
-			//#endif        
-			data = 0x7 | ((0x2 & 0x1F) << 8) | (0x1 << 13); 
-	}
-#endif
-	//#else
-	//     data = 0x7 | ((0x1 & 0x1F) << 8) | (0x1 << 13);  
-	//#endif
-#else
-#error "only support epson and ricoh"
-#endif
-	
-#if defined(HEAD_EPSON_GEN5)
-	//  if(headboardInfo.headBoardType == HEAD_BOARD_TYPE_EPSON_GEN5_2HEAD && factoryData.HeadType == HeadNo_Epson_Gen5 && EPSON_HEADNUM == 1)
-	//    data |= 0x8000; 
-#endif
-	
-	do 
-	{
-		PIO_Clear(&nRstPin);
-		for (i=0;i<400;i++);
-		PIO_Set(&nRstPin);
-		
-		OSTimeDly(100);
-		
-		rFPGA_PINCONF = data;
-		
-		OSTimeDly(1);
-		
-#if defined(HEAD_RICOH_G4)    
-		//rFPGA_PINCONF = 0;
-#else
-		rFPGA_PINCONF = 0;
-#endif        
-		
-		OSTimeDly(1);
-		
-#if defined(HEAD_RICOH_G4)    
-		if ((data | rFPGA_PINCONF_LOCKED | rFPGA_PINCONF_ENBALE)== rFPGA_PINCONF)
-#else
-			if (data == rFPGA_PINCONF)
-#endif        
-				break;
-		OSTimeDly(10);
-		times++;	
-	}while (times < 20);
-	//}while (times < 60000);
-	if (times >= 20)
-	{
-		status_ReportStatus(STATUS_FTA_INTERNAL_WRONGPINCONF, STATUS_SET);
-		return False;
-	}
-	else
-		return True;
-}
-#if defined(HEAD_EPSON_GEN5)  
-INT8U FPGA_RESETAGAIN()
-{
-	INT16U i, times = 0,err_count = 0, err_count1 = 0;
-	volatile INT16U data, fpga_data;	
-	Pin nRstPin = PIN_FPGA_nRST;
-	
-#ifdef MOTION_Y_DSP
-	//if DSP get the right encoder, it will report "π‚’§≥ˆ¥Ì" for MOTION_Y_DSP case. so, i map a null encoder signal to avoid this error. 
-	data = 0x7 | ((headboardInfo.headBoardType & 0x7) << 8) | (0x3 << 13); 
-#else
-	if (printer.xEncoder)
-		data = 0x7 | ((headboardInfo.headBoardType & 0x7) << 8) | (0x0 << 13); 
-	else	
-		data = 0x7| ((headboardInfo.headBoardType & 0x7) << 8) | (0x1 << 13); 
-#endif
-	
-#ifndef SUPPORT_MOTOR_CONTROL
-	data = (0x3<<11) | data;
-#else
-	data = ((~(0x1<<12)) & data) | (0x1<<11);
-#endif
-	do 
-	{
-		PIO_Clear(&nRstPin);
-		for (i=0;i<400;i++);
-		PIO_Set(&nRstPin);
-		
-		OSTimeDly(100);
-		
-		rFPGA_PINCONF = data;
-		
-		OSTimeDly(1);
-		
-#if defined(HEAD_RICOH_G4)    
-		//rFPGA_PINCONF = 0;
-#else
-		rFPGA_PINCONF = 0;
-#endif        
-		
-		OSTimeDly(1);
-		
-		if (data == rFPGA_PINCONF)      
-			break;
-		OSTimeDly(10);
-		times++;	
-	}while (times < 20);
-	if (times >= 20)
-	{
-		status_ReportStatus(STATUS_FTA_INTERNAL_WRONGPINCONF, STATUS_SET);
-		return False;
-	}
-	else
-		return True;
-}
-#endif
-
 #ifdef HEAD_EPSON_GEN5	
 #define FPGA_FLASH_DELAY_TIME 45
 void FPGA_START_FLASH(INT16U interval_us, INT8U HeadMask)
@@ -575,7 +324,7 @@ void FPGA_STOP_FLASH_Safe()
 }
 #elif defined(HEAD_RICOH_G4)
 
-#ifndef CONVERSION_BOARD //fpga◊ ‘¥≤ªπª √¸¡Ó±ª…æ≥˝
+#ifndef CONVERSION_BOARD //fpgaËµÑÊ∫ê‰∏çÂ§ü ÂëΩ‰ª§Ë¢´Âà†Èô§
 void FPGA_START_RICOH_AUTO_C()
 {
 	rFPGA_COMMAND = rFPGA_COMMAND_BGN_AUTO_C_1;

@@ -164,7 +164,7 @@ static int SA_recv_packet(int num)
 
 static bool SA_check_ACK(int num)
 {
-	int retries = 5000;
+	int retries = 10;
 
 	do {
 		SA_recv_packet(num);
@@ -173,7 +173,6 @@ static bool SA_check_ACK(int num)
 			return true;
 		}
 
-		msleep(1);
 	} while (--retries);
 
 	return false;
@@ -283,6 +282,7 @@ u8 UART_SendCMD(u8 num, u8 *data)
 	do {
 		fpga_uart_write(num, buf, 4);
 		fpga_uart_write(num, src, len);
+		msleep(1);
 	} while (SA_check_ACK(num));
 
 	SA_chans[num].tx_toggle = !SA_chans[num].tx_toggle;
@@ -293,9 +293,17 @@ u8 UART_SendCMD(u8 num, u8 *data)
 void UART_Init(u8 flag)
 {
 	int i = 0;
+	void *txbuf;
 
-	SA_chans = calloc(UART_CHNUM, sizeof(struct SA_channel));
+	/* there is a virtual channel for motion contorl */
+	SA_chans = calloc(UART_CHNUM + 1, sizeof(struct SA_channel));
 	if (SA_chans == NULL) {
+		pr_err("%s: no memory!", __func__);
+		return;
+	}
+
+	txbuf = malloc(512);
+	if (txbuf == NULL) {
 		pr_err("%s: no memory!", __func__);
 		return;
 	}
@@ -309,5 +317,8 @@ void UART_Init(u8 flag)
 		SA_chans[i].rxfifo = fifo_init(SA_chans[i].rxbuf, 1, 512);
 		fpga_uart_init(i);
 	} while (++i < UART_CHNUM);
+
+	/* this is motion channel */
+	SA_chans[UART_CHNUM].txfifo = fifo_init(txbuf, 1, 512);
 }
 
