@@ -61,53 +61,77 @@ struct __port {
 	struct mutex            rxmutex;
 	struct mutex            txmutex;
 
-	unsigned long		retries;
+	u8			*rxbuf;
+	int			rxlen;
+	int			rxidx;
+	struct completion	rxwait;
 };
 
-struct __port *__ports[10];
+struct __port *__ports;
 
 static inline struct __port *get_numbered_port(int num)
 {
-	return __ports[num];
+	return &__ports[num];
 }
 
-static int wait_for_clrbits(struct __port *port, u32 bits)
+static void rx_handler(struct __port *port)
 {
-		int retries = port->retries;
+	while (port->rxidx < port->rxlen) {
+		u32 stat = readl(port->base + UART_SR_OFFS);
+		if (stat & port->rxmask)
+			return;
 
-		do {
-			u32 val = readl(port->base + UART_SR_OFFS);
- 			if ((val & bits) == 0)
-				return 1;
+		port->rxbuf[port->rxidx++] = readb(port->dreg);
+	}
 
-			msleep(1);
-		} while (--retries);
-
-		return 0;
+	clrbits32(port->base + UART_IER_OFFS, port->rxmask);	/* here */
+	complete(&port->rxwait);
 }
 
-static inline int is_txfifo_full(struct __port *port)
+static void interrupt_rx(void *arg)
 {
-	return readl(port->base + UART_SR_OFFS) & port->txmask;
+	u32 stat;
+	int port_num = 0;
+	struct __port *port = get_numbered_port(0);
+
+	stat = readl(port->base + UART_IR_OFFS);
+	for ( ; port_num < CONFIG_UART_CNT; port_num++) {
+
+		if (stat & port->rxmask)
+			rx_handler(port);
+
+		/* clear the irq bit */
+		setbits32(port->base + UART_CIR_OFFS, port->rxmask);
+		port++;
+	}
 }
 
 int fpga_uart_read(int num, u8 *buf, int len)
 {
 	struct __port *port = get_numbered_port(num);
-	int idx = 0;
+	int rval;
 
 	mutex_lock(&port->rxmutex);
 
-	while (idx < len) {
+	INIT_COMPLETION(port->rxwait);
+	port->rxidx = 0;
+	port->rxlen = len;
+	port->rxbuf = buf;
 
-		if (!wait_for_clrbits(port, port->rxmask))
-			break;
-		else
-			buf[idx++] = readb(port->dreg);
+	/* enable irq */
+	setbits32(port->base + UART_IER_OFFS, port->rxmask);
+	rval = wait_for_completion_timeout(&port->rxwait, 5 * HZ);
+	clrbits32(port->base + UART_IER_OFFS, port->rxmask);
+
+	if (rval == 0) {
+		pr_err("controller timed out\n");
+		rval = -ETIMEDOUT;
+	} else {
+		rval = port->rxidx;
 	}
 
 	mutex_unlock(&port->rxmutex);
-	return idx == 0 ? -EIO : idx;
+	return rval;
 }
 
 int fpga_uart_write(int num, const u8 *buf, int len)
@@ -118,10 +142,18 @@ int fpga_uart_write(int num, const u8 *buf, int len)
 	mutex_lock(&port->txmutex);
 
 	while (idx < len) {
-		if (!wait_for_clrbits(port, port->txmask))
-			break;
-		else
-			writeb(buf[idx++], port->dreg);
+
+		/* txfifo full */
+		u32 stat = readl(port->base + UART_SR_OFFS);
+		if (stat & port->txmask) {
+			msleep(1);
+
+			stat = readl(port->base + UART_SR_OFFS);
+			if (stat & port->txmask)
+				break;
+		}
+
+		writeb(buf[idx++], port->dreg);
 	}
 
 	mutex_unlock(&port->txmutex);
@@ -130,31 +162,31 @@ int fpga_uart_write(int num, const u8 *buf, int len)
 
 int fpga_uart_init(int num)
 {
-	struct __port *port;
-	u32 val;
+	//u32 val;
 
-	port = calloc(1, sizeof(struct __port));
-	if (port == NULL) {
+	__ports = (struct __port *)calloc(4, sizeof(struct __port));
+	if (__ports == NULL) {
 		pr_err("%s: no memory aveilable\n", __func__);
 		return -ENOMEM;
 	}
 
-	port->base = (void *)CONFIG_UART_BASE;;
-	port->dreg = port->base + UART_HEAD0_COM_OFFS + 4 * num;
-	port->num = num;
-	port->txmask = 1 << num;
-	port->rxmask = 1 << (num + 4);
+	for (num = 0; num < CONFIG_UART_CNT; num++) {
+		struct __port *port = get_numbered_port(num);
 
-	mutex_init(&port->rxmutex);
-	mutex_init(&port->txmutex);
-	port->retries = 5;
+		port->base = (void *)CONFIG_UART_BASE;;
+		port->dreg = port->base + UART_HEAD0_COM_OFFS + 4 * num;
+		port->num = num;
+		port->txmask = 1 << num;
+		port->rxmask = 1 << (num + 4);
 
-	__ports[num] = port;
+		init_completion(&port->rxwait);
+		mutex_init(&port->rxmutex);
+		mutex_init(&port->txmutex);
+	}
 
-	/* enable rx */
-	val = readl(port->base + UART_CR_OFFS);
-	val |= port->rxmask;
-	writel(val, port->base + UART_CR_OFFS);
+	/* enable all rx */
+	writel(0xf0, __ports->base + UART_CR_OFFS);
+	request_irq(CONFIG_UART_IRQ, interrupt_rx, __ports);
 
 	return 0;
 }

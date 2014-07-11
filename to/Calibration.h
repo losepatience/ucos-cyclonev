@@ -71,11 +71,11 @@
 #define INTERLEAVE_CALIBRATION	    4
 #define NOZZLE_BIT_DEEP             1  //ricoh use the same data format with epson
 #define NOZZLE_BIT_WIDTH            2
-#elif defined(RICOH_G5_4H)
+#elif defined(RICOH_G5_4H) /*XXX*/
 #define NOZZLE_LINE_COUNT_PER_HEAD	4
 #define NOZZLE_COUNT_PER_LINE       320
 #define NOZZLE_DPI                  150
-#define MAX_HEAD_NUMBER_CALIBRATION 4
+#define MAX_HEAD_NUMBER_CALIBRATION 16/*XXX*/
 #define MAX_GROUP_NUM               4
 #define X_BASE_RES                  (factoryDataEx.m_nXEncoderDPI)
 #define X_NORMAL_RES                  (600)

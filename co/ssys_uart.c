@@ -126,7 +126,7 @@ static int SA_recv_packet(int num)
 	u8 ack[2] = { 0xaa, 0x55 };
 
 	if (SA_find_packet_st(num)) {
-		pr_debug("%s: no packet st has been found!", __func__);
+		pr_debug("%s: no packet st has been found!\n", __func__);
 		return -EAGAIN;
 	}
 
@@ -137,6 +137,11 @@ static int SA_recv_packet(int num)
 	if (cmd[1] == 0x55) {
 		SA_chans[num].txACK = true;
 		return 0;
+	}
+
+	if (fifo_unused(SA_chans[num].rxfifo) < MAX_SAPACKET_LEN) {
+		pr_debug("%s: rxfifo is full!\n", __func__);
+		return -EAGAIN;
 	}
 
 	/* this packet has already received */
@@ -250,7 +255,7 @@ u8 UART_GetCMD(u8 num, u8 *data)
 {
 	mutex_lock(&SA_chans[num].mutex);
 	while (SA_recv_packet(num))
-		;
+		msleep(1);
 	mutex_unlock(&SA_chans[num].mutex);
 
 	fifo_out(SA_chans[num].rxfifo, data, 1);
@@ -276,6 +281,7 @@ u8 UART_SendCMD(u8 num, u8 *data)
 
 	tmp = SA_gen_chksum(buf, 4, SA_chans[num].chkmod, 0);
 	tmp = SA_gen_chksum(src, len, SA_chans[num].chkmod, tmp);
+	buf[2] = tmp;
 
 	mutex_lock(&SA_chans[num].mutex);
 
