@@ -22,6 +22,7 @@
 #define __PLATFORM_H__
 
 #include <asm/types.h>
+#include <stdbool.h>
 #include <ucos_ii.h>
 #include <csp.h>
 
@@ -74,6 +75,7 @@ struct completion {
 
 void init_completion(struct completion *x);
 long wait_for_completion_timeout(struct completion *x, unsigned long timeout);
+bool wait_for_condition(volatile int *x, unsigned long timeout);
 void complete(struct completion *x);
 
 
@@ -104,10 +106,6 @@ void CPU_TS_TmrInit(void);
 u32 CPU_TS_TmrRd(void);
 u64 CPU_TS32_to_uSec(u32 ts_cnts);
 u64 CPU_TS64_to_uSec(u64 ts_cnts);
-int create_timer(timer_t *tmr);
-int del_timer(timer_t *tmr);
-int start_timer(timer_t *tmr);
-int stop_timer(timer_t *tmr);
 
 #endif
 

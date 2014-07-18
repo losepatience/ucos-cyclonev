@@ -1,0 +1,168 @@
+/* ~.~ *-c-*
+ *
+ * Copyright (c) 2013, John Lee <furious_tauren@163.com>
+ * Thu Jul 17 11:35:45 CST 2014
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+ * MA 02111-1307 USA
+ */
+
+/* this is irq from fpga. */
+static void fpga_notify_interrupt(void *arg)
+{
+	/* rFPGA_STATUS is a read-clear register */
+	u32 status = rFPGA_STATUS;
+
+	if (status & rFPGA_STATUS_TOO_MUCH)
+		status_ReportStatus(STATUS_WAR_FPGA_ULTRADATA, STATUS_SET);
+	else if (status & rFPGA_STATUS_TOO_LESS)
+		status_ReportStatus(STATUS_WAR_FPGA_LESSDATA, STATUS_SET);
+	else if (status & rFPGA_STATUS_ERR_CMD)
+		status_ReportStatus(STATUS_ERR_FPGA_WRONGCOMMAND, STATUS_SET);
+	else if (status & rFPGA_STATUS_ERR_STAT)
+		status_ReportStatus(STATUS_ERR_FPGA_WRONGSTATUS, STATUS_SET);
+	else
+		status_ReportStatus(STATUS_ERR_MOTION_SPEED_BAD, STATUS_SET);
+
+}
+
+
+void HugeBuf_CancelJob(void)
+{
+	OS_CPU_SR cpu_sr;
+	INT8U err;
+	INT8U buf[10];
+
+	uv_PrintCancelJob();
+
+	if (LCDMenuConfig.PlateFanMode == PLATEFANMODE_AUTO)
+		ClosePlateFan();
+
+	buf[0] = 2;
+	buf[1] = UART_DSP_STOP_PRINT;
+
+	while (!UART_SendCMD(UART_MOTION_CHANNEL, buf))
+		OSTimeDly(100);
+
+	FPGADMA_stop();
+	USBD_AbortDataRead(USB_OUT_EP);
+	OSTimeDly(1);
+
+	OS_ENTER_CRITICAL();
+
+	USBDMA_manualStop = False;
+	HugeBuf_Reset();
+	HugBuf_InitReceiveSize();
+	HugeBuf_StartOneReceive();
+	OS_EXIT_CRITICAL();
+
+	status_ReportStatus(STATUS_NO_CANCEL, STATUS_SET);
+
+
+	g_yEncoderInf.bandIndex = -1;
+	g_yEncoderInf.encoderPos = 0;
+	g_yEncoderInf.bandY = 0;
+	g_yEncoderInf.nextBandY = 0;
+	g_yEncoderInf.bandResY = 0;
+	g_yEncoderInf.fStepTotal = 0;
+
+	g_adjustInf.passStepValue = 0;
+	g_adjustInf.passAdvance = 0;
+	g_adjustInf.feedBackY = 0;
+	g_adjustInf.bidirectionValue = 0;
+
+	cur_step_distance = 0;
+
+	/* Go home */
+	move_dir = 2;
+	move_distance = 0;
+	move_type = 0;
+	status_ReportStatus(CMD_START_MOVE, STATUS_SET);
+	OSTimeDly(2);
+
+	/* Waiting moving flag cleared */
+	OSFlagPend(status_FLAG_GRP, STATUS_MOVING | CMD_START_MOVE,
+			OS_FLAG_WAIT_CLR_ALL, 0, &err);
+
+#ifdef MANUFACTURER_DYSS
+	if ((LCDMenuConfig_EX.b_Sundry & DYSS_Y_LIMIT) != 0) {
+		move_dir = 3;	/* Go home */
+		move_distance = 0;
+		move_type = 0;
+		status_ReportStatus(CMD_START_MOVE, STATUS_SET);
+		OSTimeDly(2);
+
+		/* Waiting moving flag cleared */
+		OSFlagPend(status_FLAG_GRP, STATUS_MOVING,
+				OS_FLAG_WAIT_CLR_ANY, 0, &err);
+	}
+#endif
+
+
+	if ((rFPGA_STATUS & 0x7) == 4)
+		rFPGA_COMMAND = rFPGA_COMMAND_END_SSHAKE;
+
+	DisableFPGAPosiIT(0);
+
+	if (factoryData.HeadType == HeadNo_Ricoh_Gen4_64Pin
+		|| factoryData.HeadType == HeadNo_Ricoh_Gen4_G4
+		|| factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L
+		|| factoryData.HeadType == HeadNo_Ricoh_Gen5_2C_100Pin) {
+		buf[0] = 2;
+		buf[1] = UART_HEAD_EPSON_JOBEND;
+		while (!UART_SendCMD(UART_HEAD_CHANNEL, buf))
+			OSTimeDly(10);
+	}
+
+	g_shakehandPassed = False;
+
+	HugeBufLastBandSize = 0;
+
+	OSTimeDly(10);
+}
+
+
+#ifndef CONVERSION_BOARD	/* fpga 资源不够 命令被删除 */
+void FPGA_START_RICOH_AUTO_C(void )
+{
+	rFPGA_COMMAND = rFPGA_COMMAND_BGN_AUTO_C_1;
+}
+#endif
+
+void FPGA_START_FLASH_RICOH(INT8U DataMask)
+{
+	INT8U flash_level = 0;
+	if (0 <= cleanparam_EPSON_ALLWIN.Config[2].FlashFreqInterval
+		&&cleanparam_EPSON_ALLWIN.Config[2].FlashFreqInterval <= 5)
+		flash_level = cleanparam_EPSON_ALLWIN.Config[2].FlashFreqInterval; 
+	else
+		flash_level = 0;
+#ifdef MANUFACTURER_DYSS	
+		flash_level = 1;
+#endif
+
+	if(DataMask != 0)
+		rFPGA_COMMAND = rFPGA_COMMAND_BEGIN_FLASH
+			| 0xFF | (flash_level << 8);
+	else
+		rFPGA_COMMAND = rFPGA_COMMAND_BEGIN_FLASH;
+}
+
+void FPGA_STOP_FLASH(void)
+{
+
+	rFPGA_COMMAND = rFPGA_COMMAND_END_FLASH;
+}
+

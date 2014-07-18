@@ -65,10 +65,8 @@
 //         Headers
 //------------------------------------------------------------------------------
 
-#ifdef BYHX_ASystem_Core 
 #ifndef __ASSEMBLY__
 #include "printers.h"
-#endif
 #endif
 //------------------------------------------------------------------------------
 //         Definitions
@@ -88,10 +86,6 @@
 
 /// Name of the board.
 #define BOARD_NAME              "BYHX-ASystem-Core"
-#ifndef BYHX_ASystem_CoreBoard
-/// Board definition.
-#define BYHX_ASystem_CoreBoard
-#endif
 
 //#define HW_TO_BE_DEFINED
 

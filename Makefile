@@ -11,10 +11,10 @@ OBJCOPY = $(CROSS_COMPILE)objcopy
 gccincdir := $(shell $(CC) -print-file-name=include)
 libgcc_a := $(shell $(CC) -print-libgcc-file-name)
 
-CPPFLAGS := -g -fno-common -ffixed-r8
-CPPFLAGS += -fno-builtin -ffreestanding -nostdinc -isystem $(gccincdir) -pipe
-CPPFLAGS += -marm -mno-thumb-interwork -march=armv7-a -mno-unaligned-access
-CPPFLAGS += -mfloat-abi=softfp -mfpu=neon
+G_FLAGS := -g -fno-common -ffixed-r8
+G_FLAGS += -fno-builtin -ffreestanding -nostdinc -isystem $(gccincdir) -pipe
+G_FLAGS += -marm -mno-thumb-interwork -march=armv7-a -mno-unaligned-access
+G_FLAGS += -mfloat-abi=softfp -mfpu=neon
 # =================================================================
 # -nostdinc: Do not search the standard system directories
 # for header files. Only the directories you have specified
@@ -27,23 +27,38 @@ CPPFLAGS += -mfloat-abi=softfp -mfpu=neon
 # =================================================================
 
 ifeq ($(PLATFORM),)
-CPPFLAGS += -Dat91sam9g45 -DBYHX_ASystem_Core
-CPPFLAGS += -DACTIVE_LANGUAGE_LIMIT -DHEAD_RICOH_G4
-CPPFLAGS += -DRICOH_CLEAN_PRESS -DEPSON_LCD -DLCD_MODULE_ZX19264M1A -DHEAD_LEVEL_SENSOR
-CPPFLAGS += -DTRACE_LEVEL=0 -DSUPPORT_HEAD_HEATER
-CPPFLAGS += -DRICOH_VSD2 -DUV_PRINTER -DCOORD_NEW_UV -DWAVE_SET_FUN
-CPPFLAGS += -DRIPSTAR_FLAT_EX -DOLD_UV -DRICOH_G5_4H -DFUNC_MAINTAIN
-CPPFLAGS += -DIIC_Key_Board_LCD -DEPSON_BOTTOM_BOARD_V2 -DFPGA_MAINTAIN_COOR
+SPECS := ACTIVE_LANGUAGE_LIMIT
+SPECS += EPSON_LCD
+SPECS += LCD_MODULE_ZX19264M1A
+SPECS += HEAD_LEVEL_SENSOR
+SPECS += TRACE_LEVEL=0
+SPECS += SUPPORT_HEAD_HEATER
+SPECS += RICOH_VSD2
+SPECS += UV_PRINTER
+SPECS += WAVE_SET_FUN
+SPECS += RIPSTAR_FLAT_EX OLD_UV
+SPECS += COORD_NEW_UV		# confirm
 
-CPPFLAGS += -DMANUFACTURER_DYSS	-DDYSS_UV_CLEAN #-DSUPPORT_MOTOR_CONTROL
+# -----------------------------
+# board specification
+# -----------------------------
+SPECS += IIC_Key_Board_LCD
 
-CPPFLAGS += -DnoDEBUG -D__noDEBUG_WITH_IDE -D__noDEBUG_MOTION
-CPPFLAGS += -DnoSUPPORT_MOTOR_CONTROL -DnoEPSON_CLEAN_UPDOWN_TATE_8H_RICOH -DnoEPSON_CLEAN_INTEGRATE_2
-CPPFLAGS += -DnoEPSON_CLEAN_UPDOWN -DnoSUPPORT_MOTOR_CONTROL_ONLY_STEP
+SPECS += HEAD_RICOH_G4
+SPECS += RICOH_G5_4H
+
+SPECS += EPSON_BOTTOM_BOARD_V2	# a new one
+# -----------------------------
+
+SPECS += FPGA_MAINTAIN_COOR
+SPECS += RICOH_CLEAN_PRESS	# big headboard clean manually
+
+#SPECS += SUPPORT_MOTOR_CONTROL
+SPECS += MANUFACTURER_DYSS	# a new one
+G_FLAGS += $(SPECS:%=-D%)
 endif
 
-#CFLAGS := $(CPPFLAGS) -Wall -Wstrict-prototypes -fno-stack-protector
-CFLAGS := $(CPPFLAGS) -Wall -fno-stack-protector
+CFLAGS := $(G_FLAGS) -Wall -Wstrict-prototypes -fno-stack-protector
 CFLAGS += -std=gnu99 -fgnu89-inline 
 ############################################################
 # User config section
@@ -71,7 +86,7 @@ INCDIRS := $(sort $(INCDIRS))
 INCDIRS += $(TOPDIR)/include $(TOPDIR)/include/Ripstar 
 INCDIRS += $(TOPDIR)/APP $(TOPDIR)/to $(TOPDIR)/to/porting
 
-CS_DIRS := $(TOPDIR)/APP $(TOPDIR)/OS $(TOPDIR)/lib $(TOPDIR)/co #$(TOPDIR)/to
+CS_DIRS := $(TOPDIR)/APP $(TOPDIR)/OS $(TOPDIR)/lib $(TOPDIR)/to
 CS_SRCS := $(shell find $(CS_DIRS) -name "*.S" -o -name "*.c")
 CS_OBJS := $(CS_SRCS:%.c=%.o)
 CS_OBJS := $(CS_OBJS:%.S=%.o)
@@ -96,7 +111,7 @@ LWIP_PORT_OBJS := $(addprefix $(LWIPDIR)/port/,$(LWIP_PORT_OBJS))
 LWIP_PORT_OBJS += $(LWIPDIR)/netif/etharp.o
 
 LWIP_OBJS := $(LWIP_CORE_OBJS) $(LWIP_API_OBJS) $(LWIP_IPV4_OBJS) $(LWIP_PORT_OBJS)
-CS_OBJS += $(LWIP_OBJS)
+#CS_OBJS += $(LWIP_OBJS)
 
 #####################################################################
 # All objects end

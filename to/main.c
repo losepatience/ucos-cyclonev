@@ -50,8 +50,6 @@ extern volatile INT8U nextband_autoClean;
 #if EPSON_CLEAN_UPDOWN
 #include "math.h"            
 #endif
-#include "pmc/pmc.h"
-#include "pio/pio_it.h"
 #include <board_memories.h>
 
 #if defined( HEAD_EPSON_GEN5) || defined(HEAD_RICOH_G4)
@@ -898,10 +896,6 @@ void TaskStart (void *data)
 		DYSS_CLEAN_TURN_MOTOR_INIT();
 		DYSS_CLEAN_MOVEING_MOTOR_INIT();
 #endif				  
-#ifdef SUPPORT_MOTOR_CONTROL_ONLY_STEP 
-		while(!MOTION_ZC_INIT_OK)
-			OSTimeDly(10);
-#endif		
 		//Waiting Head board and Motion initial first stage
 
 		retryCnt = 1000;

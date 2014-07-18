@@ -15,8 +15,6 @@
 #include "uv.h"
 #endif
 
-#include "pio/pio_it.h"
-
 extern INT32U cur_step_distance;
 /******************************************************************************
 *	Process DMA transfer EP2 FIFO => SDRAM									  *
@@ -270,59 +268,6 @@ void FPGADMA_Done_Interrupt(void)
 	}
 }
 
-#ifdef HEAD_EPSON_GEN5	
-#define FPGA_FLASH_DELAY_TIME 45
-void FPGA_START_FLASH(INT16U interval_us, INT8U HeadMask)
-{
-	INT16U mask;
-	if(interval_us < 75)
-		interval_us = 75;
-	interval_us -= FPGA_FLASH_DELAY_TIME;
-	if(interval_us > 0x3FF)
-		interval_us = 0x3FF;
-#ifndef EPSON_BOTTOM_BOARD_V3		
-	mask = (HeadMask & 0xF)<<8;
-	rFPGA_COMMAND = (0x1000 | mask | ((interval_us/4)&0xFF));
-#else
-	mask = (HeadMask & 0x3)<<10;
-	rFPGA_COMMAND = (0x1000 | mask | (interval_us&0x3FF));
-#endif	
-}
-
-void FPGA_START_FLASH_ALLWIN(INT16U interval_us, INT8U HeadMask)
-{
-	INT16U mask;
-	if(interval_us > FPGA_FLASH_DELAY_TIME)		
-		interval_us -= FPGA_FLASH_DELAY_TIME;
-	
-	if(interval_us < 100)
-		interval_us = 100;
-	else if(interval_us >1000)
-		interval_us = 1000;
-	
-#ifndef EPSON_BOTTOM_BOARD_V3		
-	mask = (HeadMask & 0xF)<<8;
-	rFPGA_COMMAND = (rFPGA_COMMAND_BEGIN_FLASH | mask | ((interval_us/4)&0xFF));
-#else
-	mask = (HeadMask & 0x3)<<10;
-	rFPGA_COMMAND = (rFPGA_COMMAND_BEGIN_FLASH | mask | (interval_us&0x3FF));
-#endif	
-}
-
-void FPGA_STOP_FLASH()
-{
-	rFPGA_COMMAND = 0x0110;
-}
-
-void FPGA_STOP_FLASH_Safe()
-{
-	rFPGA_COMMAND = 0x0110;
-	OSTimeDly(10);
-	FPGA_START_FLASH(200, 0);
-	OSTimeDly(10);
-	FPGA_STOP_FLASH();
-}
-#elif defined(HEAD_RICOH_G4)
 
 #ifndef CONVERSION_BOARD //fpga资源不够 命令被删除
 void FPGA_START_RICOH_AUTO_C()
@@ -353,4 +298,3 @@ void FPGA_STOP_FLASH()
 	rFPGA_COMMAND = rFPGA_COMMAND_END_FLASH;
 }
 
-#endif

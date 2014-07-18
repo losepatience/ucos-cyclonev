@@ -18,13 +18,7 @@
 #include "usb/device/core/usbd.h"
 #endif
 
-#include "irq/irq.h"
-
 #include "display.h"
-
-#ifdef HEAD_RICOH_G4
-extern Pin Pin_FPGA_nHalfEmpty;
-#endif
 
 #if (defined( MANUFACTURER_TATE_EPSON )||defined( A1802 )||defined(MANUFACTURER_HUMAN_EPSON))&&!defined( HEAD_RICOH_G4 )
 #define VSD2TOVSD3
@@ -4887,10 +4881,6 @@ void FillFireBuff_1H(INT8U LineIndex, INT8U *pFireBuff, INT8U DotSize, INT16U st
 				break;
 			} 
 		}
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
 		INT16U k=0;
 		for(i=0; i< endNozzle - startNozzle; i++)
 		{
@@ -4944,10 +4934,6 @@ void FillFireBuff_1H(INT8U LineIndex, INT8U *pFireBuff, INT8U DotSize, INT16U st
 			secondMask = 1<<LineIndex;
 			break;
 		}
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
 		pFireBuff_word += startNozzle;
 
 		if(RIPSTAR_PRT_BIT == 2)
@@ -5028,10 +5014,6 @@ void FillFireBuff_2H(INT8U LineIndex, INT8U *pFireBuff, INT8U DotSize, INT16U st
 				break;
 			} 
 		}
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
 		INT16U k=0;
 		for(i=0; i< endNozzle - startNozzle; i++)
 		{
@@ -5082,10 +5064,6 @@ void FillFireBuff_2H(INT8U LineIndex, INT8U *pFireBuff, INT8U DotSize, INT16U st
 			secondMask = 1<<LineIndex;
 			break;
 		}
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
 		pFireBuff_INT16U += startNozzle;
 		if(RIPSTAR_PRT_BIT == 2)
 		{
@@ -5164,10 +5142,6 @@ void FillFireBuff_4H(INT8U LineIndex, INT8U *pFireBuff, INT8U DotSize, INT16U st
 				break;
 			}   
 		}
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
 		INT16U k=0;
 		for(i=0; i< endNozzle - startNozzle; i++)
 		{
@@ -5227,12 +5201,6 @@ void FillFireBuff_4H(INT8U LineIndex, INT8U *pFireBuff, INT8U DotSize, INT16U st
 			for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
 		}      
 #endif
-
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
-
 
 		pFireBuff_INT32U += startNozzle;
 		if(RIPSTAR_PRT_BIT == 2)
@@ -5311,10 +5279,6 @@ void FillFireBuff_1H_Nozzle(INT8U LineIndex, INT16U NozzleIndex, INT8U *pFireBuf
 				break;
 			} 
 		}
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
 		if(LineIndex%2==1)
 		{
 			
@@ -5359,10 +5323,6 @@ void FillFireBuff_1H_Nozzle(INT8U LineIndex, INT16U NozzleIndex, INT8U *pFireBuf
 			secondMask = 1<<LineIndex;
 			break;
 		}
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
 		if(RIPSTAR_PRT_BIT == 2)
 		{
 			*(pFireBuff_INT16U+NozzleIndex) &= ~bitMask;
@@ -5430,10 +5390,6 @@ void FillFireBuff_2H_Nozzle(INT8U LineIndex, INT16U NozzleIndex, INT8U *pFireBuf
 				break;
 			} 
 		}
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
 		if(LineIndex%2==1)
 		{
 			
@@ -5478,10 +5434,6 @@ void FillFireBuff_2H_Nozzle(INT8U LineIndex, INT16U NozzleIndex, INT8U *pFireBuf
 			secondMask = 1<<LineIndex;
 			break;
 		}
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
 		if(RIPSTAR_PRT_BIT == 2)
 		{
 			*(pFireBuff_INT16U + NozzleIndex) &= ~bitMask;
@@ -5549,11 +5501,6 @@ void FillFireBuff_4H_Nozzle(INT8U LineIndex, INT16U NozzleIndex, INT8U *pFireBuf
 		}
 		
 		
-#ifdef HEAD_RICOH_G4
-		while (!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
-
 		if(LineIndex%2==1)
 		{
 			
@@ -5609,11 +5556,6 @@ void FillFireBuff_4H_Nozzle(INT8U LineIndex, INT16U NozzleIndex, INT8U *pFireBuf
 		}      
 #endif
 
-#ifdef HEAD_RICOH_G4
-		while(!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
-#endif
-		
 		if(RIPSTAR_PRT_BIT == 2)
 		{
 			*(pFireBuff_INT32U + NozzleIndex) &= ~bitMask;
@@ -10039,11 +9981,6 @@ void My_memset(INT8U * s, INT8U b, int size)
 				//delay.
 				for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
 			}
-#endif
-
-#ifdef HEAD_RICOH_G4
-		while(!PIO_Get(&Pin_FPGA_nHalfEmpty) && rFPGA_COMMAND == rFPGA_COMMAND_BEGIN_BAND )
-						for(my_dummy_tick=0; my_dummy_tick<0x1000; my_dummy_tick++);
 #endif
 
 		}

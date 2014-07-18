@@ -5,8 +5,6 @@
 #include "keylcd.h"
 #include "display.h"
 #include "miscellance.h"
-#include "pio/pio.h"
-#include "pio/pio_it.h"
 
 /*******************************************************************************************************
 *      							LCD Diaplay														   *	

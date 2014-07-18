@@ -194,15 +194,25 @@ static  void  App_TaskStart (void *p_arg)
 	CPU_IntDisMeasMaxCurReset();
 #endif
 
-
+	device_init();
 #if 0
 #include <dwgpio.h>
-	PIO_InitializeInterrupts(1);
-	Pin pin = {1 <<12, DW_BASE_PIOB, DW_ID_PIOB, PIO_OUTPUT_0, PIO_DEFAULT};
+	static Pin pin = {1 << 0, DW_BASE_PIOD, DW_ID_PIOD, PIO_INPUT, PIO_DEFAULT,
+		{
+			1 << 0,
+			1 << 0,
+			1 << 0,
+		},
+	};
+
 	PIO_Configure(&pin, 1);
+	void lock(const Pin  *arg);
+	PIO_ConfigureIt(&pin, lock);
+	PIO_EnableIt(&pin);
+
+
 #endif
 
-	device_init();
 #include <string.h>
 	char *wrbuf = "good good study!";
 	char rdbuf[32];
@@ -218,8 +228,16 @@ static  void  App_TaskStart (void *p_arg)
 	//flash_write(wrbuf, 0, len);
 	flash_read(rdbuf, 0, len);
 
+	dma_init();
+	int rval = dma_receive(0x1000000, 64 * 4);
+	while (1);
+#if 0
 #include <old_apis.h>
 	UART_Init(0);
+	//while (1);
+	memset(rdbuf, 0, len);
+	memset(rdbuf, 0, len);
+	
 	UART_GetCMD(0, rdbuf);
 	UART_SetCheckModel(0, 2);
 
@@ -232,6 +250,8 @@ static  void  App_TaskStart (void *p_arg)
 
 	while (1)
 		UART_SendCMD(0, cmd);
+
+#endif				
 	//lwip_entry(NULL);
 
 
@@ -252,17 +272,6 @@ static  void  App_TaskStart (void *p_arg)
 			OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);/* Enable stack checking + clear stack  */
 	OSTaskNameSet(USB_TASK_PRIO, (INT8U *)"USB", &err);
 #endif
-#if 0
-	cy_uart_init();
-	int retdd = cy_uart_tx(0, msbuf, 120);
-	retdd = cy_uart_rx(0, sbbuf, 120);
-#endif
-#if 0
-	lwip_entry(NULL);
-	void lock(void *arg);
-	request_irq(74, lock, NULL);
-	int abc = 1;
-#endif
 	while (DEF_TRUE) {                                          /* Task body, always written as an infinite loop.       */
 
 		//gpio_direction_output(41, abc); //led0
@@ -272,9 +281,11 @@ static  void  App_TaskStart (void *p_arg)
 	}
 }
 
-#if 0
-void lock(void *arg)
+#if 1
+void lock(const Pin  *arg)
 {
-	printf("wokao \n");
+	static int val = 0;
+	val = !val;
+	//printf("wokao \n");
 }
 #endif

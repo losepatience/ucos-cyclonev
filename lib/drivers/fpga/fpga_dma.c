@@ -32,13 +32,13 @@
 #define CONFIG_DMA_BASE	(SOCFPGA_LWH2F_ADDRESS + 0x200)
 #define CONFIG_DMA_IRQ		74
 
-#define DMA_CR_OFFS		0x4
-#define DMA_IR_OFFS		0x8
-#define DMA_IER_OFFS		0xc
+#define DMA_CR_OFFS		0x04
+#define DMA_IR_OFFS		0x08
+#define DMA_IER_OFFS		0x0C
 #define DMA_IMR_OFFS		0x10
 #define DMA_CIR_OFFS		0x14
 #define DMA_WADDR_OFFS		0x18
-#define DMA_WLEN_OFFS		0x18
+#define DMA_WLEN_OFFS		0x1C
 #define DMA_RADDR_OFFS		0x20
 #define DMA_RLEN_OFFS		0x24
 
@@ -140,5 +140,6 @@ int dma_init(void)
 	init_completion(&__dma->txwait);
 
 	request_irq(__dma->irq, dma_irq_handler, __dma);
+	writel(2, __dma->base +DMA_IER_OFFS);
 	return 0;
 }

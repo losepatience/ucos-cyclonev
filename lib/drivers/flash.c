@@ -126,96 +126,21 @@ int flash_read(char *des, ulong addr, ulong cnt)
 	return cnt;
 }
 
-static void tmr_callback(void *tmr, void *arg)
-{
-	struct flash *flash = &__flash;
-	unsigned long flags = 0;
-
-	spin_lock_irqsave(&flash->lock, flags);
-	if (flash->dirty) {
-		write_sector(flash, flash->env_buffer, flash->env_offset);
-		flash->dirty = 0;
-	}
-	stop_timer(&flash->timer);
-	spin_unlock_irqrestore(&flash->lock, flags);
-}
-
-void sync(void)
-{
-	tmr_callback(NULL, NULL);
-}
-
-int flash_readenv(char *des, ulong offs, ulong cnt)
-{
-	unsigned long flags = 0;
-	struct flash *flash = &__flash;
-
-	if (offs + cnt > flash->sector_size)
-		return -EINVAL;
-
-	spin_lock_irqsave(&flash->lock, flags);
-	memcpy(des, flash->env_buffer + offs, cnt);
-	spin_unlock_irqrestore(&flash->lock, flags);
-	return cnt;
-}
-
-int flash_saveenv(char *src, ulong offs, ulong cnt)
-{
-	unsigned long flags = 0;
-	struct flash *flash = &__flash;
-
-	if (offs + cnt > flash->sector_size)
-		return -EINVAL;
-
-	spin_lock_irqsave(&flash->lock, flags);
-	memcpy(flash->env_buffer + offs, src, cnt);
-	flash->dirty = 1;
-	start_timer(&flash->timer);
-	spin_unlock_irqrestore(&flash->lock, flags);
-	return cnt;
-}
-
 int flash_init(void)
 {
 	struct flash *flash = &__flash;
-	int rval;
 
 	flash->chip = spi_flash_probe(0, 0, 50000000, SPI_CPOL | SPI_CPHA);
 	if (flash->chip == NULL)
 		return -ENODEV;
 
+	flash->wrbuf = (char *)calloc(1, flash->sector_size);
+	if (flash->wrbuf == NULL) {
+		spi_flash_free(flash->chip);
+		return -ENOMEM;
+	}
+
 	flash->sector_size = flash->chip->sector_size;
 
-	/* use the last sector to save env */
-	flash->env_offset = flash->chip->size - flash->sector_size;
-	flash->dirty = 0;
-
-	flash->wrbuf = (char *)calloc(2, flash->sector_size);
-	if (flash->wrbuf == NULL) {
-		rval = -ENOMEM;
-		goto err_malloc;
-	}
-	flash->env_buffer = flash->wrbuf + flash->sector_size;
-
-	strncpy(flash->timer.name, "spi_timer", sizeof(flash->timer.name));
-	flash->timer.period = 10;	/* 100ms * 10 */
-	flash->timer.callback = tmr_callback;
-
-	rval = create_timer(&flash->timer);
-	if (rval)
-		goto err_create_timer;
-
-	rval = read_sector(flash, flash->env_buffer, flash->env_offset);
-	if (rval)
-		goto err_read;
-
 	return 0;
-
-err_read:
-	del_timer(&flash->timer);
-err_create_timer:
-	free(flash->wrbuf);
-err_malloc:
-	spi_flash_free(flash->chip);
-	return rval;
 }

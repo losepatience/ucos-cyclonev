@@ -38,7 +38,6 @@ int device_init(void)
  * APIS for 24c32
  * ------------------------------------------------------------------------
  */
-#ifdef WITH_EEPROM
 u8 IIC_WriteEEPRom(u16 addr, u8 *buf, u8 *len)
 {
 	ssize_t l;
@@ -88,55 +87,6 @@ u8 IIC_ReadEEPRom_Ex(u16 addr, u8 *buf, u16 *len)
 	*len = l;
 	return true;
 }
-#else
-u8 IIC_WriteEEPRom(u16 addr, u8 *buf, u8 *len)
-{
-	ssize_t l = *len;
-
-	l = flash_saveenv((char *)buf, addr, l);
-	if (l <= 0)
-		return false;
-
-	*len = l;
-	return true;
-}
-
-u8 IIC_WriteEEPRom_Ex(u16 addr, u8 *buf, u16 *len)
-{
-	ssize_t l = *len;
-
-	l = flash_saveenv((char *)buf, addr, l);
-	if (l <= 0)
-		return false;
-
-	*len = l;
-	return true;
-}
-
-u8 IIC_ReadEEPRom(u16 addr, u8 *buf, u8 *len)
-{
-	ssize_t l = *len;
-
-	l = flash_readenv((char *)buf, addr, l);
-	if (l <= 0)
-		return false;
-
-	*len = l;
-	return true;
-}
-
-u8 IIC_ReadEEPRom_Ex(u16 addr, u8 *buf, u16 *len)
-{
-	ssize_t l = *len;
-
-	l = flash_readenv((char *)buf, addr, l);
-	if (l <= 0)
-		return false;
-
-	*len = l;
-	return true;
-}
-#endif
 
 #ifndef IIC_MAX11614_ADDR
 # define IIC_MAX11614_ADDR	0x33
@@ -223,7 +173,7 @@ float IIC_Read_Max11614(u8 Flag)
  * APIS for led
  * ------------------------------------------------------------------------
  */
-#if 0
+#if 1
 #include <dwgpio.h>
 
 static u8 writebuf[256];

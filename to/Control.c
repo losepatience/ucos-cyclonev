@@ -12,8 +12,6 @@
 #include "uv.h"
 
 #include "pio/pio.h"
-#include "pmc/pmc.h"
-#include "tsadcc/tsadcc.h"
 
 #ifdef PUMP_INTERMITTENT
 #define PUMP_PERIOD 300			//泵墨周期
@@ -193,42 +191,42 @@ extern void PUMP_OPEN(INT8U mask);
 #if !(defined(HEAD_RICOH_G4)||defined(EPSON_4H))&&(defined(MB_LEVEL_SENSOR)||defined(HEAD_LEVEL_SENSOR))
 #define PUMP_K_CLOSE() {\
 	PIO_Set(&InkSupplyCtrl3Pin);\
-		status_ReportStatus(STATUS_WAR_PUMP_BLACK, STATUS_CLR);\
+	status_ReportStatus(STATUS_WAR_PUMP_BLACK, STATUS_CLR);\
 }
 
 #define PUMP_C_CLOSE() {\
 	PIO_Set(&InkSupplyCtrl6Pin);\
-		status_ReportStatus(STATUS_WAR_PUMP_CYAN, STATUS_CLR);\
+	status_ReportStatus(STATUS_WAR_PUMP_CYAN, STATUS_CLR);\
 }
 
 #define PUMP_M_CLOSE() {\
 	PIO_Set(&InkSupplyCtrl5Pin);\
-		status_ReportStatus(STATUS_WAR_PUMP_MAGENTA, STATUS_CLR);\
+	status_ReportStatus(STATUS_WAR_PUMP_MAGENTA, STATUS_CLR);\
 }
 
 #define PUMP_LC_CLOSE() {\
 	PIO_Set(&InkSupplyCtrl2Pin);\
-		status_ReportStatus(STATUS_WAR_PUMP_LIGHTCYAN, STATUS_CLR);\
+	status_ReportStatus(STATUS_WAR_PUMP_LIGHTCYAN, STATUS_CLR);\
 }
 
 #define PUMP_LM_CLOSE() {\
 	PIO_Set(&InkSupplyCtrl1Pin);\
-		status_ReportStatus(STATUS_WAR_PUMP_LIGHTMAGENTA, STATUS_CLR);\
+	status_ReportStatus(STATUS_WAR_PUMP_LIGHTMAGENTA, STATUS_CLR);\
 }
 
 #define PUMP_Y_CLOSE() {\
 	PIO_Set(&InkSupplyCtrl4Pin);\
-		status_ReportStatus(STATUS_WAR_PUMP_YELLOW, STATUS_CLR);\
+	status_ReportStatus(STATUS_WAR_PUMP_YELLOW, STATUS_CLR);\
 }
 
 #define PUMP_7_CLOSE() {\
 	PIO_Set(&InkSupplyCtrl7Pin);\
-		status_ReportStatus(STATUS_WAR_PUMP_SPOTCOLOR1, STATUS_CLR);\
+	status_ReportStatus(STATUS_WAR_PUMP_SPOTCOLOR1, STATUS_CLR);\
 }
 
 #define PUMP_8_CLOSE() {\
 	PIO_Set(&InkSupplyCtrl8Pin);\
-		status_ReportStatus(STATUS_WAR_PUMP_SPOTCOLOR2, STATUS_CLR);\
+	status_ReportStatus(STATUS_WAR_PUMP_SPOTCOLOR2, STATUS_CLR);\
 }
 
 #define PUMP_8_OPEN()  {\
@@ -313,16 +311,16 @@ INT8U ResetHeaterInfo()
 {
 	HeaterInfo.len = sizeof(HeaterInfo);
 	HeaterInfo.version = HEATER_INFO_VERSION;
-	
+
 	HeaterInfo.HeaterOnMask = 0; //bit 0 is pre heater, bit 1 is middle heater, bit 2 is post heater.
 	HeaterEnable[HEATER_PRE_INDEX] = False;
 	HeaterEnable[HEATER_MIDDLE_INDEX] = False;
 	HeaterEnable[HEATER_POST_INDEX] = False;
-	
+
 	HeaterInfo.TargetTemp[HEATER_PRE_INDEX] = 40;
 	HeaterInfo.TargetTemp[HEATER_MIDDLE_INDEX] = 40;
 	HeaterInfo.TargetTemp[HEATER_POST_INDEX] = 40;
-	
+
 	//for WJ1545
 	//    HeaterInfo.TempOffset[HEATER_PRE_INDEX] = -6;
 	//    HeaterInfo.TempOffset[HEATER_MIDDLE_INDEX] = -5.5;
@@ -336,14 +334,14 @@ INT8U ResetHeaterInfo()
 	// HeaterInfo.ResistanceOffset[HEATER_PRE_INDEX] = 27.4 - 33.9; //only measure pre heater.
 	// HeaterInfo.ResistanceOffset[HEATER_MIDDLE_INDEX] = 27.4 - 33.9;
 	//  HeaterInfo.ResistanceOffset[HEATER_POST_INDEX] = 27.4 - 33.9;
-	
+
 	HeaterInfo.adcRefV = 3.3;  //3.3V
 	HeaterInfo.adcSharedResistance[HEATER_PRE_INDEX] = 120;
 	HeaterInfo.adcSharedResistance[HEATER_MIDDLE_INDEX] = 120;
 	HeaterInfo.adcSharedResistance[HEATER_POST_INDEX] = 120;
 	HeaterInfo.adcSharedResistance[TMP_ENVIRONMENT_INDEX] = 120;
 	//		thermistorR = (Vref*data/0x3FF*120)/(temp_Vref - Vref*data/0x3FF);
-	
+
 	return True;
 }
 
@@ -352,30 +350,30 @@ INT8U ReadHeaterInfo()
 	INT8U err;
 	INT16U length;
 	EPM_Head head;
-	
+
 	length = sizeof(struct sHeaterInfo) + sizeof(EPM_Head);
 	if(length > EPR_HEATER_PARAM_SIZE)
 		return False;
-	
+
 	if(!IIC_ReadEEPRom_Head(EPR_HEATER_PARAM_OFFSET, &head))
 	{
 		return False;
 	}
-	
+
 	memset((void*)&HeaterInfo, 0, sizeof(struct sHeaterInfo));
 	if(head.flag == HEATER_INFO_FLAG)
 	{
 		if(!IIC_ReadEEPRom_Struct(EPR_HEATER_PARAM_OFFSET + sizeof(EPM_Head), 
-								  (INT8U *)&HeaterInfo, sizeof(struct sHeaterInfo), &head))
+					(INT8U *)&HeaterInfo, sizeof(struct sHeaterInfo), &head))
 		{
 			return False;
 		}
-		
+
 		if( HeaterInfo.len != sizeof(struct sHeaterInfo) || HeaterInfo.version != HEATER_INFO_VERSION)
 		{
 			HeaterInfo.len = sizeof(struct sHeaterInfo);
 			HeaterInfo.version = HEATER_INFO_VERSION;
-			
+
 			return SaveHeaterInfo();
 		}
 	}
@@ -384,7 +382,7 @@ INT8U ReadHeaterInfo()
 		ResetHeaterInfo();
 		return SaveHeaterInfo();
 	}
-	
+
 	return True;
 }
 
@@ -392,7 +390,7 @@ INT8U SaveHeaterInfo()
 {
 	INT8U ret = True;
 	INT16U len = sizeof(struct sHeaterInfo);
-	
+
 	EPM_Head head = 
 	{
 		HEATER_INFO_FLAG,
@@ -400,10 +398,10 @@ INT8U SaveHeaterInfo()
 		sizeof(struct sHeaterInfo) + sizeof(EPM_Head),
 		0
 	};
-	
+
 	CalcCheckSum((INT8U*)&HeaterInfo, &head);
 	ret = IIC_WriteEEPRom_Head(EPR_HEATER_PARAM_OFFSET, &head);
-	
+
 	ret &= IIC_WriteEEPRom_Ex(EPR_HEATER_PARAM_OFFSET + sizeof(EPM_Head), (INT8U *)&HeaterInfo, &len);
 	return ret;
 }
@@ -437,15 +435,15 @@ INT8U Heater_Init()
 #else
 		PMC_EnablePeripheral(AT91C_ID_TSADC);
 		AT91C_BASE_TSADC->TSADC_WPMR = 0x54534100;
-		
+
 		TSADCC_SetOperatingMode(AT91C_TSADC_TSAMOD_ADC_ONLY_MODE);
 		TSADCC_SetLowResolution(False);
 		TSADCC_SetSleepMode(False);
 		TSADCC_SetPenDetect(False);
 		AT91C_BASE_TSADC->TSADC_MR = ((  AT91C_BASE_TSADC->TSADC_MR & ~AT91C_TSADC_PRESCAL) | (15 << 8)) |  //MCK/32,about 4MHz.
 			((  AT91C_BASE_TSADC->TSADC_MR & ~AT91C_TSADC_STARTUP) | (8 << 16)) | //8 clock, about 2us.
-				((  AT91C_BASE_TSADC->TSADC_MR & ~AT91C_TSADC_SHTIM) | (8 << 24)); //8 clock, about 2us.
-		
+			((  AT91C_BASE_TSADC->TSADC_MR & ~AT91C_TSADC_SHTIM) | (8 << 24)); //8 clock, about 2us.
+
 		AT91C_BASE_TSADC->TSADC_WPMR = 0x54534101;
 #endif
 		PIO_Configure(&HeaterPrePin, PIO_LISTSIZE(HeaterPrePin));
@@ -472,7 +470,7 @@ INT8U Menu_SetHeaterPre(void * pData, int Index)
 {
 	if(pData == (void *)-1)
 		return True;
-	
+
 	if(Index)
 	{
 		HeaterInfo.HeaterOnMask |= 1; //bit 0 is pre heater, bit 1 is middle heater, bit 2 is post heater.
@@ -489,7 +487,7 @@ INT8U Menu_SetHeaterPre(void * pData, int Index)
 		Control_OpenCose_Led(0, False);
 #endif
 	}
-	
+
 	return SaveHeaterInfo();
 }
 
@@ -500,14 +498,14 @@ INT8U Menu_GetHeaterPre(void * pData)
 		ret = True; 
 	else
 		ret = False; 
-	
+
 	return ret;
 }
 INT8U Menu_SetHeaterMiddle(void * pData, int Index)
 {
 	if(pData == (void *)-1)
 		return True;
-	
+
 	if(Index)
 	{
 		HeaterInfo.HeaterOnMask |= 2; //bit 0 is pre heater, bit 1 is middle heater, bit 2 is post heater.
@@ -526,7 +524,7 @@ INT8U Menu_SetHeaterMiddle(void * pData, int Index)
 #endif
 
 	}
-	
+
 	return SaveHeaterInfo();
 }
 INT8U Menu_GetHeaterMiddle(void * pData)
@@ -536,14 +534,14 @@ INT8U Menu_GetHeaterMiddle(void * pData)
 		ret = True; 
 	else
 		ret = False; 
-	
+
 	return ret;
 }
 INT8U Menu_SetHeaterPost(void * pData, int Index)
 {
 	if(pData == (void *)-1)
 		return True;
-	
+
 	if(Index)
 	{
 		HeaterInfo.HeaterOnMask |= 4; //bit 0 is pre heater, bit 1 is middle heater, bit 2 is post heater.
@@ -562,7 +560,7 @@ INT8U Menu_SetHeaterPost(void * pData, int Index)
 #endif
 
 	}
-	
+
 	return SaveHeaterInfo();
 }
 INT8U Menu_GetHeaterPost(void * pData)
@@ -572,14 +570,14 @@ INT8U Menu_GetHeaterPost(void * pData)
 		ret = True; 
 	else
 		ret = False; 
-	
+
 	return ret;
 }
 INT8U Menu_SetHeaterTempPre(void * pData, int Index, float Data) //unit:`C
 {
 	if(pData == (void *)-1)
 		return True;
-	
+
 	if(Data > 50.0)
 		Data = 50.0;
 	if(Data < 20.0)
@@ -595,7 +593,7 @@ INT8U Menu_SetHeaterTempMiddle(void * pData, int Index, float Data) //unit:`C
 {
 	if(pData == (void *)-1)
 		return True;
-	
+
 	if(Data > 50.0)
 		Data = 50.0;
 	if(Data < 20.0)
@@ -611,7 +609,7 @@ INT8U Menu_SetHeaterTempPost(void * pData, int Index, float Data) //unit:`C
 {
 	if(pData == (void *)-1)
 		return True;
-	
+
 	if(Data > 50.0)
 		Data = 50.0;
 	if(Data < 20.0)
@@ -703,7 +701,7 @@ void Heater_PIO_Clear(INT8U index)
 	else
 		PIO_Clear(&HeaterPostPin);
 #if defined(QICAIHONG)
-		Control_OpenCose_Led(index, False);
+	Control_OpenCose_Led(index, False);
 #endif
 }
 void Heater_PIO_Set(INT8U index)
@@ -715,7 +713,7 @@ void Heater_PIO_Set(INT8U index)
 	else
 		PIO_Set(&HeaterPostPin);
 #if defined(QICAIHONG)
-		Control_OpenCose_Led(index, True);
+	Control_OpenCose_Led(index, True);
 #endif
 }
 
@@ -767,18 +765,18 @@ void Control_Task (void *data)
 			OSFlagPost (mix_FLAG_GRP, MISC_FLAGS_BELLMENU, OS_FLAG_CLR, &err);
 		}
 	}
-	
+
 	while (1)
 	{
 		bellFlags = 0;
 #ifdef HEAD_EPSON_GEN5	
 		INT8U i,j;
-		
+
 		INT16U RawTemp[MAX_HEATER_NUM][SAMPLE_COUNT];
 		float AverTemp[MAX_HEATER_NUM] = {0.0f};
 		INT8U MyEnable[MAX_HEATER_NUM];
 		INT8U TestMyEnable[MAX_HEATER_NUM];
-		
+
 		MyEnable[HEATER_PRE_INDEX] = HeaterEnable[HEATER_PRE_INDEX];
 		MyEnable[HEATER_MIDDLE_INDEX] = HeaterEnable[HEATER_MIDDLE_INDEX];
 		MyEnable[HEATER_POST_INDEX] = HeaterEnable[HEATER_POST_INDEX];
@@ -794,25 +792,25 @@ void Control_Task (void *data)
 			AT91C_BASE_TSADC->TSADC_CHER |= HEATER_MIDDLE_INPUT_CHANNEL;
 			AT91C_BASE_TSADC->TSADC_CHER |= HEATER_POST_INPUT_CHANNEL;
 			AT91C_BASE_TSADC->TSADC_CHER |= TMP_ENVIRONMENT_INPUT_CHANNEL;
-			
+
 			AT91C_BASE_TSADC->TSADC_CR = AT91C_TSADC_START;
-			
+
 			while(!(AT91C_BASE_TSADC->TSADC_SR & HEATER_PRE_INPUT_CHANNEL));
 			while(!(AT91C_BASE_TSADC->TSADC_SR & HEATER_MIDDLE_INPUT_CHANNEL));
 			while(!(AT91C_BASE_TSADC->TSADC_SR & HEATER_POST_INPUT_CHANNEL));
 			while(!(AT91C_BASE_TSADC->TSADC_SR & TMP_ENVIRONMENT_INPUT_CHANNEL));
-			
+
 			RawTemp[HEATER_PRE_INDEX][i] = AT91C_BASE_TSADC->TSADC_CDR1;
 			RawTemp[HEATER_MIDDLE_INDEX][i] = AT91C_BASE_TSADC->TSADC_CDR3;
 			RawTemp[HEATER_POST_INDEX][i] = AT91C_BASE_TSADC->TSADC_CDR2;
 			RawTemp[TMP_ENVIRONMENT_INDEX][i] = AT91C_BASE_TSADC->TSADC_CDR0;
-			
+
 			//Rawbuf[tempbuf_i] = RawTemp[HEATER_MIDDLE_INDEX][i];
 			//tempbuf_i ++;
 			//if(tempbuf_i >= sizeof(Rawbuf)/sizeof(INT32U))
 			//    tempbuf_i = 0;
 		}
-		
+
 		INT8U index = 0;
 		while(index < MAX_HEATER_NUM )
 		{
@@ -829,7 +827,7 @@ void Control_Task (void *data)
 					}
 				}
 			}
-			
+
 			for(i = SAMPLE_COUNT - 1; i > SAMPLE_COUNT - 3; i--)
 			{
 				for(j=2;j<i;j++)
@@ -847,7 +845,7 @@ void Control_Task (void *data)
 			{
 				total += RawTemp[index][i];
 			}
-			
+
 			if(index != TMP_ENVIRONMENT_INDEX)
 			{
 				//check if temp sensor is connected.
@@ -857,7 +855,7 @@ void Control_Task (void *data)
 				}
 			}
 			AverTemp[index] = (float)total/(SAMPLE_COUNT-4);
-			
+
 			//get temp
 			//if(index == TMP_ENVIRONMENT_INDEX || MyEnable[index] ||TestMyEnable[index])
 			{
@@ -940,7 +938,7 @@ void Control_Task (void *data)
 		//        tempbuf_i ++;
 		//        if(tempbuf_i >= sizeof(tempbuf)/sizeof(float))
 		//            tempbuf_i = 0;
-		
+
 		//control output.
 		float tmp = 0;
 		float Env_Offset = 0;
@@ -951,7 +949,7 @@ void Control_Task (void *data)
 			{
 				if(first_temp[index] <0)
 					first_temp[index] = Temp[index];
-				
+
 				if(heating_time[index] == 0 )
 				{
 					if(first_temp[index] > HeaterInfo.TargetTemp[index])
@@ -987,7 +985,7 @@ void Control_Task (void *data)
 					else
 						Env_Offset =  2.0;
 				}
-				
+
 				if( Heater_PIO_Get(index) == 1)
 				{
 					if(heating_time[index] == 0 )
@@ -1019,14 +1017,14 @@ void Control_Task (void *data)
 					else
 					{
 						INT32U curr_permit_heattime;
-						
+
 						Heater_PIO_Set(index);
 						is_power_on_heater[index] = TRUE;
 						if(ratio[index] <0)
 							ratio[index] = heating_time[index]/(max_heater[index]-min_heater[index]);
-						
+
 						ratio[index] = (heating_time[index]/(max_heater[index]-min_heater[index]) + ratio[index])/2;
-						
+
 						curr_permit_heattime = (HeaterInfo.TargetTemp[index] + Env_Offset + TEMP_RANGE - min_heater[index]) * ratio[index];
 						if(curr_permit_heattime < 2000)
 							curr_permit_heattime = 2000;
@@ -1044,7 +1042,7 @@ void Control_Task (void *data)
 				}
 				else
 				{
-					
+
 					if(heating_time[index] != 0)
 					{
 						if(OSTimeGet() - start_cool_time[index] >= 2000)
@@ -1132,7 +1130,7 @@ void Control_Task (void *data)
 #else
 		bellFlags = OSFlagPend(mix_FLAG_GRP, MISC_FLAGS_BELLMENU, OS_FLAG_WAIT_SET_ANY|OS_FLAG_CONSUME, 100, &err);
 #endif
-		
+
 		bellFlags |= OSFlagAccept(mix_FLAG_GRP, MISC_FLAGS_BELLLVDS, OS_FLAG_WAIT_SET_ANY,&err);		
 #if defined(HEAD_RICOH_G4)&&defined(MB_LEVEL_SENSOR)
 		CHECK_INK_LEVEL();		
@@ -1146,7 +1144,7 @@ void Control_Task (void *data)
 			if(beepTick == -2)
 				beepTick = 1;
 		}
-		
+
 		if(beepTick > 0)
 		{
 			beepTick --;
@@ -1188,17 +1186,17 @@ void CHECK_INK_LEVEL(void)
 		INK_LEVEL_MASK |=INK_K_BITS;
 	else
 		INK_LEVEL_MASK &=(~(INK_K_BITS&0xFFFFFFFF));
-	
+
 	if(PIO_Get(&INK_C_LEVEL) == INK_LOW)
 		INK_LEVEL_MASK |=INK_C_BITS;
 	else
 		INK_LEVEL_MASK &=(~(INK_C_BITS&0xFFFFFFFF));
-	
+
 	if(PIO_Get(&INK_M_LEVEL) == INK_LOW)
 		INK_LEVEL_MASK |=INK_M_BITS;
 	else
 		INK_LEVEL_MASK &=(~(INK_M_BITS&0xFFFFFFFF));
-	
+
 	if(PIO_Get(&INK_Y_LEVEL) == INK_LOW)
 		INK_LEVEL_MASK |=INK_Y_BITS;
 	else
@@ -1218,13 +1216,13 @@ void Control_Task (void *data)
 	INT16U pump_OffTime = PUMP_PERIOD - PUMP_PERIOD * PUMP_TIME_RATIO;
 
 	/*bell_status,pump_status都有三个状态
-	* 0：初始状态，当有信号到来时变为1
-	* 1：开启(ON)状态，开启一段时间（定时器）后关闭，变为关闭状态2，也可根据需要直接变为初始状态0
-	* 2：关闭（OFF)状态,关闭后等待一段时间（定时器）后变为初始状态0，
-	*/
+	 * 0：初始状态，当有信号到来时变为1
+	 * 1：开启(ON)状态，开启一段时间（定时器）后关闭，变为关闭状态2，也可根据需要直接变为初始状态0
+	 * 2：关闭（OFF)状态,关闭后等待一段时间（定时器）后变为初始状态0，
+	 */
 	int bell_status = 0;	//0:初始状态；1：bell on; 2:bell off;  0--->1--->2--->0
 	int pump_status = 0;	//0:初始状态；1：pump on; 2:pump off;  0--->1--->2--->0
-	
+
 	timer_init(&control_timer);		//初始化定时器
 #endif
 	if (PIO_Get(&LVDSLockPin) == 1)
@@ -1238,14 +1236,14 @@ void Control_Task (void *data)
 		Control_SetAlarm(ALARM_TYPE_LVDSLOST, ALARM_SET);
 		CONSOL_Printf("LVDS is Unlocked!\r\n");	
 	}
-	
+
 #if (defined(TIMER_ON)&&defined(PUMP_INTERMITTENT))
 	while(1)
 	{
-//#ifdef FULGENCY_FUN
+		//#ifdef FULGENCY_FUN
 		pump_OnTime = LCDMenuConfig_EX.Interval_Pump_On_Time;
 		pump_OffTime = LCDMenuConfig_EX.Interval_Pump_Off_Time;
-//#endif
+		//#endif
 		//BELL
 		if( bell_status == 0)			
 		{
@@ -1256,7 +1254,7 @@ void Control_Task (void *data)
 				timer_pendFlags |= TIMER_BELL;
 				bell_status = 1;
 			}
-			
+
 			//设置BELL定时器，等待一段时间关闭BELL：定时关闭
 			if (bellFlags & MISC_FLAGS_BELL)
 				timer_set_cycle(&control_timer, TIMER_BELL, 300);		
@@ -1276,14 +1274,14 @@ void Control_Task (void *data)
 				pump_status = 1;
 			}
 		}
-		
+
 		if (timer_pendFlags == 0)
 		{
 			OSTimeDly(100);	
 			continue;
 		}
 		timer_start(&control_timer, timer_pendFlags);		//开启定时器（PUMP TIMER/BELL TIMER)
-		
+
 		timerFlags = OSFlagPend(control_timer.timer_FLAG_GRP, timer_pendFlags, OS_FLAG_WAIT_SET_ANY | OS_FLAG_CONSUME, 0, &err);
 		{
 			if (timerFlags & TIMER_BELL)
@@ -1292,7 +1290,7 @@ void Control_Task (void *data)
 				{
 					BELL_OFF();
 					bell_status = 2;
-					
+
 					if (bellFlags & MISC_FLAGS_BELL)
 						timer_set_cycle(&control_timer, TIMER_BELL, 500);
 					else if (bellFlags & MISC_FLAGS_BELLLVDS)
@@ -1548,7 +1546,7 @@ void CONTROL_CLOSE_RELEASE_RELAY(INT8U HeadIndex)
 
 void CONTROL_OPEN_RELEASE_RELAY(INT8U HeadIndex)
 {
-	
+
 	if(cleanparam_EPSON_MICOLOR.Runtime.HeadMask == 1)
 	{
 		PIO_Set(&CleanRelease1Pin);
@@ -1637,7 +1635,7 @@ INT8U IsLoadMediaSensorValid()
 #ifdef EPSON_BOTTOM_BOARD_V3
 	OS_CPU_SR cpu_sr;
 	INT16U io;
-	
+
 	OS_ENTER_CRITICAL();	
 	io = ReadEpsonRegShort(EPSON_REGADDR_SENSOR_IO);
 	OS_EXIT_CRITICAL();
@@ -1658,7 +1656,7 @@ INT8U IsCoverSensorValid()
 #ifdef EPSON_BOTTOM_BOARD_V3
 	OS_CPU_SR cpu_sr;
 	INT16U io;
-	
+
 	OS_ENTER_CRITICAL();	
 	io = ReadEpsonRegShort(EPSON_REGADDR_SENSOR_IO);
 	OS_EXIT_CRITICAL();
@@ -1679,7 +1677,7 @@ INT8U IsMediaFixed()
 #ifdef EPSON_BOTTOM_BOARD_V3
 	OS_CPU_SR cpu_sr;
 	INT16U io;
-	
+
 	OS_ENTER_CRITICAL();	
 	io = ReadEpsonRegShort(EPSON_REGADDR_SENSOR_IO);
 	OS_EXIT_CRITICAL();
@@ -1700,7 +1698,7 @@ INT8U IsOutOfMedia()
 #ifdef EPSON_BOTTOM_BOARD_V3
 	OS_CPU_SR cpu_sr;
 	INT16U io;
-	
+
 	OS_ENTER_CRITICAL();	
 	io = ReadEpsonRegShort(EPSON_REGADDR_SENSOR_IO);
 	OS_EXIT_CRITICAL();
@@ -1749,16 +1747,16 @@ INT8U ClosePlateFan()
 #if defined(USE_SPOT_COLOR)&&defined(HEAD_EPSON_GEN5)
 wrong: 
 #endif
-	
-	
-	//Pump map
-	//墨量传感器：从LVDS接头处开始算起，第一个是0x80, 第二个是0x40...第八个是0x01: 
-	//Lc(chip1) Lm(chip1) Y(chip1) M(chip2) C(chip2) K(chip1) SPOT1(chip2) SPOT2(chip2)
-	//墨泵端：	  从远离24V最远端开始为Pump1（标号为Lm），
-	//墨泵端:	  pump2（标号为Lc），...最接近24V的一端为Pump6（标号为C），
-	//墨泵端:     Lm(1), Lc(2), K(3), Y(4), M(5), C(6), SPOTCOLOR1(7), SPOTCOLOR2(8)
-	
-	//cheney : need confirm it.
+
+
+//Pump map
+//墨量传感器：从LVDS接头处开始算起，第一个是0x80, 第二个是0x40...第八个是0x01: 
+//Lc(chip1) Lm(chip1) Y(chip1) M(chip2) C(chip2) K(chip1) SPOT1(chip2) SPOT2(chip2)
+//墨泵端：	  从远离24V最远端开始为Pump1（标号为Lm），
+//墨泵端:	  pump2（标号为Lc），...最接近24V的一端为Pump6（标号为C），
+//墨泵端:     Lm(1), Lc(2), K(3), Y(4), M(5), C(6), SPOTCOLOR1(7), SPOTCOLOR2(8)
+
+//cheney : need confirm it.
 #define PUMP_CHIP1_BITS 0xE4  //1110 0100   4 Color: 
 #ifdef USE_SPOT_COLOR
 #define PUMP_CHIP2_BITS 0x1B  //0001 1011   4 Color
@@ -1823,7 +1821,7 @@ void Color_level_map(INT8U level,INT8U index)
 				INK_LEVEL_MASK &=(~(INK_S4_BITS&0xFFFFFFFF));	
 			break;
 		}
-		
+
 	}
 }
 void Ink_level_map(INT8U head_level)
@@ -1842,17 +1840,17 @@ void Main_Color_Level_Scan(void)
 		status_ReportStatus(STATUS_WAR_K_LACK, STATUS_SET);
 	else
 		status_ReportStatus(STATUS_WAR_K_LACK, STATUS_CLR);
-	
+
 	if(INK_STATUS_C_LACK)
 		status_ReportStatus(STATUS_WAR_C_LACK, STATUS_SET);
 	else
 		status_ReportStatus(STATUS_WAR_C_LACK, STATUS_CLR);
-	
+
 	if(INK_STATUS_M_LACK)
 		status_ReportStatus(STATUS_WAR_M_LACK, STATUS_SET);
 	else
 		status_ReportStatus(STATUS_WAR_M_LACK, STATUS_CLR);
-	
+
 	if(INK_STATUS_Y_LACK)
 		status_ReportStatus(STATUS_WAR_Y_LACK, STATUS_SET);
 	else
@@ -1918,7 +1916,7 @@ void Color_level_WARING(INT8U level,INT8U index)
 				status_ReportStatus(STATUS_WAR_PUMP_LIGHTMAGENTA, STATUS_CLR);
 			break;
 		}
-		
+
 	}
 }
 void Ink_level_map(INT8U head_level)
@@ -1937,9 +1935,9 @@ void Control_PumpControl(INT8U ink_bits)
 	static INT32U opentime[8] = {0,0,0,0,0,0,0,0};
 	g_PumpControl = 0;	
 	INT8U err;
-	
+
 	if ((opentime[0] >= 10) || (opentime[1] >= 10) || (opentime[2] >= 10) || (opentime[3] >= 10)
-		||(opentime[4] >= 10) || (opentime[5] >= 10) || (opentime[6] >= 10) || (opentime[7] >= 10))	
+			||(opentime[4] >= 10) || (opentime[5] >= 10) || (opentime[6] >= 10) || (opentime[7] >= 10))	
 		Control_SetAlarm(ALARM_TYPE_PUMPLONG, ALARM_SET);
 	else
 		Control_SetAlarm(ALARM_TYPE_PUMPLONG, ALARM_CLR);
@@ -1958,7 +1956,7 @@ void Control_PumpControl(INT8U ink_bits)
 		PUMP_LC_CLOSE();
 		opentime[0] = 0;
 	}
-	
+
 	if (ink_bits & 0x40)	//LM ->Chip1
 	{			
 		opentime[1]++;
@@ -1973,7 +1971,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[1] = 0;
 		PUMP_LM_CLOSE();
 	}
-	
+
 	if (ink_bits & 0x20)  //Y ->Chip1
 	{				
 		opentime[2]++;
@@ -1988,7 +1986,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[2] = 0;
 		PUMP_Y_CLOSE();
 	}
-	
+
 	if (ink_bits & 0x10)	//M ->Chip2
 	{					
 		opentime[3]++;
@@ -2003,7 +2001,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[3] = 0;
 		PUMP_M_CLOSE();
 	}
-	
+
 	if (ink_bits & 0x08)	//C ->Chip2
 	{
 		opentime[4]++;
@@ -2018,7 +2016,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[4] = 0;
 		PUMP_C_CLOSE();
 	}
-	
+
 	if (ink_bits & 0x04)	//K ->Chip1
 	{
 		opentime[5]++;
@@ -2033,7 +2031,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[5] = 0;
 		PUMP_K_CLOSE();
 	}
-	
+
 #ifdef USE_SPOT_COLOR
 	if (ink_bits & 0x02)	//K ->Chip1
 	{
@@ -2049,7 +2047,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[6] = 0;
 		PUMP_7_CLOSE();
 	}
-	
+
 	if (ink_bits & 0x01)	//K ->Chip1
 	{
 		opentime[7]++;
@@ -2085,7 +2083,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[0] = 0;
 		status_ReportStatus(STATUS_WAR_PUMP_BLACK, STATUS_CLR);
 	}
-	
+
 	if (ink_bits & INK_C_BITS)	//c
 	{			
 		opentime[1]++;
@@ -2099,7 +2097,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[1] = 0;
 		status_ReportStatus(STATUS_WAR_PUMP_CYAN, STATUS_CLR);
 	}
-	
+
 	if (ink_bits & INK_M_BITS)  //M
 	{				
 		opentime[2]++;
@@ -2113,7 +2111,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[2] = 0;
 		status_ReportStatus(STATUS_WAR_PUMP_MAGENTA, STATUS_CLR);
 	}
-	
+
 	if (ink_bits & INK_Y_BITS)	//Y
 	{					
 		opentime[3]++;
@@ -2127,7 +2125,7 @@ void Control_PumpControl(INT8U ink_bits)
 		opentime[3] = 0;
 		status_ReportStatus(STATUS_WAR_PUMP_YELLOW, STATUS_CLR);
 	}
-	
+
 	if(COLOR_NUMBER_CALIBRATION > 4)		
 	{ 
 		if (ink_bits & INK_S1_BITS)	//lc
@@ -2143,7 +2141,7 @@ void Control_PumpControl(INT8U ink_bits)
 			opentime[4] = 0;
 			status_ReportStatus(STATUS_WAR_PUMP_LIGHTCYAN, STATUS_CLR);
 		}
-		
+
 		if (ink_bits & INK_S2_BITS)	//lm
 		{
 			opentime[5]++;
@@ -2158,7 +2156,7 @@ void Control_PumpControl(INT8U ink_bits)
 			status_ReportStatus(STATUS_WAR_PUMP_LIGHTMAGENTA, STATUS_CLR);
 		}
 	}
-	
+
 	if(COLOR_NUMBER_CALIBRATION > 6)		
 	{
 		if (ink_bits & INK_S3_BITS)	//S3
@@ -2174,7 +2172,7 @@ void Control_PumpControl(INT8U ink_bits)
 			opentime[6] = 0;
 			status_ReportStatus(STATUS_WAR_PUMP_SPOTCOLOR1, STATUS_CLR);
 		}
-		
+
 		if (ink_bits & INK_S4_BITS)	//S4
 		{
 			opentime[7]++;
@@ -2196,14 +2194,14 @@ void Control_PumpControl(INT8U ink_bits)
 INT8U OpenPlateFan(void)
 {
 
-		PIO_Set(&InkSupplyCtrl8Pin);
+	PIO_Set(&InkSupplyCtrl8Pin);
 
 }
 
 INT8U ClosePlateFan(void)
 {
 
-	 PIO_Clear(&InkSupplyCtrl8Pin);
+	PIO_Clear(&InkSupplyCtrl8Pin);
 
 }
 #endif
@@ -2219,104 +2217,4 @@ void Needle_Close(void)
 	PIO_Clear(&InkSupplyCtrl10Pin);
 }
 #endif
-#if defined(LECAI_EPSON_4H_Y_ROOLENCODER)
 
-	void Open_Induced_Draft(void)
-	{
-		PIO_Set(&InkSupplyCtrl6Pin);
-	}
-	
-	void Close_Induced_Draft(void)
-	{
-		PIO_Clear(&InkSupplyCtrl6Pin);
-	}
-	
-	void Open_Paper_Knife(void)
-	{
-		PIO_Set(&InkSupplyCtrl5Pin);
-	}
-	
-	void Close_Paper_Knife(void)
-	{
-			PIO_Clear(&InkSupplyCtrl5Pin);
-	}
-	
-	void Cut_Paper (void)
-	{
-			INT8U buf[32];
-			INT8U err;
-
-			//const INT32S cut_startPos = 1000 + PAPER_MEDIA_WIDTH_INCH*X_BASE_RES;
-			const INT32S cut_startPos = 1000 + 20000;
-			const INT32S cut_endPos = 100;
-
-
-	#ifdef EPSON_CLEAN_UPDOWN
-			status_ReportStatus(STATUS_MOVING, STATUS_SET);		              
-			buf[0] = 8; //Length
-			buf[1] = UART_AXISMOVETO_CMD; 
-			buf[2] = 4; //AXIS:1:x; 2:y; 4:z; 8:wiper Y.
-			buf[3] = TATE_CLEAN_CZ_SPEED_LEVEL;					
-			*((__packed INT32S *)&buf[4]) = 0; //move_distance means target position
-			while (!UART_SendCMD(UART_MOTION_CHANNEL, buf)) 
-				OSTimeDly(100);					       
-			OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,0,&err); //Waiting moving stop	
-	#endif
-	
-			status_ReportStatus(STATUS_MOVING, STATUS_SET);		
-			buf[0] = 7; //Length
-			buf[1] = UART_MOVETO_CMD;
-			*((__packed INT32S *)&buf[2]) = cut_startPos;
-			buf[6] = printer.movSpeed;
-			while (!UART_SendCMD(UART_MOTION_CHANNEL, buf)) 
-				OSTimeDly(100);			
-			OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, 0, &err); //Waiting moving stop	
-
-	#if defined(LECAI_EPSON_4H_Y_ROOLENCODER)
-         Open_Paper_Knife();                   // open papaer knife
-         OSTimeDly(100);
-   #endif
-	 
-			status_ReportStatus(STATUS_MOVING, STATUS_SET);		
-			buf[0] = 7; //Length
-			buf[1] = UART_MOVETO_CMD;
-			*((__packed INT32S *)&buf[2]) = cut_endPos;
-			buf[6] = printer.movSpeed;
-			while (!UART_SendCMD(UART_MOTION_CHANNEL, buf)) 
-				OSTimeDly(100);
-			OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, 0, &err); //Waiting moving stop
-
-	#if defined(LECAI_EPSON_4H_Y_ROOLENCODER)
-			Close_Paper_Knife();                  // close papaer knife
-			OSTimeDly(100);
-   #endif
-                
-			status_ReportStatus(STATUS_MOVING, STATUS_SET);
-			buf[0] = 7; //Length
-			buf[1] = UART_MOVETO_CMD;
-			*((__packed INT32S *)&buf[2]) = 0;
-			buf[6] = printer.movSpeed;
-			while (!UART_SendCMD(UART_MOTION_CHANNEL, buf)) 
-				OSTimeDly(100);
-			OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, 0, &err); //Waiting moving stop
-                
-	#ifdef EPSON_CLEAN_UPDOWN
-			Capping();
-	#endif
-
-			status_ReportStatus(STATUS_MOVING, STATUS_SET);
-			buf[0] = 8; //Length									
-			buf[1] = UART_PAPERFEED_CMD; 
-			buf[2] = 1;
-			buf[3] = printer.feedSpeed;
-			*((__packed INT32S *)&buf[4]) = GetStepPerHead()*4;
-			while (!UART_SendCMD(UART_MOTION_CHANNEL, buf)) 
-				OSTimeDly(100);
-			OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, 0, &err); //Waiting moving stop
-			
-			CMD_Epson_Operate_Type = 0;
-			status_ReportStatus(CMD_EPSON_OPERATION, STATUS_CLR);
-	}
-#endif
-	
-	

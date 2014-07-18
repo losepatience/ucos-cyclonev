@@ -64,7 +64,9 @@ struct __port {
 	u8			*rxbuf;
 	int			rxlen;
 	int			rxidx;
-	struct completion	rxwait;
+	bool			rx_ready;
+
+	unsigned long		timeout;
 };
 
 struct __port *__ports;
@@ -85,7 +87,7 @@ static void rx_handler(struct __port *port)
 	}
 
 	clrbits32(port->base + UART_IER_OFFS, port->rxmask);	/* here */
-	complete(&port->rxwait);
+	port->rx_ready = true;
 }
 
 static void interrupt_rx(void *arg)
@@ -113,22 +115,18 @@ int fpga_uart_read(int num, u8 *buf, int len)
 
 	mutex_lock(&port->rxmutex);
 
-	INIT_COMPLETION(port->rxwait);
 	port->rxidx = 0;
 	port->rxlen = len;
 	port->rxbuf = buf;
+	port->rx_ready = false;
 
 	/* enable irq */
 	setbits32(port->base + UART_IER_OFFS, port->rxmask);
-	rval = wait_for_completion_timeout(&port->rxwait, 5 * HZ);
-	clrbits32(port->base + UART_IER_OFFS, port->rxmask);
-
-	if (rval == 0) {
-		pr_err("controller timed out\n");
+	if (wait_for_condition(&port->rx_ready, port->timeout))	/* 100 ms */
+		rval = len;
+	else
 		rval = -ETIMEDOUT;
-	} else {
-		rval = port->rxidx;
-	}
+	clrbits32(port->base + UART_IER_OFFS, port->rxmask);
 
 	mutex_unlock(&port->rxmutex);
 	return rval;
@@ -145,19 +143,19 @@ int fpga_uart_write(int num, const u8 *buf, int len)
 
 		/* txfifo full */
 		u32 stat = readl(port->base + UART_SR_OFFS);
-		if (stat & port->txmask) {
-			msleep(1);
 
-			stat = readl(port->base + UART_SR_OFFS);
-			if (stat & port->txmask)
-				break;
-		}
-
-		writeb(buf[idx++], port->dreg);
+		if (stat & port->txmask)
+			break;
+		else
+			writeb(buf[idx++], port->dreg);
 	}
 
 	mutex_unlock(&port->txmutex);
-	return idx == 0 ? -EIO : idx;
+
+	if (idx == 0)
+		return -EIO;
+
+	return idx;
 }
 
 int fpga_uart_init(int num)
@@ -178,8 +176,9 @@ int fpga_uart_init(int num)
 		port->num = num;
 		port->txmask = 1 << num;
 		port->rxmask = 1 << (num + 4);
+		port->rx_ready = false;
+		port->timeout = 100;
 
-		init_completion(&port->rxwait);
 		mutex_init(&port->rxmutex);
 		mutex_init(&port->txmutex);
 	}

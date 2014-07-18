@@ -25,6 +25,8 @@
 #include <gpio.h>
 
 #define DW_IRQ_PIOA	196
+#define DWGPIO_CHIP_NUM	(2)
+
 int dw_gpio_init(void);
 
 #ifndef INCOMPATIBLE_WITH_ATMEL
@@ -41,9 +43,17 @@ int dw_gpio_init(void);
 #define DW_ID_PIOA	(0)
 #define DW_ID_PIOB	(1)
 #define DW_ID_PIOC	(2)
+#define DW_ID_PIOD	(3)
+#define DW_ID_PIOE	(4)
+#define DW_ID_PIOF	(5)
+#define DW_ID_PIOG	(6)
 #define DW_BASE_PIOA	DW_ID_PIOA
 #define DW_BASE_PIOB	DW_ID_PIOB
 #define DW_BASE_PIOC	DW_ID_PIOC
+#define DW_BASE_PIOD	DW_ID_PIOD
+#define DW_BASE_PIOE	DW_ID_PIOE
+#define DW_BASE_PIOF	DW_ID_PIOF
+#define DW_BASE_PIOG	DW_ID_PIOG
 
 typedef struct pio_imode {
 	unsigned int imask;

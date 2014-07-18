@@ -18,10 +18,12 @@
  * MA 02111-1307 USA
  */
 
-#include <platform.h>
-#include <asm/types.h>
 #include <stddef.h>
+#include <delay.h>
 #include <errno.h>
+
+#include <asm/types.h>
+#include <platform.h>
 
 /* -------------------------------------------------------- */
 /* -------------------- mutex ----------------------------- */
@@ -81,6 +83,20 @@ long wait_for_completion_timeout(struct completion *x, unsigned long timeout)
 		return (long)(OSTimeGet() - time) + 1;
 	else
 		return -1L;
+}
+
+bool wait_for_condition(volatile int *x, unsigned long timeout)
+{
+	u32 time = OSTimeGet();
+
+	while ((OSTimeGet() - time) < timeout) {
+		if (*x)
+			return true;
+
+		udelay(10);
+	}
+
+	return false;
 }
 
 
@@ -143,36 +159,6 @@ u64 CPU_TS32_to_uSec(u32 ts_cnts)
 u64 CPU_TS64_to_uSec(u64 ts_cnts)
 {
 	return 0u;
-}
-
-int create_timer(timer_t *tmr)
-{
-	u8 err;
-	tmr->t = OSTmrCreate(0, tmr->period, OS_TMR_OPT_PERIODIC,
-			tmr->callback, tmr->arg, (u8 *)tmr->name, &err);
-
-	return (int)(-err);
-}
-
-int del_timer(timer_t *tmr)
-{
-	u8 err;
-	OSTmrDel(tmr->t, &err);
-	return (int)(-err);
-}
-
-int start_timer(timer_t *tmr)
-{
-	u8 err;
-	OSTmrStart(tmr->t, &err);
-	return (int)(-err);
-}
-
-int stop_timer(timer_t *tmr)
-{
-	u8 err;
-	OSTmrStop(tmr->t, OS_TMR_OPT_NONE, NULL, &err);
-	return (int)(-err);
 }
 
 #endif

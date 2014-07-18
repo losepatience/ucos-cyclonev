@@ -52,6 +52,9 @@ static unsigned int numSources;
 static InterruptSource pSources[MAX_INTERRUPT_SOURCES];
 static spinlock_t pio_lock;
 
+extern struct gpio_chip __gc[DWGPIO_CHIP_NUM + 4];
+extern int fpga_gpio_init(void);
+
 static int dw_gpio_to_irq(struct gpio_chip *gc, unsigned offset)
 {
 	return gc->base / 29 + DW_IRQ_PIOA;
@@ -108,25 +111,119 @@ static int dw_gpio_direction_output(struct gpio_chip *gc,
 	return 0;
 }
 
-static struct gpio_chip dwgc[ARCH_NR_GPIOCHIPS];
+/* ---------------------------------------------------------
+ * array operations
+ * --------------------------------------------------------- */
+static int dw_gpio_get_array(struct gpio_chip *gc, unsigned mask)
+{
+	return readl(gc->priv + DW_GPIO_EXT) & mask;
+}
+
+static void dw_gpio_set_array(struct gpio_chip *gc, unsigned mask, int val)
+{
+	unsigned int data_reg;
+	unsigned long flags = 0;
+
+	val &= 1;
+
+	spin_lock_irqsave(&pio_lock, flags);
+
+	data_reg = readl(gc->priv + DW_GPIO_DR);
+	if (val)
+		data_reg |= mask;
+	else
+		data_reg &= ~mask;
+
+	writel(data_reg, gc->priv + DW_GPIO_DR);
+	spin_unlock_irqrestore(&pio_lock, flags);
+}
+
+static int dw_gpio_direction_input_array(struct gpio_chip *gc, unsigned mask)
+{
+	unsigned int gpio_ddr;
+	unsigned long flags = 0;
+
+	spin_lock_irqsave(&pio_lock, flags);
+	/* Set pin as input, assumes software controlled IP */
+	gpio_ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
+	gpio_ddr &= ~mask;
+	writel(gpio_ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
+	spin_unlock_irqrestore(&pio_lock, flags);
+
+	return 0;
+}
+
+static int dw_gpio_direction_output_array(struct gpio_chip *gc,
+				unsigned int mask, int val)
+{
+	unsigned int gpio_ddr;
+	unsigned long flags = 0;
+
+	dw_gpio_set_array(gc, mask, val);
+
+	spin_lock_irqsave(&pio_lock, flags);
+	/* Set pin as output, assumes software controlled IP */
+	gpio_ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
+	gpio_ddr |= mask;
+	writel(gpio_ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
+	spin_unlock_irqrestore(&pio_lock, flags);
+	return 0;
+}
+
+static void dw_gpio_set_imode(struct gpio_chip *gc, int en, unsigned mask,
+		unsigned itmask, unsigned imode, unsigned pol)
+{
+	unsigned int reg;
+
+	/* disable irq */
+	if (en == 0) {
+		reg = readl(gc->priv + GPIO_INT_EN_REG_OFFSET);
+		reg &= ~mask;
+		writel(reg, gc->priv + GPIO_INT_EN_REG_OFFSET);
+		return;
+	}
+
+	if(mask & itmask) {
+		unsigned long flags = 0;
+
+		spin_lock_irqsave(&pio_lock, flags);
+		if (mask & imode)	/* level */
+			imode = ~imode;
+
+		if (!(mask & pol))	/* active low or falling edge */
+			pol = ~pol;
+
+		writel(imode, gc->priv + GPIO_INT_TYPE_LEVEL_REG_OFFSET);
+		writel(pol, gc->priv + GPIO_INT_POLARITY_REG_OFFSET);
+		spin_unlock_irqrestore(&pio_lock, flags);
+	}
+
+	writel(mask, gc->priv + GPIO_INT_EN_REG_OFFSET);
+}
 
 int dw_gpio_init(void)
 {
 	int i;
 
-	for (i = 0; i < ARCH_NR_GPIOCHIPS; i++) {
+	for (i = 0; i < DWGPIO_CHIP_NUM; i++) {
 
-		struct gpio_chip *gc = &dwgc[i];
+		struct gpio_chip *gc = &__gc[i];
 
 		gc->priv = (void *)(SOCFPGA_GPIO0_ADDRESS + i * 0x1000);
 		gc->ngpio = 29;
 		gc->base = i * 29;
 
 		gc->to_irq		= dw_gpio_to_irq;
-		gc->direction_input	= dw_gpio_direction_input;
-		gc->direction_output	= dw_gpio_direction_output;
 		gc->get			= dw_gpio_get;
 		gc->set			= dw_gpio_set;
+		gc->direction_input	= dw_gpio_direction_input;
+		gc->direction_output	= dw_gpio_direction_output;
+
+		gc->set_imode		= dw_gpio_set_imode;
+		gc->get_array		= dw_gpio_get_array;
+		gc->set_array		= dw_gpio_set_array;
+		gc->direction_input_array  = dw_gpio_direction_input_array;
+		gc->direction_output_array = dw_gpio_direction_output_array;
 
 		gpiochip_add(gc);
 	}
@@ -137,48 +234,30 @@ int dw_gpio_init(void)
 /* --------------------------------------------------------------------------
  * Old APIs
  * -------------------------------------------------------------------------- */
-
 #ifndef INCOMPATIBLE_WITH_ATMEL
 static struct gpio_chip *__get_gpiochip(const Pin *pin)
 {
-	return (pin == NULL) ? NULL : &dwgc[pin->pio];
+	return (pin == NULL) ? NULL : &__gc[pin->pio];
 }
 
 unsigned char PIO_Configure(const Pin *list, unsigned int size)
 {
-	unsigned int dr;
-	unsigned int ddr;
-	unsigned long flags = 0;
-
 	for (; size > 0; list++, size--) {
+
 		struct gpio_chip *gc = __get_gpiochip(list);
 		unsigned int type = list->type;
+		int i;
 
-		if (gc == 0) {
-			pr_warn("%s: invalid parameter\n", __func__);
-			continue;
+		for (i = 0; i < gc->ngpio; i++) {
+
+			if (type == PIO_INPUT) {
+				gc->direction_input_array(gc, list->mask);
+			} else {
+				int val = type & 0x2;
+				gc->direction_output_array(gc, list->mask, val);
+			}
 		}
 
-		spin_lock_irqsave(&pio_lock, flags);
-		dr = readl(gc->priv + DW_GPIO_DR);
-		ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
-
-		if (type == PIO_INPUT) {
-			ddr &= ~list->mask;
-		} else if (type == PIO_OUTPUT_0) {
-			dr &= ~list->mask;
-			ddr |= list->mask;
-		} else if (type == PIO_OUTPUT_1) {
-			dr |= list->mask;
-			ddr |= list->mask;
-		} else {
-			spin_unlock_irqrestore(&pio_lock, flags);
-			return 0;
-		}
-
-		writel(dr, gc->priv + DW_GPIO_DR);
-		writel(ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
-		spin_unlock_irqrestore(&pio_lock, flags);
 	}
 
 	return 1;
@@ -187,67 +266,60 @@ unsigned char PIO_Configure(const Pin *list, unsigned int size)
 void PIO_Set(const Pin *pin)
 {
 	struct gpio_chip *gc = __get_gpiochip(pin);
-	if (gc != 0) {
-		unsigned long flags = 0;
-
-		spin_lock_irqsave(&pio_lock, flags);
-		unsigned int reg = readl(gc->priv + DW_GPIO_DR);
-		reg |= pin->mask;
-		writel(reg, gc->priv + DW_GPIO_DR);
-		spin_unlock_irqrestore(&pio_lock, flags);
-	}
+	if (gc != 0)
+		gc->set_array(gc, pin->mask, 1);
 }
 
 void PIO_Clear(const Pin *pin)
 {
 	struct gpio_chip *gc = __get_gpiochip(pin);
-	if (gc != 0) {
-		unsigned long flags = 0;
-
-		spin_lock_irqsave(&pio_lock, flags);
-		unsigned int reg = readl(gc->priv + DW_GPIO_DR);
-		reg &= ~pin->mask;
-		writel(reg, gc->priv + DW_GPIO_DR);
-		spin_unlock_irqrestore(&pio_lock, flags);
-	}
+	if (gc != 0)
+		gc->set_array(gc, pin->mask, 0);
 }
 
 char PIO_Get(const Pin *pin)
 {
-	unsigned int reg;
 	struct gpio_chip *gc;
 
 	gc = __get_gpiochip(pin);
 	if (gc == 0)
 		return -1;
 
-	reg = readl(gc->priv + DW_GPIO_EXT);
-
-	return (reg & pin->mask) == 0 ? 0 : 1;
+	return gc->get_array(gc, pin->mask);
 }
 
 static void gpio_interrupt(void *arg)
 {
-	int i;
+	int i = 0;
 	static unsigned int status;
 	const Pin *pin = (const Pin *)arg;
 	struct gpio_chip *gc = __get_gpiochip(pin);
 
-	status = readl(gc->priv + GPIO_INT_STATUS_REG_OFFSET);
-	for (i = 0; (status != 0) && (i < numSources); i++) {
+#define FPGA_GPIO_IR	(0x8)
+#define FPGA_GPIO_CIR	(0x14)
+
+	if (gc->base <= 29 * (DWGPIO_CHIP_NUM - 1))
+		status = readl(gc->priv + GPIO_INT_STATUS_REG_OFFSET);
+	else
+		status = readl(gc->priv + FPGA_GPIO_IR);
+
+
+	for (; (status != 0) && (i < numSources); i++) {
 
 		if (pSources[i].pin->id != pin->id)
 			continue;
 
 		if ((status & pSources[i].pin->mask) != 0) {
-			void *reg = gc->priv + GPIO_INT_EOI_REG_OFFSET;
+			void *reg;
+			if (gc->base <= 29 * (DWGPIO_CHIP_NUM - 1))
+				reg = gc->priv + GPIO_INT_EOI_REG_OFFSET;
+			else
+				reg = gc->priv + FPGA_GPIO_CIR;
 
 			pSources[i].handler(pSources[i].pin);
 			status &= ~(pSources[i].pin->mask);
 
-			if (!(pSources[i].pin->mask
-				& pSources[i].pin->imode.type))
-				writel(readl(reg) | pSources[i].pin->mask, reg);
+			writel(readl(reg) | pSources[i].pin->mask, reg);
 		}
 	}
 }
@@ -258,10 +330,11 @@ void PIO_InitializeInterrupts(unsigned int priority)
 	int i;
 
 	dw_gpio_init();
+	fpga_gpio_init();
 
 	for (i = 0; i < ARCH_NR_GPIOCHIPS; i++) {
 
-		struct gpio_chip *gc = &dwgc[i];
+		struct gpio_chip *gc = &__gc[i];
 
 		pin[i].pio = DW_BASE_PIOA + i;
 		pin[i].id = DW_ID_PIOA + i;
@@ -310,76 +383,36 @@ void PIO_UnConfigureIt(const Pin *pin)
 static void PIO_Set_debounce(const Pin *pin)
 {
 	struct gpio_chip *gc = __get_gpiochip(pin);
-	if (gc != 0) {
-		unsigned long flags = 0;
+	unsigned long flags = 0;
+	unsigned int reg;
 
-		spin_lock_irqsave(&pio_lock, flags);
-		unsigned int reg = readl(gc->priv + DW_GPIO_DEBOUNCE);
-		reg |= pin->mask;
-		writel(reg, gc->priv + DW_GPIO_DEBOUNCE);
-		spin_unlock_irqrestore(&pio_lock, flags);
-	}
+	if (!gc || gc->base > (DWGPIO_CHIP_NUM - 1) * 29)
+		return;
+
+	spin_lock_irqsave(&pio_lock, flags);
+	reg = readl(gc->priv + DW_GPIO_DEBOUNCE);
+	reg |= pin->mask;
+	writel(reg, gc->priv + DW_GPIO_DEBOUNCE);
+	spin_unlock_irqrestore(&pio_lock, flags);
 }
 
 void PIO_EnableIt(const Pin *pin)
 {
-	unsigned int reg;
-	unsigned long flags = 0;
-
 	struct gpio_chip *gc = __get_gpiochip(pin);
-	if (gc == NULL)
-		return;
+	if (gc) {
 
-	if (pin->type != PIO_INPUT) {
-		pr_err("%s: pin must be of a type PIO_INPUT", __func__);
-		return;
+		PIO_Configure(pin, 1);
+		PIO_Set_debounce(pin);
+		gc->set_imode(gc, 1, pin->mask, pin->imode.imask,
+				pin->imode.type, pin->imode.polarity);
 	}
-
-	PIO_Configure(pin, 1);
-	PIO_Set_debounce(pin);
-
-	spin_lock_irqsave(&pio_lock, flags);
-	if (pin->mask & pin->imode.imask) {
-
-		reg = readl(gc->priv + GPIO_INT_TYPE_LEVEL_REG_OFFSET);
-		if (pin->mask & pin->imode.type)
-			reg &= ~pin->imode.type;
-		else
-			reg |= pin->mask;
-		writel(reg, gc->priv + GPIO_INT_TYPE_LEVEL_REG_OFFSET);
-
-		reg = readl(gc->priv + GPIO_INT_POLARITY_REG_OFFSET);
-		if (pin->mask & pin->imode.polarity)
-			reg |= pin->imode.polarity;
-		else
-			reg &= ~pin->mask;
-		writel(reg, gc->priv + GPIO_INT_POLARITY_REG_OFFSET);
-	}
-
-	reg = readl(gc->priv + GPIO_INT_MASK_REG_OFFSET);
-	reg &= ~pin->mask;
-	writel(reg, gc->priv + GPIO_INT_MASK_REG_OFFSET);
-
-	reg = readl(gc->priv + GPIO_INT_EN_REG_OFFSET);
-	reg |= pin->mask;
-	writel(reg, gc->priv + GPIO_INT_EN_REG_OFFSET);
-	spin_unlock_irqrestore(&pio_lock, flags);
 }
 
 void PIO_DisableIt(const Pin *pin)
 {
-	unsigned int reg;
-	unsigned long flags = 0;
-
 	struct gpio_chip *gc = __get_gpiochip(pin);
-	if (gc == NULL)
-		return;
-
-	spin_lock_irqsave(&pio_lock, flags);
-	reg = readl(gc->priv + GPIO_INT_EN_REG_OFFSET);
-	reg &= ~pin->mask;
-	writel(reg, gc->priv + GPIO_INT_EN_REG_OFFSET);
-	spin_unlock_irqrestore(&pio_lock, flags);
+	if (gc)
+		gc->set_imode(gc, 0, pin->mask, 0, 0, 0);
 }
 
 #endif /* INCOMPATIBLE_WITH_ATMEL */

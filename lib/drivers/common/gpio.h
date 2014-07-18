@@ -23,8 +23,8 @@
 
 #include <platform.h>
 
-#define ARCH_NR_GPIOS		(3 * 29)
-#define ARCH_NR_GPIOCHIPS	(3)
+#define ARCH_NR_GPIOS		(2 * 29 + 59)	/* 59 fpga gpio */
+#define ARCH_NR_GPIOCHIPS	(2 + 4)		/* 4 fpga gpiochip */
 
 #define GPIOF_OPEN_DRAIN	(1 << 0)
 #define GPIOF_OPEN_SOURCE	(1 << 1)
@@ -46,9 +46,18 @@ struct gpio_chip {
 				unsigned offset, int value);
 	void (*set)(struct gpio_chip *chip, unsigned offset, int value);
 
+	int (*get_array)(struct gpio_chip *chip, unsigned mask);
+	void (*set_array)(struct gpio_chip *chip, unsigned mask, int val);
+	int (*direction_input_array)(struct gpio_chip *chip, unsigned mask);
+	int (*direction_output_array)(struct gpio_chip *chip,
+					unsigned int mask, int val);
+
 	int (*to_irq)(struct gpio_chip *chip, unsigned offset);
 	int (*set_debounce)(struct gpio_chip *chip,
 			    unsigned offset, unsigned debounce);
+
+	void (*set_imode)(struct gpio_chip *chip, int en, unsigned mask,
+			unsigned itmask, unsigned imode, unsigned pol);
 };
 
 int gpio_set_debounce(unsigned gpio, unsigned debounce);
@@ -59,4 +68,4 @@ int gpio_direction_output(unsigned gpio, int value);
 int gpio_direction_input(unsigned gpio);
 int gpiochip_add(struct gpio_chip *chip);
 
-#endif /* _ALT_GPIO_H_ */
+#endif /* __GPIO_H__ */

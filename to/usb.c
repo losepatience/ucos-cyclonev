@@ -39,8 +39,6 @@ extern struct Struct_JobStart job_info;
 #include <usb/device/core/USBDDriverDescriptors.h>
 #include <usb/device/core/USBDCallbacks.h>
 #endif
-#include <pmc/pmc.h>
-#include <pio/pio_it.h>
 
 #define DEBUG_NOT_SET_PM_CALI
 

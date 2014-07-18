@@ -14,11 +14,6 @@
 #include "display.h"
 #include "calibration.h"
 
-#include "twi/twid.h"
-#include "twi/twi.h"
-#include "pio/pio_it.h"
-#include "irq/irq.h"
-
 #include "usb.h"
 #include "commpipe.h"
 

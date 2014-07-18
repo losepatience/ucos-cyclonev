@@ -122,7 +122,7 @@ static int SA_find_packet_st(int num)
 
 static int SA_recv_packet(int num)
 {
-	u8 cmd[MAX_SAPACKET_LEN] = { 0xaa };
+	static u8 cmd[MAX_SAPACKET_LEN] = { 0xaa };
 	u8 ack[2] = { 0xaa, 0x55 };
 
 	if (SA_find_packet_st(num)) {
@@ -133,7 +133,7 @@ static int SA_recv_packet(int num)
 	if (fpga_uart_read(num, &cmd[1], 1) != 1)
 		return -EIO;
 
-	/* this is a ACK from headboard */
+	/* this is an ACK from headboard */
 	if (cmd[1] == 0x55) {
 		SA_chans[num].txACK = true;
 		return 0;
@@ -151,8 +151,15 @@ static int SA_recv_packet(int num)
 	if (fpga_uart_read(num, &cmd[2], 2) != 2)
 		return -EIO;
 
+
+	int len;
+	if (cmd[3] > 32) {
+		return -EAGAIN;
+	} else
+		len = cmd[3] - 3;
+
 	/* cmd[3] is the length of the received packet */
-	if (fpga_uart_read(num, &cmd[4], cmd[3]) != cmd[3])
+	if (fpga_uart_read(num, &cmd[4], len) != len)
 		return -EAGAIN;
 
 	/* cmd[2] is the check sum of the received packet */
@@ -161,7 +168,7 @@ static int SA_recv_packet(int num)
 
 	SA_chans[num].rx_toggle = !SA_chans[num].rx_toggle;
 
-	fifo_in(SA_chans[num].rxfifo, &cmd[3], cmd[3] - 3);
+	fifo_in(SA_chans[num].rxfifo, &cmd[3], len);
 	fpga_uart_write(num, ack, 2);	/* ACK */
 
 	return 0;
@@ -255,7 +262,7 @@ u8 UART_GetCMD(u8 num, u8 *data)
 {
 	mutex_lock(&SA_chans[num].mutex);
 	while (SA_recv_packet(num))
-		msleep(1);
+		udelay(10);
 	mutex_unlock(&SA_chans[num].mutex);
 
 	fifo_out(SA_chans[num].rxfifo, data, 1);
@@ -288,7 +295,7 @@ u8 UART_SendCMD(u8 num, u8 *data)
 	do {
 		fpga_uart_write(num, buf, 4);
 		fpga_uart_write(num, src, len);
-		msleep(1);
+		udelay(100);
 	} while (SA_check_ACK(num));
 
 	SA_chans[num].tx_toggle = !SA_chans[num].tx_toggle;
@@ -321,8 +328,9 @@ void UART_Init(u8 flag)
 		SA_chans[i].tx_toggle = 0;
 		SA_chans[i].txACK = false;
 		SA_chans[i].rxfifo = fifo_init(SA_chans[i].rxbuf, 1, 512);
-		fpga_uart_init(i);
 	} while (++i < UART_CHNUM);
+
+	fpga_uart_init(i);
 
 	/* this is motion channel */
 	SA_chans[UART_CHNUM].txfifo = fifo_init(txbuf, 1, 512);

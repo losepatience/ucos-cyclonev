@@ -92,10 +92,18 @@ reset:
 	mcr	p15, 0, r0, c12, c0, 1	@ mvbar
 
 setup_stack:
+
+	ldr	sp, =usr_stack_end
+
+	msr	cpsr_c, #Mode_IRQ | I_Bit | F_Bit
+	ldr	sp, =irq_stack_end
+        msr	cpsr_c, #Mode_SVC | I_Bit | F_Bit
 	/*XXX dont do anything that needs a stack in the other modes */
+
+#if 0
 	ldr	sp, =__svc_stack
 	bic	sp, sp, #7		@ 8-byte alignment for ABI compliance
-#if 0
+
 	msr	cpsr_c, #Mode_IRQ | I_Bit | F_Bit
 	ldr	sp, =__irq_stack 
 	bic	sp, sp, #7		@ 8-byte alignment for ABI compliance
@@ -145,3 +153,13 @@ __OS1_exceptions_end:
 
 
 /*----------------------------------------------------------------------------*/
+
+	.data
+	.align 5
+fiq_stack_start:
+	.space 1024
+fiq_stack_end:
+	.space 1024
+irq_stack_end:
+	.space 4096
+usr_stack_end:

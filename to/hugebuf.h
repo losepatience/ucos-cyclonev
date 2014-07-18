@@ -1,7 +1,6 @@
 #ifndef _HUGEBUF_H_
 #define _HUGEBUF_H_
 #include "board.h"
-#include "dma/dma.h"
 #include "job.h"
 
 extern INT32U BOARD_DDRAM_SIZE  ;
