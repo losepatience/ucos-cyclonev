@@ -38,11 +38,6 @@ struct flash {
 	char			*wrbuf;
 	u32			sector_size;	/* Erase (sector) size */
 	spinlock_t		lock;
-
-	timer_t			timer;
-	char			*env_buffer;
-	u32			env_offset;
-	int			dirty;
 };
 
 static struct flash __flash;

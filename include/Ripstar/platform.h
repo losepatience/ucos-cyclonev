@@ -42,11 +42,36 @@ struct mutex {
 	OS_EVENT *lock;
 };
 
-void mutex_init(struct mutex *mutex);
-void mutex_destroy(struct mutex *mutex);
-void mutex_lock(struct mutex *mutex);
-int mutex_trylock(struct mutex *mutex);
-void mutex_unlock(struct mutex *mutex);
+static inline void mutex_init(struct mutex *mutex)
+{
+	mutex->lock = OSSemCreate(1);
+}
+
+static inline void mutex_destroy(struct mutex *mutex)
+{
+	u8 err = 0;
+	OSSemDel(mutex->lock, OS_DEL_ALWAYS, &err);
+}
+
+static inline void mutex_lock(struct mutex *mutex)
+{
+	u8 err = 0;
+	OSSemPend(mutex->lock, 0, &err);
+}
+
+/*XXX 1 if sucessfully, others 0 */
+static inline int mutex_trylock(struct mutex *mutex)
+{
+	u8 err = 0;
+	OSSemPend(mutex->lock, 100, &err);
+	return err == OS_ERR_NONE;
+}
+
+static inline void mutex_unlock(struct mutex *mutex)
+{
+	OSSemPost(mutex->lock);
+}
+
 
 typedef struct spinlock {
 	u32 lock;
@@ -69,14 +94,22 @@ struct completion {
 };
 
 #define INIT_COMPLETION(x) do {		\
-	INT8U err = 0;			\
+	u8 err = 0;			\
 	OSSemSet((x).com, 0, &err);	\
 } while (0)
 
-void init_completion(struct completion *x);
+static inline void init_completion(struct completion *x)
+{
+	x->com = OSSemCreate(0);
+}
+
+static inline void complete(struct completion *x)
+{
+	OSSemPost(x->com);
+}
+
 long wait_for_completion_timeout(struct completion *x, unsigned long timeout);
 bool wait_for_condition(volatile int *x, unsigned long timeout);
-void complete(struct completion *x);
 
 
 /* -------------------------------------------------------- */
@@ -91,22 +124,10 @@ void free_irq(u32 irq);
 /* ---------------------- timer ----------------------- */
 /* -------------------------------------------------------- */
 #if (CPU_CFG_TS_TMR_EN == DEF_ENABLED)
-
-typedef void (*timer_callback_t)(void *, void *);
-typedef struct timer {
-	char			name[32];
-	u32			period;
-
-	OS_TMR			*t;
-	timer_callback_t	callback; 
-	void			*arg;
-} timer_t;
-
 void CPU_TS_TmrInit(void);
 u32 CPU_TS_TmrRd(void);
 u64 CPU_TS32_to_uSec(u32 ts_cnts);
 u64 CPU_TS64_to_uSec(u64 ts_cnts);
-
 #endif
 
 #endif

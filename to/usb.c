@@ -148,7 +148,13 @@ void USBDMA_EP6_DoneInterrupt(void)
 
 
 /// VBus pin instance.
-static const Pin pinVbus = PIN_USB_VBUS;
+static const Pin pinVbus = {
+	1 << 14,
+	DW_BASE_PIOB,
+	DW_ID_PIOB,
+	PIO_INPUT,
+	PIO_DEFAULT
+};
 
 //------------------------------------------------------------------------------
 /// Handles interrupts coming from PIO controllers.

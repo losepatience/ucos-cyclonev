@@ -59,71 +59,81 @@
 
 #define BURST			12
 
-struct __port {
+struct __endpoint {
 	void			*base;
-	u32			offs;
+	void			*io;
 	u32			mask;
 	int			burst;
 #define PORT_TYPE_OUT		1
 #define PORT_TYPE_IN		0
 
 	spinlock_t		lock;
-	int			(*rx_callback)(void *);
 };
 
-static u32 ports_mask[] = {
-	1 << 3,	/* 1:cmd tx fifo empty */
-	1 << 1,	/* 1:cmd rx fifo empty */
-	1 << 4,	/* 1:status tx fifo empty */
-};
+static struct __endpoint *__ep;
 
-static struct __port *__ports;
-
-static inline struct __port *__get_port(int num)
+static inline struct __endpoint *__get_endpoint(int num)
 {
-	return &__ports[num];
+	return &__ep[num];
 }
 
-static void fx3_request_interrupt(void *arg)
+static int wait_bus_not_busy(struct __endpoint *ep)
 {
-	struct __port *port = (struct __port *)arg;
+	unsigned int stat;
+	int retries = 5;
+
+	do {
+		stat = readl(ep->base + USB_SR_OFFS);
+		if (!(stat & ep->mask))	/*FIXME*/
+			return 1;
+
+		udelay(10);
+
+	} while (retries--);
+
+	return 0;
+}
+
+static void fx3_isr(void *arg)
+{
+	struct __endpoint *ep = (struct __endpoint *)arg;
 	unsigned int request[2];
 
-	if (!port->rx_callback)
+	if (!ep->rx_callback)
 		goto out;
 
-	request[0] = readl(port->base + port->offs);
-	request[1] = readl(port->base + port->offs);
-	port->rx_callback(request);
+	request[0] = readl(ep->io);
+	request[1] = readl(ep->io);
+	ep->rx_callback(request);
 
 out:
 	/* clean the corresponding irq bit */
-	setbits32(port->base + USB_CIR_OFFS, port->mask);
+	setbits32(ep->base + USB_CIR_OFFS, ep->mask);
 }
 
 ssize_t fx3_read(int num, void *buf, ssize_t len)
 {
-	struct __port *port = __get_port(num);
+	struct __endpoint *ep = __get_endpoint(num);
 	char *pbuf = buf;
 	ssize_t tmp = len;
 	int retries = 5;
 
 	unsigned long flags = 0;
 
-	spin_lock_irqsave(&port->lock, flags);
+	spin_lock_irqsave(&ep->lock, flags);
 
 	do {
-		if (readl(port->base + USB_SR_OFFS) & port->mask) {
+		if (readl(ep->base + USB_SR_OFFS) & ep->mask) {
 			if (retries--)
 				udelay(100);
 			else
 				break;
 		}
 
-		*pbuf++ = readl(port->base + port->offs);
+		*pbuf++ = readl(ep->io);
 	} while (--tmp);
 
-	spin_unlock_irqrestore(&port->lock, flags);
+	spin_unlock_irqrestore(&ep->lock, flags);
 
 	return len - tmp;
 }
@@ -134,7 +144,7 @@ ssize_t fx3_read(int num, void *buf, ssize_t len)
  * 2. the fifo is large enough for a packet(12-512)
  * 3. this func could be called in irq, and could not sleep.
  */
-static ssize_t __write(struct __port *port, const void *buf,
+static ssize_t __write(struct __endpoint *ep, const void *buf,
 			ssize_t len, int flag)
 {
 	int retries = 5;
@@ -147,86 +157,87 @@ static ssize_t __write(struct __port *port, const void *buf,
 	unsigned long flags = 0;
 
 	do {
-		status = readl(port->base + USB_SR_OFFS);
+		status = readl(ep->base + USB_SR_OFFS);
 
 		if (--retries == 0)
 			break;
 
 		msleep(1);
 
-	} while (!(status & port->mask));
+	} while (!(status & ep->mask));
 
-	if (!(status & port->mask));
+	if (!(status & ep->mask));
 		return -ETIMEDOUT;
 
-	padding = port->burst - len % port->burst;
+	padding = ep->burst - len % ep->burst;
 	tmp[0] = padding;
 	if (flag)
 		tmp[0] |= 1 << 4;
 
-	memcpy(tmp + padding, buf, port->burst - padding);
+	memcpy(tmp + padding, buf, ep->burst - padding);
 
-	spin_lock_irqsave(&port->lock, flags);
-	for (p = (u32 *)tmp; (u8 *)p < tmp + port->burst; p++)
-		writel(*p, port->base + port->offs);
+	spin_lock_irqsave(&ep->lock, flags);
+	for (p = (u32 *)tmp; (u8 *)p < tmp + ep->burst; p++)
+		writel(*p, ep->io);
 
-	p = (u32 *)(buf + port->burst - padding);
+	p = (u32 *)(buf + ep->burst - padding);
 	while ((void *)p < buf + len)
-		writel(*p++, port->base + port->offs);
+		writel(*p++, ep->io);
 
 	/* start to xmit */
-	writel(port->mask, port->base + USB_CR_OFFS);
-	spin_unlock_irqrestore(&port->lock, flags);
+	writel(ep->mask, ep->base + USB_CR_OFFS);
+	spin_unlock_irqrestore(&ep->lock, flags);
 
 	return len;
 }
 
 inline ssize_t fx3_write(int num, const void *buf, ssize_t len)
 {
-	return __write(__get_port(num), buf, len, 0);
+	return __write(__get_endpoint(num), buf, len, 0);
 }
 
 inline ssize_t fx3_send_cmd(int num, const void *buf, ssize_t len)
 {
-	return __write(__get_port(num), buf, len, 1);
+	return __write(__get_endpoint(num), buf, len, 1);
 }
 
 void fx3_flush_fifo(int num)
 {
-	struct __port *port = __get_port(num);
-	writel(port->mask << 16, port->base + USB_CR_OFFS);
+	struct __endpoint *ep = __get_endpoint(num);
+	writel(ep->mask << 16, ep->base + USB_CR_OFFS);
 }
 
 inline void fx3_register_request_cb(int (*func)(void *))
 {
-	__get_port(1)->rx_callback = func;
+	__get_endpoint(1)->rx_callback = func;
 }
 
 int fx3_init(void)
 {
+	struct __endpoint *ep;
 	int i;
-	void *base;
+	u32 mask[] = { 1 << 3, 1 << 1, 1 << 4, };
 
-	__ports = calloc(CONFIG_USB_PORT_CNT, sizeof(struct __port));
-	if (!__ports) {
+	__ep = calloc(CONFIG_USB_PORT_CNT, sizeof(struct __endpoint));
+	if (!__ep) {
 		pr_err("%s: nomem\n", __func__);
 		return -ENOMEM;
 	}
 
-	base = (void *)CONFIG_USB_BASE;
 	for (i = 0; i < CONFIG_USB_PORT_CNT; i++) {
-		struct __port *port = __get_port(i);
+		ep = __get_endpoint(i);
 
-		port->base = base;
-		port->offs = USB_CTX_OFFS + 4 * i;
-		port->mask = ports_mask[i];
-		port->burst = BURST;
+		ep->base	= (void *)CONFIG_USB_BASE;
+		ep->io		= ep->base + USB_CTX_OFFS + i * 4;
+		ep->mask	= mask[i];
+		ep->burst	= BURST;
 	}
 
-	request_irq(CONFIG_USB_IRQ, fx3_request_interrupt, &__ports[1]);
+	/* enable ep0 rx irq */
+	ep = __get_endpoint(1);
+	request_irq(CONFIG_USB_IRQ, fx3_isr, ep);
+	setbits32(ep->base + USB_IER_OFFS, ep->mask);
 
-	/* enable ep0 rx interrupt */
-	setbits32(base + USB_IER_OFFS, 1 << 1);
 	return 0;
 }
 

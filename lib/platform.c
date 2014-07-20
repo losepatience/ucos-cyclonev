@@ -25,76 +25,43 @@
 #include <asm/types.h>
 #include <platform.h>
 
-/* -------------------------------------------------------- */
-/* -------------------- mutex ----------------------------- */
-/* -------------------------------------------------------- */
-inline void mutex_init(struct mutex *mutex)
-{
-	mutex->lock = OSSemCreate(1);
-}
-
-inline void mutex_destroy(struct mutex *mutex)
-{
-	INT8U err = 0;
-	OSSemDel(mutex->lock, OS_DEL_ALWAYS, &err);
-}
-
-inline void mutex_lock(struct mutex *mutex)
-{
-	INT8U err = 0;
-	OSSemPend(mutex->lock, 0, &err);
-}
-
-/*XXX 1 if sucessfully, others 0 */
-inline int mutex_trylock(struct mutex *mutex)
-{
-	INT8U err = 0;
-	OSSemPend(mutex->lock, 500, &err);
-	return err == OS_ERR_NONE ? 1 : 0;
-}
-
-inline void mutex_unlock(struct mutex *mutex)
-{
-	OSSemPost(mutex->lock);
-}
-
-inline void init_completion(struct completion *x)
-{
-	x->com = OSSemCreate(0);
-}
-
-inline void complete(struct completion *x)
-{
-	OSSemPost(x->com);
-}
-
 long wait_for_completion_timeout(struct completion *x, unsigned long timeout)
 {
-	INT8U err = 0;
-	u32 time;
+	u8 err = 0;
+	u32 start;
 
-	time = OSTimeGet();
+	start = OSTimeGet();
 	OSSemPend(x->com, timeout, &err);
 
 	if (err == OS_ERR_TIMEOUT)
 		return 0L;
 	else if (err == OS_ERR_NONE)
 		/*XXX plus 1 to avoid returning 0 */
-		return (long)(OSTimeGet() - time) + 1;
+		return (long)(OSTimeGet() - start) + 1;
 	else
 		return -1L;
 }
 
 bool wait_for_condition(volatile int *x, unsigned long timeout)
 {
-	u32 time = OSTimeGet();
+	u32 start;
 
-	while ((OSTimeGet() - time) < timeout) {
+	if (timeout == 0) {
+
+		while (!*x)
+			udelay(10);
+
+		return true;
+	}
+
+	start = OSTimeGet();
+	do {
 		if (*x)
 			return true;
 
 		udelay(10);
-	}
+
+	} while ((OSTimeGet() - start) < timeout);
 
 	return false;
 }
@@ -160,6 +127,6 @@ u64 CPU_TS64_to_uSec(u64 ts_cnts)
 {
 	return 0u;
 }
-
+__msleep
 #endif
 

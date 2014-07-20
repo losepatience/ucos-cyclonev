@@ -86,7 +86,8 @@ static void rx_handler(struct __port *port)
 		port->rxbuf[port->rxidx++] = readb(port->dreg);
 	}
 
-	clrbits32(port->base + UART_IER_OFFS, port->rxmask);	/* here */
+	/* disable rx irq of current port */
+	clrbits32(port->base + UART_IER_OFFS, port->rxmask);
 	port->rx_ready = true;
 }
 
@@ -97,14 +98,14 @@ static void interrupt_rx(void *arg)
 	struct __port *port = get_numbered_port(0);
 
 	stat = readl(port->base + UART_IR_OFFS);
-	for ( ; port_num < CONFIG_UART_CNT; port_num++) {
+	for ( ; port_num < CONFIG_UART_CNT; port++, port_num++) {
 
-		if (stat & port->rxmask)
+		if (stat & port->rxmask) {
 			rx_handler(port);
 
-		/* clear the irq bit */
-		setbits32(port->base + UART_CIR_OFFS, port->rxmask);
-		port++;
+			/* clear the irq bit */
+			setbits32(port->base + UART_CIR_OFFS, port->rxmask);
+		}
 	}
 }
 
