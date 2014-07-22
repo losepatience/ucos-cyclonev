@@ -60,15 +60,16 @@
 #define BURST			12
 
 struct cycfx3_port {
+	spinlock_t		lock;
+
 	void			*base;
 	void			*iobase;
+
 	int			type;
 	u32			mask;
 	int			burst;
-#define PORT_TYPE_OUT		1
-#define PORT_TYPE_IN		0
+	void			(*request_callback)(USBGenericRequest *);
 
-	spinlock_t		lock;
 };
 
 static struct cycfx3_port *cycfx3_ports;
@@ -78,23 +79,24 @@ static int is_port_busy(struct cycfx3_port *port)
 	u32 busy;
 
 	busy = readl(port->base + FX3SR) & port->mask;
-	if (port->type == CYCFX3_TX_PORT)
+	if (port->type == USBGenericRequest_IN)
 		busy = !busy;
 
 	return busy;
 }
 
+/* the waterlevel is fixed to 8 bytes */
 static void cycfx3_isr(void *arg)
 {
 	struct cycfx3_port *port = (struct cycfx3_port *)arg;
-	unsigned int req[2];
+	unsigned int q[2];
 
-	if (!port->rx_callback)
+	if (!port->request_callback)
 		goto out;
 
-	req[0] = readl(port->iobase);
-	req[1] = readl(port->iobase);
-	port->rx_callback(req);
+	q[0] = readl(port->iobase);
+	q[1] = readl(port->iobase);
+	port->request_callback((USBGenericRequest *)q);
 
 out:
 	/* clean the corresponding irq bit */
@@ -180,20 +182,13 @@ static inline void cycfx3_flush_fifo(struct cycfx3_port *port)
 	writel(port->mask << 16, port->base + FX3CR);
 }
 
-#if 0
-inline void cycfx3_register_request_cb(int (*func)(void *))
-{
-	__get_port(1)->rx_callback = func;
-
-}
-#endif
-
-int cycfx3_init(void)
+int cycfx3_init(void (*func)(USBGenericRequest *))
 {
 	struct cycfx3_port *port;
-	int i;
 	u32 mask[] = { 1 << 3, 1 << 1, 1 << 4, };
+	u32 type[] = { 1, 0, 1 };
 	u32 offset;
+	int i;
 
 	cycfx3_ports = calloc(CONFIG_FX3_PORT_CNT, sizeof(struct cycfx3_port));
 	if (!cycfx3_ports) {
@@ -203,16 +198,19 @@ int cycfx3_init(void)
 
 	offset = FX3CTX;
 	for (i = 0; i < CONFIG_FX3_PORT_CNT; i++, offset += 4) {
-		port = __get_port(i);
+		port = &cycfx3_ports[i];
 
 		port->base	= (void *)CONFIG_FX3_BASE;
 		port->iobase	= port->base + offset;
 		port->mask	= mask[i];
+		port->type	= type[i];
 		port->burst	= BURST;
 	}
 
+	port = &cycfx3_ports[1];
+	port->request_callback = func;
+
 	/* enable ep0 rx irq */
-	port = __get_port(1);
 	request_irq(CONFIG_FX3_IRQ, cycfx3_isr, port);
 	setbits32(port->base + FX3IER, port->mask);
 
@@ -221,37 +219,57 @@ int cycfx3_init(void)
 
 
 
+static u16 __usb_state;
+static u16 __usb_speed;
 
-u8 usb_request_type(usb_request_t *req)
+u8 USBGenericRequest_GetType(const USBGenericRequest *request)
 {
-	return (req->type >> 5) & 0x3;
+	return ((request->bmRequestType >> 5) & 0x3);
 }
 
-u16 usb_request_len(usb_request_t *req)
+u8 USBGenericRequest_GetRequest(const USBGenericRequest *request)
 {
-	return req->len;
+	return request->bRequest;
 }
 
-u8 usb_request_dir(usb_request_t *req)
+u16 USBGenericRequest_GetValue(const USBGenericRequest *request)
 {
-	return req->type & 0x80;
+	return request->wValue;
 }
 
-char usb_read(u8 ep, void *data, u32 len, TransferCallback cb, void *arg)
+u16 USBGenericRequest_GetIndex(const USBGenericRequest *request)
+{
+	return request->wIndex;
+}
+
+u16 USBGenericRequest_GetLength(const USBGenericRequest *request)
+{
+	return request->wLength;
+}
+
+u8 USBGenericRequest_GetDirection(const USBGenericRequest *request)
+{
+	if ((request->bmRequestType & 0x80) != 0)
+		return USBGenericRequest_IN;
+	else
+		return USBGenericRequest_OUT;
+}
+
+char USBD_Read(u8 ep, void *data, u32 len, TransferCallback cb, void *arg)
 {
 	int cnt = cycfx3_read(1, data, len);
 	if (cb)
-		cb(arg, USB_STATUS_SUCCESS, cnt, len - cnt);
-	return USB_STATUS_SUCCESS;
+		cb(arg, USBD_STATUS_SUCCESS, cnt, len - cnt);
+	return USBD_STATUS_SUCCESS;
 }
 
-char usb_write(u8 ep, const void *data, u32 l, TransferCallback cb, void *arg)
+char USBD_Write(u8 ep, const void *data, u32 l, TransferCallback cb, void *arg)
 {
-	u8 status = USB_STATUS_SUCCESS;
+	u8 status = USBD_STATUS_SUCCESS;
 	int cnt = cycfx3_write(ep / 3, data, l);
 
 	if (cnt != l)
-		status = USB_STATUS_LOCKED;
+		status = USBD_STATUS_LOCKED;
 
 	if (cb)
 		cb(arg, status, cnt, l - cnt);
@@ -259,103 +277,101 @@ char usb_write(u8 ep, const void *data, u32 l, TransferCallback cb, void *arg)
 	return status;
 }
 
-u8 usb_get_state(void)
+u8 USBD_GetState(void)
 {
 	return __usb_state;
 }
 
-u8 usb_is_high_speed(void)
+u8 USBD_IsHighSpeed(void)
 {
 	return __usb_speed == CY_U3P_SUPER_SPEED;
 }
 
-void usb_connect(void)
+void USBD_Connect(void)
 {
-	usb_cmd_t cmd = {
+	USB_CMD_t cmd = {
 		.len = 0,
 		.cmd = USB_CMD_CONNECT,
 	};
 
-	//cycfx3_enable();
+	//usb_enable();
 	cycfx3_echo(0, &cmd, sizeof(cmd));
 }
 
-void usb_disconnect(void)
+void USBD_Disconnect(void)
 {
-	usb_cmd_t cmd = {
+	USB_CMD_t cmd = {
 		.len = 0,
 		.cmd = USB_CMD_DISCONNECT,
 	};
 
-	__usb_state = USB_STATE_DEFAULT;
-	//cycfx3_disable();
+	__usb_state = USBD_STATE_DEFAULT;
+	//usb_disable();
 	cycfx3_echo(0, &cmd, sizeof(cmd));
 }
 
-u8 usb_stall(u8 endpoint)
+u8 USBD_Stall(u8 Endpoint)
 {
-	char buf[sizeof(usb_cmd_t) + 1];
-	usb_cmd_t *cmd = (usb_cmd_t *)buf;
+	char buf[sizeof(USB_CMD_t) + 1];
+	USB_CMD_t *cmd = (USB_CMD_t *)buf;
 
 	cmd->len = 1;
 	cmd->cmd = USB_CMD_STALL;
-	cmd->data[0] = endpoint;
+	cmd->data[0] = Endpoint;
 
 	cycfx3_echo(0, cmd, sizeof(buf));
-	return USB_STATUS_SUCCESS;
+	return USBD_STATUS_SUCCESS;
 }
 
-char usb_read_abort(u8 endpoint)
+char USBD_AbortDataRead(u8 Endpoint)
 {
-	char buf[sizeof(usb_cmd_t) + 1];
-	usb_cmd_t *cmd = (usb_cmd_t *)buf;
+	char buf[sizeof(USB_CMD_t) + 1];
+	USB_CMD_t *cmd = (USB_CMD_t *)buf;
 
 	cmd->len = 1;
 	cmd->cmd = USB_CMD_ABORT_READ;
-	cmd->data[0] = endpoint;
+	cmd->data[0] = Endpoint;
 
 	cycfx3_echo(0, cmd, sizeof(buf));
-	cycfx3_flush_fifo(endpoint);
-	return USB_STATUS_SUCCESS;
+	cycfx3_flush_fifo(Endpoint);
+	return USBD_STATUS_SUCCESS;
 }
 
-char usb_write_abort(u8 endpoint)
+char USBD_AbortDataWrite(u8 Endpoint)
 {
-	char buf[sizeof(usb_cmd_t) + 1];
-	usb_cmd_t *cmd = (usb_cmd_t *)buf;
+	char buf[sizeof(USB_CMD_t) + 1];
+	USB_CMD_t *cmd = (USB_CMD_t *)buf;
 
 	cmd->len = 1;
 	cmd->cmd = USB_CMD_ABORT_WRITE;
-	cmd->data[0] = endpoint;
+	cmd->data[0] = Endpoint;
 
 	cycfx3_echo(0, cmd, sizeof(buf));
-	cycfx3_flush_fifo(endpoint / 3);	/* XXX */
-	return USB_STATUS_SUCCESS;
+	cycfx3_flush_fifo(Endpoint / 3);	/* XXX */
+	return USBD_STATUS_SUCCESS;
 }
 
 
-extern void USBCallbacks_RequestReceived(const usb_request *req);
+extern void USBDCallbacks_RequestReceived(const USBGenericRequest *req);
 
 /* called in irq, so could not have mutex */
-int cycfx3_request_cb(void *arg)
+static int usb_request_callback(void *arg)
 {
-	usb_request *req = (usb_request *)arg;
+	USBGenericRequest *req = (USBGenericRequest *)arg;	
 
-	if (ubr_GetType(req) == ubr_STANDARD) {
+	if (USBGenericRequest_GetType(req) == USBGenericRequest_STANDARD) {
 		/* __usb_state = req->wValue; */
-		__usb_state = USB_STATE_CONFIGURED;
+		__usb_state = USBD_STATE_CONFIGURED;
 		__usb_speed = req->wIndex;
 	}
 
-	USBCallbacks_RequestReceived(req);
+	USBDCallbacks_RequestReceived(req);
 	return 0;
 }
 
 u8 USB_Init(void)
 {
-	if (cycfx3_init())
-		return false;
-
-	cycfx3_register_request_cb(cycfx3_request_cb);
-	return true;
+	return !cycfx3_init(usb_request_callback);
 }
+
+

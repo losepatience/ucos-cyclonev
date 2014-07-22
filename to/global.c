@@ -198,12 +198,12 @@ void UpdateHeadParamName()
 		driver_num = 4;
 	}
 	else if((factoryData.HeadType == HeadNo_Ricoh_Gen4_64Pin || factoryData.HeadType == HeadNo_Ricoh_Gen4_G4 ||
-			 factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L) && headboardInfo.headBoardType == HEAD_BOARD_TYPE_RICOH_GEN4_64Pin_8H)
+				factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L) && headboardInfo.headBoardType == HEAD_BOARD_TYPE_RICOH_GEN4_64Pin_8H)
 	{
 		driver_num = 8;
 	}
 	else if((factoryData.HeadType == HeadNo_Ricoh_Gen4_64Pin || factoryData.HeadType == HeadNo_Ricoh_Gen4_G4 ||
-			 factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L) && headboardInfo.headBoardType == HEAD_BOARD_TYPE_RICOH_GEN4_3H)
+				factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L) && headboardInfo.headBoardType == HEAD_BOARD_TYPE_RICOH_GEN4_3H)
 	{
 		driver_num = 3;
 	}
@@ -218,7 +218,7 @@ void UpdateHeadParamName()
 	{
 		MenuStr_EM_4_ID1C8[i][0] = 0;
 	}
-	
+
 	for(i=0; i<epsonCaliSetting.printerSetting.ColorCount; i++)
 	{
 #if defined(EPSON_4H)||defined(HEAD_RICOH_G4)
@@ -294,7 +294,7 @@ void UpdateHeadParamName()
 					color_tmp = factoryDataEx.m_nColorOrder[i] - COLORCODE_SPOTCOLOR0;
 					color_tmp = LCDMenuConfig.SpotColorName[color_tmp];
 					INT8U * pName = GetPrintedSpotColorName(color_tmp);
-					
+
 					for(color_tmp=0; pName[color_tmp] != 0; color_tmp++)
 					{
 						MenuStr_EM_4_ID1C8[Menu_Channle][j] = pName[color_tmp];
@@ -309,11 +309,11 @@ void UpdateHeadParamName()
 				INT8U is_zero = 0;
 				if(MenuStr_EM_4_ID1C8[Menu_Channle][j_base] == ',')
 					is_zero = 1;
-				
+
 				if(DIS_COLOR_NUM)
 				{
 					color_tmp = Find_last_color(MAX_HEAD_DRIVE_NUM,&MenuStr_EM_4_ID1C8[Menu_Channle][j_base + is_zero],j - j_base - comma);
-					
+
 					{
 						MenuStr_EM_4_ID1C8[Menu_Channle][j] = '0' + color_tmp;
 					}
@@ -326,7 +326,7 @@ void UpdateHeadParamName()
 						j = j_base;
 					}				
 				}
-				
+
 			}				
 		}
 #else
@@ -336,7 +336,7 @@ void UpdateHeadParamName()
 			INT8U h = GetHeadIndex(m, factoryDataEx.m_nColorOrder[i]);
 			INT8U l = GetNozzleLineIndex(factoryDataEx.m_nColorOrder[i], 0);
 			INT8U d = epsonCaliSetting.colorMap.ColorIndex2DataChannelIndex[h][l];
-			
+
 			if(factoryData.HeadType == HeadNo_Epson_Gen5 && headboardInfo.headBoardType == HEAD_BOARD_TYPE_EPSON_GEN5_2HEAD)
 				d = d%8;
 			d /= NOZZLE_BIT_WIDTH;
@@ -344,12 +344,12 @@ void UpdateHeadParamName()
 				d = DataChNO2DriverNO_EPSON_Gen5_2H[d];
 			else
 				d = DataChNO2DriverNO_RICOH_G4P_8H[d];
-			
+
 			if(m==0)
 				last_d = d;
 			else if(last_d == d)
 				continue;
-			
+
 			j=0;
 			while(MenuStr_EM_4_ID1C8[d][j] != 0)
 				j++;
@@ -359,7 +359,7 @@ void UpdateHeadParamName()
 				j++;
 			}
 			if( epsonCaliSetting.printerSetting.GroupCount > 1 &&
-			   epsonCaliSetting.printerSetting.HeadCount > 2)
+					epsonCaliSetting.printerSetting.HeadCount > 2)
 			{
 				if(epsonCaliSetting.printerSetting.head_group == 1)
 				{ //for epson 4H 4C
@@ -379,7 +379,7 @@ void UpdateHeadParamName()
 				k = factoryDataEx.m_nColorOrder[i] - COLORCODE_SPOTCOLOR0;
 				k = LCDMenuConfig.SpotColorName[k];
 				INT8U * pName = GetPrintedSpotColorName(k);
-				
+
 				for(k=0; pName[k] != 0; k++)
 				{
 					MenuStr_EM_4_ID1C8[d][j] = pName[k];
@@ -391,12 +391,12 @@ void UpdateHeadParamName()
 				MenuStr_EM_4_ID1C8[d][j] = factoryDataEx.m_nColorOrder[i];
 				j++;
 			}
-			
+
 			MenuStr_EM_4_ID1C8[d][j] = 0;
 		}
 #endif				
 	}
-	
+
 	for(i=0; i<MAX_HEAD_DRIVE_NUM; i++)
 	{
 		if(i<driver_num)
@@ -409,14 +409,14 @@ void UpdateHeadParamName()
 			}
 		}
 	}
-	
+
 }
 #endif
 
 INT8U Read_Dsp_Data(INT8U * EP0INdata,INT16U index,INT16U setuplength)
 {
 	INT16U len;
-	
+
 	if(index + setuplength > EPR_DSP_DISK_SIZE)
 	{            
 		len =EPR_DSP_DISK_SIZE - index;
@@ -435,7 +435,7 @@ INT8U Read_Dsp_Data(INT8U * EP0INdata,INT16U index,INT16U setuplength)
 INT8U Write_Dsp_Data(INT8U * EP0OUTdata,INT16U index,INT16U setuplength)
 {
 	INT16U len;
-	
+
 	if(index + setuplength > EPR_DSP_DISK_SIZE)
 	{            
 		len =EPR_DSP_DISK_SIZE - index;
@@ -444,7 +444,7 @@ INT8U Write_Dsp_Data(INT8U * EP0OUTdata,INT16U index,INT16U setuplength)
 		len = setuplength;
 	if (len > 64)
 		len = 64;
-	
+
 	if(!IIC_WriteEEPRom_Ex(EPR_DSP_DISK_OFFSET+index, (INT8U *)EP0OUTdata, &len))
 	{
 		return False;
@@ -472,7 +472,7 @@ void UV_Power_Percent(INT8U *src,INT8U power_level,INT8U base)
 		{
 			src[i/8] |=(1<<i%8);		
 		}
-	
+
 }
 INT8U ReadFactoryUV_Setting()
 {
@@ -512,19 +512,19 @@ INT8U SaveFactoryUV_Setting()
 void Global_Init(void)
 {
 	INT8U i;
-	
+
 	headboardInfo.headCategory = 0;
 	headboardInfo.headBoardType = 0;
 	curPos.x = 0;
 	curPos.y = 0;
 	curPos.z = 0;
 	curPos.f = 0;
-	
+
 	printerPhysicalSize.x = 0;
 	printerPhysicalSize.y = 0;
 	printerPhysicalSize.z = 0;
 	printerPhysicalSize.f = 0;
-	
+
 	fwInfo.version = BOARD_VERSION;
 	fwInfo.mt_version = 0;
 	fwInfo.hd_version = 0;
@@ -533,7 +533,7 @@ void Global_Init(void)
 	strcpy(fwInfo.mfw_date, __DATE__);
 	memset(fwInfo.mtfw_date, 0, 12);
 	memset(fwInfo.hdfw_date, 0, 12);
-	
+
 	//#ifdef Y_ENCODER_ENABLE					
 	g_yEncoderInf.bandIndex = -1;
 	g_yEncoderInf.encoderPos = 0;
@@ -541,20 +541,20 @@ void Global_Init(void)
 	g_yEncoderInf.nextBandY = 0;
 	g_yEncoderInf.bandResY = 0;
 	g_yEncoderInf.fStepTotal = 0;
-	
+
 	g_adjustInf.passStepValue = 0;
 	g_adjustInf.passAdvance = 0;
 	g_adjustInf.feedBackY = 0;
 	g_adjustInf.bidirectionValue = 0;
-	
+
 	g_shakehandPassed = False;
-	
+
 	for (i = 0; i<32;i++)
 		dspDebugInfo[i] = 0;
 	for (i = 0; i<32;i++)
 		dspPrivateData[i] = 0;				
 	//#endif				
-	
+
 #if defined( HEAD_EPSON_GEN5) ||  defined(HEAD_RICOH_G4)
 	FireCount = FireCountEx = 0;
 	bFPGADebugInfoUpdated = FALSE;				
@@ -564,14 +564,14 @@ void Global_Init(void)
 	HBReadAddr = HBReadLen = 0;
 	for (i = 0; i<sizeof(HBParamBuf);i++)
 		HBParamBuf[i] = 0;
-	
+
 	memset((void*)&CaliPrintSettingFromUSB, 0, sizeof(CaliPrintSettingFromUSB));
-	
+
 	CaliPrintSettingFromUSB.VSDModel = 3;
-	
+
 	memset((void*)g_headParameterPercent, 0, sizeof(g_headParameterPercent));
 #endif
-	
+
 }
 
 
@@ -621,7 +621,7 @@ void ReadFirePulseEPRData()
 	INT8U err;
 	INT16U length;
 	//	INT8U len;
-	
+
 	i = 0;
 	length = sizeof(FirePulseWParaType);
 	while (i < length)
@@ -640,7 +640,7 @@ void ReadFirePulseEPRData()
 		OSSemPost(IICSem);
 		i += len;			
 	}
-	
+
 	if (i< length)
 	{
 		epromDataRead = False;
@@ -666,7 +666,7 @@ void ReadUVHeatTemprature()
 	INT8U err;
 	INT16U length;
 	//	INT8U len;
-	
+
 	i = 0;
 	length = sizeof(UVHeatTempratureType);
 	while (i < length)
@@ -685,7 +685,7 @@ void ReadUVHeatTemprature()
 		OSSemPost(IICSem);
 		i += len;			
 	}
-	
+
 	if (i< length)
 	{
 		epromDataRead = False;
@@ -699,25 +699,25 @@ void ReadUVHeatTemprature()
 #ifdef CONVERSION_BOARD
 			for (i=0;i<MAX_HEAT_CHANNEL_PRE_HB*MAX_HB_NUM + MAX_COLOR_NUMBER;i++)	
 #else			
-			for (i=0;i<MAX_HEAD_NUMBER + MAX_COLOR_NUMBER;i++)	
+				for (i=0;i<MAX_HEAD_NUMBER + MAX_COLOR_NUMBER;i++)	
 #endif				
-				g_UVheatTemprature.data[i] = 50;  //42.4 degree			
+					g_UVheatTemprature.data[i] = 50;  //42.4 degree			
 		}
 
 #ifdef CONVERSION_BOARD
 		for (i=0;i<MAX_HEAT_CHANNEL_PRE_HB*MAX_HB_NUM + MAX_COLOR_NUMBER;i++)	
 #else		
-		for (i=0;i<MAX_HEAD_NUMBER + MAX_COLOR_NUMBER;i++)
+			for (i=0;i<MAX_HEAD_NUMBER + MAX_COLOR_NUMBER;i++)
 #endif
-		{
+			{
 #ifdef MANUFACTURER_DYSS
-			if((g_UVheatTemprature.data[i]/2) > 55)
-				g_UVheatTemprature.data[i] = 20;
+				if((g_UVheatTemprature.data[i]/2) > 55)
+					g_UVheatTemprature.data[i] = 20;
 #else
-			if((g_UVheatTemprature.data[i]/5) > 50)
-				g_UVheatTemprature.data[i] = 100;
+				if((g_UVheatTemprature.data[i]/5) > 50)
+					g_UVheatTemprature.data[i] = 100;
 #endif
-		}
+			}
 		g_UVheatTemprature.headUpdated = False;					
 	}
 }
@@ -829,8 +829,8 @@ INT16U GetNozzleCount(INT8U HeadType)
 INT8U GetPhysicsHeadNum(void)
 {
 	if(factoryData.HeadType == HeadNo_Epson_Gen5 || factoryData.HeadType == HeadNo_Ricoh_Gen4_64Pin || 
-	   factoryData.HeadType == HeadNo_Ricoh_Gen4_G4 || factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L ||
-		   factoryData.HeadType == HeadNo_Ricoh_Gen5_2C_100Pin)
+			factoryData.HeadType == HeadNo_Ricoh_Gen4_G4 || factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L ||
+			factoryData.HeadType == HeadNo_Ricoh_Gen5_2C_100Pin)
 	{
 		int YInterleaveNum_Head = INTERLEAVE_CALIBRATION;
 		int YInterleaveNum_InHead;
@@ -839,7 +839,7 @@ INT8U GetPhysicsHeadNum(void)
 		else
 			YInterleaveNum_InHead = factoryDataEx.YInterleaveNum;
 		int head_group = (COLOR_NUMBER_CALIBRATION * YInterleaveNum_InHead + NOZZLE_LINE_COUNT_PER_HEAD - 1)/ NOZZLE_LINE_COUNT_PER_HEAD;
-		
+
 		return head_group * EPSON_PERMIT_GROUPNUM;
 	}
 	else
@@ -858,25 +858,25 @@ INT8U IsNeed128M(void)
 	INT16U nozzlecount = GetNozzleCount(factoryData.HeadType);  
 	INT8U HeadNumber = GetPhysicsHeadNum();
 	INT8U BitPerNozzle = (factoryData.HeadType == HeadNo_Epson_Gen5 ||
-						  factoryData.HeadType == HeadNo_Ricoh_Gen4_64Pin || 
-							  factoryData.HeadType == HeadNo_Ricoh_Gen4_G4 || 
-								  factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L ||
-									  factoryData.HeadType == HeadNo_Ricoh_Gen5_2C_100Pin) ? 2 : 1 ;
-									  //Here, we don't consider the bus width align problem. 
-									  INT32U DataPerFire = (HeadNumber * nozzlecount * BitPerNozzle + 15) / 16 * 2;
-									  INT32U DPI = (factoryData.HeadType == HeadNo_Epson_Gen5 ||
-													factoryData.HeadType == HeadNo_Ricoh_Gen4_64Pin || 
-														factoryData.HeadType == HeadNo_Ricoh_Gen4_G4 || 
-															factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L ||
-																factoryData.HeadType == HeadNo_Ricoh_Gen5_2C_100Pin 
-																	) ? 1440 : 720;
-																	const float CarriageWidth = 40.0; //cm
-																	INT32U PassMemSize = (INT32U)((PAPER_MEDIA_WIDTH_INCH + CarriageWidth/2.54) * DPI * DataPerFire);
-																	
-																	if(PassMemSize >= 64 * 1024 * 1024 - 2 * RESERVED_MEMSIZE)
-																		return True;
-																	else
-																		return False;
+			factoryData.HeadType == HeadNo_Ricoh_Gen4_64Pin || 
+			factoryData.HeadType == HeadNo_Ricoh_Gen4_G4 || 
+			factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L ||
+			factoryData.HeadType == HeadNo_Ricoh_Gen5_2C_100Pin) ? 2 : 1 ;
+	//Here, we don't consider the bus width align problem. 
+	INT32U DataPerFire = (HeadNumber * nozzlecount * BitPerNozzle + 15) / 16 * 2;
+	INT32U DPI = (factoryData.HeadType == HeadNo_Epson_Gen5 ||
+			factoryData.HeadType == HeadNo_Ricoh_Gen4_64Pin || 
+			factoryData.HeadType == HeadNo_Ricoh_Gen4_G4 || 
+			factoryData.HeadType == HeadNo_Ricoh_Gen4_G4L ||
+			factoryData.HeadType == HeadNo_Ricoh_Gen5_2C_100Pin 
+		     ) ? 1440 : 720;
+	const float CarriageWidth = 40.0; //cm
+	INT32U PassMemSize = (INT32U)((PAPER_MEDIA_WIDTH_INCH + CarriageWidth/2.54) * DPI * DataPerFire);
+
+	if(PassMemSize >= 64 * 1024 * 1024 - 2 * RESERVED_MEMSIZE)
+		return True;
+	else
+		return False;
 }
 
 //if return TRUE, Ink is runout.
@@ -889,7 +889,7 @@ INT8U CheckInkVolume()
 		for(i =0; i<MAX_COLOR_NUMBER; i++)
 			totalInk +=  usedInkVolume.InkVolume[i][1];
 		totalInk /= INK_VOLUME_FACTOR_PER_LITER;
-		
+
 		if (password.m_bInkLimited < totalInk )
 		{
 			status_ReportStatus(STATUS_FTA_LIMITEDINK_RUNOUT, STATUS_SET); //Ink Limited run out
@@ -916,7 +916,7 @@ INT8U HandShakeInkDot(INT32U * pInkDotNumber)
 {
 	INT32U totalInk = 0;
 	int i;
-	
+
 	for(i =0; i< MAX_COLOR_NUMBER; i++)
 	{
 		totalInk += pInkDotNumber[i];
@@ -942,7 +942,7 @@ void FlushInkVolume(INT32U * pInkDotNumber, INT8U bForceFlush)
 {
 	INT32U totalInk = 0;
 	int i;
-	
+
 	//if ( (password.m_bHaveInkPwd) && (password.m_bInkLimited) )
 	{
 		if(pInkDotNumber != 0)
@@ -961,7 +961,7 @@ void FlushInkVolume(INT32U * pInkDotNumber, INT8U bForceFlush)
 		}
 		else
 			totalInk = usedInkVolume.CurrentTotalInk;
-		
+
 		if(bForceFlush || totalInk - usedInkVolume.CurrentTotalInk >= INK_LIMIT_EPR_WRT_UNIT)
 		{
 			INT8U len;
@@ -1000,8 +1000,8 @@ void AdjustPlatSpace()
 			if((factoryDataEx.LayoutType & (1<<3)) == 0)
 			{
 				if((LCDMenuConfig.Active_HeadMask & ((1<<EPSON_PERMIT_GROUPNUM)-1)) == 0x2 ||
-				   (LCDMenuConfig.Active_HeadMask & ((1<<EPSON_PERMIT_GROUPNUM)-1)) == 0x8
-					   )
+						(LCDMenuConfig.Active_HeadMask & ((1<<EPSON_PERMIT_GROUPNUM)-1)) == 0x8
+				  )
 				{
 					printer.platSpace -= (INT32S)(factoryData.m_fHeadXGroupSpace * (INT32S)factoryDataEx.m_nXEncoderDPI);
 				}				
@@ -1030,13 +1030,12 @@ void AdjustPlatSpace()
 			}
 		}
 	}
-//#ifdef MANUFACTURER_DYSS
-#if 0
+#ifdef MANUFACTURER_DYSS
 	if(COLOR_NUMBER_CALIBRATION == 6)
 #ifdef RICOH_3H
-            printer.platSpace -= (INT32S)(factoryData.m_fHeadXColorSpace * (INT32S)factoryDataEx.m_nXEncoderDPI);
+		printer.platSpace -= (INT32S)(factoryData.m_fHeadXColorSpace * (INT32S)factoryDataEx.m_nXEncoderDPI);
 #else
-            printer.platSpace -= (INT32S)(factoryData.m_fHeadXColorSpace * (INT32S)factoryDataEx.m_nXEncoderDPI)*2;
+	printer.platSpace -= (INT32S)(factoryData.m_fHeadXColorSpace * (INT32S)factoryDataEx.m_nXEncoderDPI)*2;
 #endif
 #endif
 }
@@ -1085,14 +1084,14 @@ void Printer_Init(void)
 	byhxData.boardID = 0xFFFFFFFF;
 	byhxData.manufacturerID = 0xFFFF;
 	byhxData.supportedHeadList[0] = HeadNo_Ricoh_Gen5_2C_100Pin;
-	
+
 	OSSemPend(IICSem, 0, &err);
 	if (IIC_WriteEEPRom(EPR_BYHX_DATA_OFFSET, (INT8U *)&byhxData, &epromlen) == False)
 	{
 		OSSemPost(IICSem);
 		status_ReportStatus(STATUS_FTA_EEPROM_WRITE, STATUS_SET);
 	}
-	
+
 	epromlen = EPR_BYHX_AUTHORITY_FLAG_SIZE;
 	if (IIC_WriteEEPRom(EPR_BYHX_AUTHORITY_FLAG_OFFSET, byhxAuthorityStr, &epromlen) == False)
 	{
@@ -1103,10 +1102,10 @@ void Printer_Init(void)
 #endif    
 
 	printer.manualCleanPos = PRINTER_MANUAL_CLEAN_POS;
-	
+
 	printer.flashNearPos = PRINTER_FLASH_NEAR_POS;
 	printer.flashFarPos = PRINTER_FLASH_FAR_POS;
-	
+
 #ifdef SUPPORT_MOTOR_CONTROL  
 	printer.movSpeed = 0;
 #else
@@ -1114,7 +1113,7 @@ void Printer_Init(void)
 #endif
 	printer.cleanSpeed = PRINTER_CLEAN_SPEED;	
 	printer.feedSpeed = PRINTER_MEDIAFEED_SPEED;
-	
+
 	//cleanPara.flash = True;
 	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Just test
 #if ((defined(HEAD_RICOH_G4)&&defined(RICOH_CLEAN_PRESS))&&!defined(UV_PRINTER))||defined(MANUFACTURER_DOCAN_UV)
@@ -1127,7 +1126,7 @@ void Printer_Init(void)
 #endif	
 #endif
 	// cleanPara.flash = False;
-	
+
 	cleanPara.pause_gohome = False;
 	cleanPara.flash_interval = 100; //10 times per second. 2007/8/2 in INWEAR
 	cleanPara.longflash_beforeprint = True;
@@ -1146,18 +1145,18 @@ void Printer_Init(void)
 	password.m_bHaveOptionPwd = False;
 	password.m_bHaveInkPwd = False;
 	password.m_bLanguage = 0; //Chinese
-	
+
 	len = EPR_TIME_PASSWORD_STR_SIZE;
 	OSSemPend(IICSem, 0, &err);
 	if (IIC_ReadEEPRom(EPR_TIME_PASSWORD_STR_OFFSET, password.m_sTimePwd, &len) == False)
 		status_ReportStatus(STATUS_FTA_EEPROM_READ, STATUS_SET);
-	
+
 	password.m_sTimePwd[EPR_TIME_PASSWORD_STR_SIZE] = 0;
 	len = EPR_OPTION_PASSWORD_STR_SIZE;
 	if (IIC_ReadEEPRom(EPR_OPTION_PASSWORD_STR_OFFSET, password.m_sOptionPwd, &len) == False)
 		status_ReportStatus(STATUS_FTA_EEPROM_READ, STATUS_SET);
 	password.m_sOptionPwd[EPR_OPTION_PASSWORD_STR_SIZE] = 0;
-	
+
 	len = EPR_INK_PASSWORD_STR_SIZE;
 	if (IIC_ReadEEPRom(EPR_INK_PASSWORD_STR_OFFSET, password.m_sInkPwd, &len) == False)
 		status_ReportStatus(STATUS_FTA_EEPROM_READ, STATUS_SET);
@@ -1182,11 +1181,11 @@ void Printer_Init(void)
 		i += len;			
 	}
 #endif	
-	
+
 #ifdef FUNCTION_CLOSE_LCD
 	UpdateHeadParamName();
 #endif
-	
+
 	if (ReadFactoryData(&factoryData))
 	{
 		//		epromDataRead = TRUE;
@@ -1199,7 +1198,7 @@ void Printer_Init(void)
 		printer.xEncoder = 0; ////!0 使用光栅， 0 使用司服编码
 		CONSOL_Printf("Read printer parameters Failed\r\n.");
 	}	
-//#if defined(HEAD_RICOH_G4)
+	//#if defined(HEAD_RICOH_G4)
 #if 0
 #ifdef  RICOH_G5_3H
 	factoryData.HeadType = HeadNo_Ricoh_Gen5_2C_100Pin;
@@ -1229,7 +1228,7 @@ void Printer_Init(void)
 		CONSOL_Printf("Read extended printer parameters Failed\r\n.");
 	}	
 #endif
-	
+
 #if defined(EPSON_DX5E)
 
 #if defined(HEAD_EPSON_GEN5)
@@ -1240,40 +1239,40 @@ void Printer_Init(void)
 #else
 	factoryDataEx.m_nBitFlagEx &= ~FACTORYDATA_EX_DX5E;
 #endif
-	
+
 #ifdef GZ_KEY_USED
 	factoryDataEx.m_nBitFlagEx |= FACTORYDATA_EX_GZ_KEY;
 #else
 	factoryDataEx.m_nBitFlagEx &= ~FACTORYDATA_EX_GZ_KEY;
 #endif
-	
+
 #ifdef HEAD_EPSON_GEN5S
 	factoryDataEx.m_nBitFlagEx |= FACTORYDATA_EX_EPSON_GEN6;
 #else
 	factoryDataEx.m_nBitFlagEx &= ~FACTORYDATA_EX_EPSON_GEN6;
 #endif
-	
+
 #ifdef RIPSTAR_FLAT_EX
 	factoryDataEx.m_nBitFlagEx |= FACTORYDATA_EX_RIPSTAR_EX;
 #else
 	factoryDataEx.m_nBitFlagEx &= ~FACTORYDATA_EX_RIPSTAR_EX;
 #endif
 
-//#ifdef DYSS_1270
-//	factoryDataEx.m_nXEncoderDPI = 1270;
-//#endif
+	//#ifdef DYSS_1270
+	//	factoryDataEx.m_nXEncoderDPI = 1270;
+	//#endif
 
 	printer.autoCleanStartPos = PRINTER_AUTOCLEAN_START_POS;
 	printer.autoCleanEndPos = PRINTER_AUTOCLEAN_END_POS;
-	
+
 	printer.orgLimit = PRINTER_POSITION_N_LIMIT;
 	printer.org_oppLimit = PRINTER_POSITION_F_LIMIT;
-	
+
 	printer.cleanPosOrgOpp = PRINTER_CLEAN_FAR;
 	for (i = 0; i < MAX_HEADS_CLEAN_NUMBER; i++)  //For ALLWIN 8 KM256  heads, 2008/4/29
 		printer.headsCleanPos[i] = 1950 + 1880*i;
-	
-	
+
+
 	i = 0;
 	length = sizeof(VoltageParaType);
 	while (i < length)
@@ -1291,9 +1290,9 @@ void Printer_Init(void)
 		OSSemPost(IICSem);
 		i += len;			
 	}
-	
+
 	g_headVoltageData.headUpdated = False;
-	
+
 	if (i< length)
 	{
 		CONSOL_Printf("Head Voltage Data read failed.");
@@ -1312,27 +1311,27 @@ void Printer_Init(void)
 #ifdef CONVERSION_BOARD	
 	for (i=0;i<MAX_HEAD_NUMBER*MAX_HB_NUM;i++)
 #else
-	for (i=0;i<MAX_HEAD_NUMBER;i++)
+		for (i=0;i<MAX_HEAD_NUMBER;i++)
 #endif
-	{
+		{
 #ifdef MANUFACTURER_DYSS
 			g_headTemeprature[i] = 2*i; //25 degree
 #else
 			g_headTemeprature[i] = 5*i; //25 degree
 #endif			
-	}
-	
+		}
+
 	for (i=0;i<MAX_COLOR_NUMBER;i++)
 	{
 		g_headHeaterThermistorTemeprature[i] = 0;
 	}	
 	for (i=0;i<MAX_VOLTAGENUMBER;i++)
 		g_curHeadVoltage[i] = vol_CalHeadVoltage(i);
-	
+
 #if defined( HEAD_EPSON_GEN5) || defined(HEAD_RICOH_G4)
 	ReadCleanParamEPRData();
 #endif
-	
+
 #if defined(EPSON_CLEAN_UPDOWN)||defined(RICOH_CLEAN_PRESS)||defined (DYSS_UV_CLEAN)
 	if(cleanparam_EPSON_ALLWIN.bAutoClean)
 		cleanPara.autoClean_passInterval = cleanparam_EPSON_ALLWIN.AutoClean_passInterval;
@@ -1346,16 +1345,16 @@ void Printer_Init(void)
 #else   
 	cleanPara.autoClean_passInterval = 20;	
 #endif
-	
+
 	ReadFirePulseEPRData();
-	
+
 #ifdef SUPPORT_HEAD_HEATER	
 	ReadUVHeatTemprature();
 #endif
-	
+
 	i = 0;
 	length = sizeof(EPR_BYHXDataType);
-	
+
 #ifdef COORD_NEW_UV
 	ReadFactoryUV_Setting();
 #if defined( MANUFACTURER_SAIBO) ||defined(MANUFACTURER_SAIBO_ROLL_UV)
@@ -1368,14 +1367,14 @@ void Printer_Init(void)
 	UV_Power_Percent(&Ripstar_UV_Setting.Power[0],100,100);	
 	uv_UVMode = (Ripstar_UV_Setting.UV_SETTING >> 24)
 #elif defined(MANUFACTURER_FULGENCY_FLAT_UV)
-	UV_Power_Percent(&Ripstar_UV_Setting.Power[0],25,25);
+		UV_Power_Percent(&Ripstar_UV_Setting.Power[0],25,25);
 	uv_UVMode = (Ripstar_UV_Setting.UV_SETTING >> 24);		
 #else
 	UV_Power_Percent(&Ripstar_UV_Setting.Power[0],10,10);
 #endif
 	Configure_Uv_Power(uv_UVMode);
 #endif
-	
+
 	while (i < length)
 	{
 		if (length - i > E2PROM_PAGESIZE)
@@ -1391,20 +1390,20 @@ void Printer_Init(void)
 		OSSemPost(IICSem);
 		i += len;			
 	}
-	
+
 	if ( i < length)
 		status_ReportStatus(STATUS_FTA_EEPROM_READ, STATUS_SET);
-	
+
 	byhxData.boardID = owBoardID;
 	byhxData.manufacturerID = owManufacturerID;
-	
+
 	fwInfo.boardID = byhxData.boardID;
 	//fwInfo.manufacturerID = byhxData.manufacturerID;
-	
+
 #ifdef LB_TEST	
 
 #error
-   //byhxData.manufacturerID =  fwInfo.manufacturerID;
+	//byhxData.manufacturerID =  fwInfo.manufacturerID;
 	fwInfo.manufacturerID = byhxData.manufacturerID = 0x98;
 	//factoryData.HeadType = HeadNo_Ricoh_Gen4_G4;
 #endif
@@ -1431,20 +1430,20 @@ void Printer_Init(void)
 		OSSemPost(IICSem);
 		i += len;							 
 	}	
-	
+
 	if (i < length)
 	{
 		epromDataRead = FALSE;
 		//		CONSOL_Printf("Read EPROM Failed\r\n.");
 	}
-	
+
 #if defined( HEAD_EPSON_GEN5) || defined(HEAD_RICOH_G4)
 	if(!ReadEPSONCaliConfig())
 	{
 		epromDataRead = FALSE;
 		CONSOL_Printf("Read calibration configure Failed\r\n.");
 	}
-	
+
 	if (!ReadEPSONCaliSetting())
 	{
 		epromDataRead = FALSE;
@@ -1452,7 +1451,7 @@ void Printer_Init(void)
 		epsonCaliSetting.eprCaliSetting.version = 0;
 		CONSOL_Printf("Read extended printer parameters Failed\r\n.");
 	}
-	
+
 	if(!ReadLCDMenuConfig())
 	{
 		epromDataRead = False;
@@ -1478,9 +1477,9 @@ void Printer_Init(void)
 
 	if(!ReadLCDMenuConfig_EX())
 	{
-        epromDataRead = False;
-        CONSOL_Printf("EPR_LCDMENU_SETTING_OFFSET read failed.");
-    }
+		epromDataRead = False;
+		CONSOL_Printf("EPR_LCDMENU_SETTING_OFFSET read failed.");
+	}
 
 	Cal_active_Group_num();
 	if(LCDMenuConfig.OriginX >= LCDMenuConfig.MediaWidth)
@@ -1498,10 +1497,10 @@ void Printer_Init(void)
 	mediaInfo_ToPM.MediaWidth = LCDMenuConfig.MediaWidth - LCDMenuConfig.OriginX;
 	mediaInfo_ToPM.Margin = LCDMenuConfig.Margin;
 	printQuality_ToPM.PrintQuality = LCDMenuConfig.PrintQuality;
-	
+
 	InitHeadParaChannelMap();
 #endif
-	
+
 #if defined(EPSON_BOTTOM_BOARD_V3)||defined(EPSON_BOTTOM_BOARD_V2_1) 
 	if(!ReadHeaterInfo())
 	{
@@ -1518,9 +1517,9 @@ struct LCD_Menu_Configure_EX LCDMenuConfig_EX;
 INT8U SaveLCDMenuConfigEX_EM(struct LCD_Menu_Configure_EX *pCleanPara, INT16S start, INT16U len)
 {
 	INT8U ret = True;
-		
+
 	ret &= IIC_WriteEEPRom_Ex(EPR_LCDMENU_SETTING_EX_OFFSET + start, 
-							  ((INT8U *)pCleanPara)+ start, &len);
+			((INT8U *)pCleanPara)+ start, &len);
 	return ret;
 }
 
@@ -1580,8 +1579,8 @@ INT8U ReadLCDMenuConfig_EX()
 	if( LCDMenuConfig_EX.version != LCD_MENU_CONFIG_EX_VERSION || LCDMenuConfig_EX.len != length) //it is old structure before add the head.
 	{
 		version_bak = LCDMenuConfig_EX.version;
-			LCDMenuConfig_EX.len = sizeof(struct LCD_Menu_Configure_EX);
-			LCDMenuConfig_EX.version = LCD_MENU_CONFIG_EX_VERSION;
+		LCDMenuConfig_EX.len = sizeof(struct LCD_Menu_Configure_EX);
+		LCDMenuConfig_EX.version = LCD_MENU_CONFIG_EX_VERSION;
 		if(LCD_MENU_CONFIG_EX_VERSION_1 == version_bak)
 		{
 
@@ -1655,16 +1654,16 @@ INT8U ReadLCDMenuConfig()
 	INT8U err;
 	INT16U length;
 	EPM_Head head;
-	
+
 	length = sizeof(struct LCD_Menu_Configure) + sizeof(EPM_Head);
 	if(length > ERP_LCDMENU_SETTING_SIZE)
 		return False;
-	
+
 	if(!IIC_ReadEEPRom_Head(EPR_LCDMENU_SETTING_OFFSET, &head))
 	{
 		return False;
 	}
-	
+
 	memset(&LCDMenuConfig, 0, sizeof(struct LCD_Menu_Configure));
 	if( head.flag == 0x40 && (head.version == 3 || head.version == 2) ) //it is old structure before add the head.
 	{
@@ -1676,7 +1675,7 @@ INT8U ReadLCDMenuConfig()
 			return False;
 		}
 		//add new elememt initialization here.
-		
+
 		LCDMenuConfig.Active_HeadMask = (1<<EPSON_PERMIT_GROUPNUM) -1;
 		LCDMenuConfig.AutoPowerOnClean = False;
 		LCDMenuConfig.AutoGoHome = False;
@@ -1686,17 +1685,17 @@ INT8U ReadLCDMenuConfig()
 		LCDMenuConfig.MeasureSensorOffset= 0.0;
 		LCDMenuConfig.len = sizeof(struct LCD_Menu_Configure);
 		LCDMenuConfig.version = LCD_MENU_CONFIG_VERSION;  
-		
+
 		return SaveLCDMenuConfig();
 	}
 	else if(head.flag == LCD_MENU_CONFIG_FLAG)
 	{
 		if(!IIC_ReadEEPRom_Struct(EPR_LCDMENU_SETTING_OFFSET + sizeof(EPM_Head), 
-								  (INT8U *)&LCDMenuConfig, sizeof(struct LCD_Menu_Configure), &head))
+					(INT8U *)&LCDMenuConfig, sizeof(struct LCD_Menu_Configure), &head))
 		{
 			return False;
 		}
-		
+
 		if(LCDMenuConfig.version <= 3)
 		{
 			LCDMenuConfig.AutoPowerOnClean = False;
@@ -1717,17 +1716,17 @@ INT8U ReadLCDMenuConfig()
 		{
 			LCDMenuConfig.AutoStep = False;
 		}
-		
+
 		if(LCDMenuConfig.version <= 7)
 		{
 			LCDMenuConfig.MeasureSensorOffset= 0.0;
 		}
 		if( LCDMenuConfig.len != sizeof(struct LCD_Menu_Configure) || 
-		   LCDMenuConfig.version != LCD_MENU_CONFIG_VERSION)
+				LCDMenuConfig.version != LCD_MENU_CONFIG_VERSION)
 		{
 			LCDMenuConfig.len = sizeof(struct LCD_Menu_Configure);
 			LCDMenuConfig.version = LCD_MENU_CONFIG_VERSION;
-			
+
 			return SaveLCDMenuConfig();
 		}
 	}
@@ -1735,7 +1734,7 @@ INT8U ReadLCDMenuConfig()
 	{
 		return ResetMenuConfig();
 	}
-	
+
 	return True;
 }
 
@@ -1743,7 +1742,7 @@ INT8U SaveLCDMenuConfig()
 {
 	INT8U ret = True;
 	INT16U len = sizeof(struct LCD_Menu_Configure);
-	
+
 	EPM_Head head = 
 	{
 		LCD_MENU_CONFIG_FLAG,
@@ -1751,10 +1750,10 @@ INT8U SaveLCDMenuConfig()
 		sizeof(struct LCD_Menu_Configure) + sizeof(EPM_Head),
 		0
 	};
-	
+
 	CalcCheckSum((INT8U*)&LCDMenuConfig, &head);
 	ret = IIC_WriteEEPRom_Head(EPR_LCDMENU_SETTING_OFFSET, &head);
-	
+
 	ret &= IIC_WriteEEPRom_Ex(EPR_LCDMENU_SETTING_OFFSET + sizeof(EPM_Head), (INT8U *)&LCDMenuConfig, &len);
 	return ret;
 }
@@ -1764,7 +1763,7 @@ INT8U SetHeadParameter(void * pData, int Index, int Data)
 {
 	INT8U i, tmp[32];
 	INT8U err;
-	
+
 	if(pData == (void *)-1)
 	{
 		if (OSFlagAccept(status_FLAG_GRP, STATUS_PRINT, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)
@@ -1772,10 +1771,10 @@ INT8U SetHeadParameter(void * pData, int Index, int Data)
 		else
 			return False;
 	}
-	
+
 	if(Index >= MAX_EPSON_HEAD_CHANNEL || Index <0)
 		return False;
-	
+
 	if(Data > 50)
 		Data = 50;
 	else if(Data < -50)
@@ -1785,7 +1784,7 @@ INT8U SetHeadParameter(void * pData, int Index, int Data)
 #else
 	g_headParameterPercent[EpsonChannelMap[Index]] = Data; 
 #endif
-	
+
 	tmp[0] = MAX_EPSON_HEAD_CHANNEL+2;
 	tmp[1] = UART_HEAD_EPSON_PARAM_PERCENT;
 	for (i = 0; i < MAX_EPSON_HEAD_CHANNEL; i++)
@@ -1799,14 +1798,14 @@ INT8U SetHeadParameter(void * pData, int Index, int Data)
 		}
 		else
 #endif
-		tmp[2+i] = g_headParameterPercent[i];
+			tmp[2+i] = g_headParameterPercent[i];
 	}
 #ifdef CONVERSION_BOARD
 	tmp[0]++;
 	tmp[tmp[0] - 1] = Index/8 +1;
 #endif
 	UART_SendCMD(UART_HEAD_CHANNEL, tmp);
-	
+
 	return True;
 }
 
@@ -1861,16 +1860,16 @@ INT8U ReadFactoryDataEx_EPSON(EPR_FactoryDataExType *pData)
 	INT8U err;
 	INT16U length;
 	EPM_Head head;
-	
+
 	length = sizeof(struct EPR_FactoryData_Ex) + sizeof(EPM_Head);
 	if(length > ERP_FACTORY_DATA_EX_SIZE)
 		return False;
-	
+
 	if(!IIC_ReadEEPRom_Head(EPR_FACTORY_DATA_EX_OFFSET, &head))
 	{
 		return False;
 	}
-	
+
 	memset(pData, 0, sizeof(struct EPR_FactoryData_Ex));
 	if((head.flag & 0xFF) == 0x40 && ((head.flag >> 8) == 1 || (head.flag >> 8) == 2) ) //it is old structure before add the head.
 	{
@@ -1882,30 +1881,30 @@ INT8U ReadFactoryDataEx_EPSON(EPR_FactoryDataExType *pData)
 			return False;
 		}
 		//add new elememt initialization here.
-		
+
 		if((head.flag >> 8) == 1)
 		{
-            pData->MaxGroupNumber = absv(factoryData.group_num);
+			pData->MaxGroupNumber = absv(factoryData.group_num);
 		}
 		pData->len = sizeof(struct EPR_FactoryData_Ex);  //current len is sizeof(struct EPR_FactoryData_Ex)
 		pData->version = FACTORYDATA_EX_VER;  //current version is 0x02
-		
+
 		return SaveFactoryDataEx_EPSON(pData);
 	}
 	else if(head.flag == FACTORYDATA_EX_FLAG)
 	{
 		if(!IIC_ReadEEPRom_Struct(EPR_FACTORY_DATA_EX_OFFSET + sizeof(EPM_Head), 
-								  (INT8U * )pData, sizeof(struct EPR_FactoryData_Ex), &head))
+					(INT8U * )pData, sizeof(struct EPR_FactoryData_Ex), &head))
 		{
 			return False;
 		}
-		
+
 		if( pData->len != sizeof(struct EPR_FactoryData_Ex) || 
-		   pData->version != FACTORYDATA_EX_VER)
+				pData->version != FACTORYDATA_EX_VER)
 		{
 			pData->len = sizeof(struct EPR_FactoryData_Ex);  //current len is sizeof(struct EPR_FactoryData_Ex)
 			pData->version = FACTORYDATA_EX_VER;  //current version is 0x02
-			
+
 			return SaveFactoryDataEx_EPSON(pData);
 		}
 	}
@@ -1914,24 +1913,24 @@ INT8U ReadFactoryDataEx_EPSON(EPR_FactoryDataExType *pData)
 		memset(&factoryDataEx, 0, sizeof(struct EPR_FactoryData_Ex));
 		factoryDataEx.len = sizeof(struct EPR_FactoryData_Ex);
 		factoryDataEx.version = FACTORYDATA_EX_VER;
-		
+
 		factoryDataEx.m_nXEncoderDPI = 720;
 		factoryDataEx.m_nBitFlagEx = FACTORYDATA_EX_MASK_HEADDIR_IS_POS;
 		factoryDataEx.m_nColorOrder[0] = COLORCODE_Y;
 		factoryDataEx.m_nColorOrder[1] = COLORCODE_M;
 		factoryDataEx.m_nColorOrder[2] = COLORCODE_C;
 		factoryDataEx.m_nColorOrder[3] = COLORCODE_K;
-		
+
 		factoryDataEx.YInterleaveNum = 2; //Ｙ向拼插的数目。对于EPSON，双四色打印机为2.
 		factoryDataEx.LayoutType = 0;   //reserved for special layout. default is 0. 0 means PrintHead is Y continue. 
-		
+
 		strcpy(factoryDataEx.ManufacturerName, "Unknown");
 		strcpy(factoryDataEx.PrinterName, "UnknownPrinter");
-		
-        factoryDataEx.MaxGroupNumber = absv(factoryData.group_num);
+
+		factoryDataEx.MaxGroupNumber = absv(factoryData.group_num);
 		return SaveFactoryDataEx_EPSON(&factoryDataEx);
 	}
-	
+
 	return True;
 }
 
@@ -1939,7 +1938,7 @@ INT8U SaveFactoryDataEx_EPSON(EPR_FactoryDataExType *pData)
 {
 	INT8U ret = True;
 	INT16U len = sizeof(EPR_FactoryDataExType);
-	
+
 	EPM_Head head = 
 	{
 		FACTORYDATA_EX_FLAG,
@@ -1947,10 +1946,10 @@ INT8U SaveFactoryDataEx_EPSON(EPR_FactoryDataExType *pData)
 		sizeof(EPR_FactoryDataExType) + sizeof(EPM_Head),
 		0
 	};
-	
+
 	CalcCheckSum((INT8U*)pData, &head);
 	ret = IIC_WriteEEPRom_Head(EPR_FACTORY_DATA_EX_OFFSET, &head);
-	
+
 	ret &= IIC_WriteEEPRom_Ex(EPR_FACTORY_DATA_EX_OFFSET + sizeof(EPM_Head), (INT8U *)pData, &len);
 	return ret;
 }
@@ -1986,7 +1985,7 @@ INT8U UI_CheckPassword(void * pData, INT8U * password, INT8U len)
 		}
 		i++;
 	}
-	
+
 	return True;
 }
 

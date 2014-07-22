@@ -12,6 +12,8 @@
 *.dump
 *.axf
 *.d
+*.c1
+*.sof
 
 .*
 !.gitignore

@@ -27,7 +27,7 @@
 #include <asm/regs.h>
 #include <asm/io.h>
 #include <platform.h>
-#include <fpga_usb.h>
+#include <cycfx3.h>
 
 #define CONFIG_DMA_BASE	(SOCFPGA_LWH2F_ADDRESS + 0x200)
 #define CONFIG_DMA_IRQ		74

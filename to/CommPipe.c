@@ -25,9 +25,9 @@ static INT8U bIsInit = False;
 //AT91PS_UDPHS_DMA * pDMA_nextBuf_DESC;
 
 void CommPipe_USBWriteCallback (void *pArg,
-								unsigned char status,
-								unsigned int transferred,
-								unsigned int remaining);
+		unsigned char status,
+		unsigned int transferred,
+		unsigned int remaining);
 
 INT8U InitCommPipe(INT8U channelNumber)
 {
@@ -35,9 +35,9 @@ INT8U InitCommPipe(INT8U channelNumber)
 	DataSize = 0;
 	BufferSize = CACHE_BUFF_SIZE - sizeof(INT8U);
 	bIsCommRun = False;
-	
+
 	USBD_AbortDataWrite(USB_IN_EP);
-	
+
 	bIsInit = True;
 	return True;
 }
@@ -45,7 +45,7 @@ INT8U InitCommPipe(INT8U channelNumber)
 void CommPipe_StartOneSendEP6()
 {
 	OS_CPU_SR cpu_sr;
-	
+
 	OS_ENTER_CRITICAL();
 	if(DataSize > 0)
 	{
@@ -61,7 +61,7 @@ void CommPipe_CompleteOneSendEP6()
 {
 	OS_CPU_SR cpu_sr;
 	INT8U err;
-	
+
 	OS_ENTER_CRITICAL();	
 	BufferSize += *(INT16U*)pSend;
 	DataSize -= *(INT16U*)pSend;
@@ -78,24 +78,24 @@ void CommPipe_USBDMA_EP6_DoneInterrupt(void)
 	OS_CPU_SR cpu_sr;
 	OS_ENTER_CRITICAL();	
 	CommPipe_CompleteOneSendEP6();
-	
+
 	CommPipe_StartOneSendEP6();			
 	OS_EXIT_CRITICAL();
 }
 
 
 void CommPipe_USBWriteCallback (void *pArg,
-								unsigned char status,
-								unsigned int transferred,
-								unsigned int remaining)
+		unsigned char status,
+		unsigned int transferred,
+		unsigned int remaining)
 {
 	//if(status == USBD_STATUS_SUCCESS)
 	{
 		CommPipe_USBDMA_EP6_DoneInterrupt();
 	}
 	//else
-		bIsCommRun = False;
-	
+	bIsCommRun = False;
+
 }
 
 INT8U PushCommPipeData(INT8U channelNO, INT8U *pBuff, INT16U size, INT8U IsBlockModel)
@@ -106,13 +106,13 @@ INT8U PushCommPipeData(INT8U channelNO, INT8U *pBuff, INT16U size, INT8U IsBlock
 	INT16U full_len = (size + ALIGN_SIZE -1)/ALIGN_SIZE*ALIGN_SIZE + PIPEHEAD_SIZE;
 	INT16U data_len = (size + ALIGN_SIZE -1)/ALIGN_SIZE*ALIGN_SIZE;
 	INT8U *pBufEnd = CacheBuff+CACHE_BUFF_SIZE;
-	
+
 	if(!bIsInit)
 		return False;
-	
+
 	if(size > MAX_CMD_SIZE)
 		return False;
-	
+
 	if(!IS_ONLINE) 
 	{
 		if(bIsCommRun)
@@ -121,7 +121,7 @@ INT8U PushCommPipeData(INT8U channelNO, INT8U *pBuff, INT16U size, INT8U IsBlock
 		InitCommPipe(3);
 		return False;
 	}
-	
+
 	do{
 		OS_ENTER_CRITICAL();
 		if(BufferSize < full_len)
@@ -153,7 +153,7 @@ INT8U PushCommPipeData(INT8U channelNO, INT8U *pBuff, INT16U size, INT8U IsBlock
 			}
 		}
 		OS_EXIT_CRITICAL();	
-		
+
 		if(!ret && IsBlockModel)
 		{
 			OSFlagPend(mix_FLAG_GRP, COMM_PIPE_COMPLETED, OS_FLAG_WAIT_SET_ANY | OS_FLAG_CONSUME, 0, &err);
@@ -161,7 +161,7 @@ INT8U PushCommPipeData(INT8U channelNO, INT8U *pBuff, INT16U size, INT8U IsBlock
 		else
 			break;
 	}while(1);
-	
+
 	return ret;
 }
 
@@ -172,33 +172,33 @@ INT8U PushHugePipeData(INT16U ArmCmd, INT8U *pBuff, INT16U huge_size)
 	INT8U ret = True;
 	INT16U size, offset;
 	INT8U IsHuge;
-	
+
 	if(!bIsInit)
 		return False;
-	
+
 	if(!IS_ONLINE) 
 	{
 		InitCommPipe(3);
 		return False;
 	}
-	
+
 	if(huge_size > MAX_PIPE_CMD_LEN)
 		IsHuge = True;
 	else
 		IsHuge = False;
-	
+
 	offset = 0;
 	while(huge_size > 0)
 	{
 		INT16U full_len;
 		INT16U data_len;
 		INT8U *pBufEnd;
-		
+
 		if(huge_size > MAX_PIPE_CMD_LEN)
 			size = MAX_PIPE_CMD_LEN;
 		else
 			size = huge_size;
-		
+
 		if(IsHuge)
 		{
 			full_len = (size + sizeof(INT16U)*2 + ALIGN_SIZE -1)/ALIGN_SIZE*ALIGN_SIZE + PIPEHEAD_SIZE;
@@ -209,9 +209,9 @@ INT8U PushHugePipeData(INT16U ArmCmd, INT8U *pBuff, INT16U huge_size)
 			full_len = (size + sizeof(INT16U) + ALIGN_SIZE -1)/ALIGN_SIZE*ALIGN_SIZE + PIPEHEAD_SIZE;
 			data_len = (size + sizeof(INT16U) + ALIGN_SIZE -1)/ALIGN_SIZE*ALIGN_SIZE;
 		}
-		
+
 		pBufEnd = CacheBuff+CACHE_BUFF_SIZE;
-		
+
 		do{
 			OS_ENTER_CRITICAL();
 			if(BufferSize < full_len)
@@ -252,7 +252,7 @@ INT8U PushHugePipeData(INT16U ArmCmd, INT8U *pBuff, INT16U huge_size)
 				}
 			}
 			OS_EXIT_CRITICAL();	
-			
+
 			if(!ret)
 			{
 				OSFlagPend(mix_FLAG_GRP, COMM_PIPE_COMPLETED, OS_FLAG_WAIT_SET_ANY | OS_FLAG_CONSUME, 0, &err);
@@ -260,13 +260,13 @@ INT8U PushHugePipeData(INT16U ArmCmd, INT8U *pBuff, INT16U huge_size)
 			else
 				break;
 		}while(1);
-		
+
 		offset += size;
 		pBuff += size;
-		
+
 		huge_size -= size;
 	}
-	
+
 	return ret;
 }
 

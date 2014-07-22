@@ -260,7 +260,8 @@ static  void  App_TaskStart (void *p_arg)
 #if 0
 	USB_Init();
 
-
+#endif
+#if 0
 	(void)OSTaskCreateExt(USB_Task,
 			(void *)0,                                 /* No arguments passed to OS_TaskIdle() */
 			&TaskUsbStk[USB_TASK_STK_SIZE - 1], /* Set Top-Of-Stack                     */

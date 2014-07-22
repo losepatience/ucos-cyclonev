@@ -304,7 +304,7 @@ void IIC_Init(void)
 
 
 
-#if 0
+#if 1
 /* ------------------------------------------------------------------------
  * APIS for USB
  * ------------------------------------------------------------------------
@@ -353,15 +353,20 @@ u8 HugeBuf_Flush(ssize_t size)
 	return ret;
 }
 
+#include <hugebuf.h>
 u8 HugeBuf_GetInfHead(DataHeaderType *header)
 {
 	void *addr;
 	unsigned long flags = 0;
+	struct fifo *fifo = dma_fifo;
 
-	addr = fifo_oaddr(dma_fifo);
+	if (fifo_cached(fifo) < HUGEBUF_ALIGN_SIZE)
+		return false;
+
+	addr = fifo_oaddr(fifo);
 	memcpy(header, addr, sizeof(DataHeaderType));
 
-	if (memcmp(&header->header_flag, "BYHX", sizeof(u32))) {
+	if (memcmp(&header->header_flag, "BYHX", 4)) {
 		__report(STATUS_FTA_INTERNAL_WRONGHEADER, STATUS_SET);
 		while (1)
 			OSTimeDly(1);
