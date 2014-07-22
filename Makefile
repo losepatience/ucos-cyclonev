@@ -92,7 +92,7 @@ INCS := $(shell find $(DIRS) -name "*.h")
 INCS := $(sort $(dir $(INCS)))
 INCS += include include/Ripstar APP to to/porting
 
-DIRS := APP OS lib to
+DIRS := APP OS lib #to
 SRCS := $(shell find $(DIRS) -name "*.S" -o -name "*.c")
 OBJS := $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)
@@ -134,7 +134,7 @@ ucosii.axf: $(OBJS)
 	@$(OBJCOPY) -I elf32-little -O binary $@ ucosii.bin
 
 
-.PHONY: all clean
+.PHONY: all clean distclean
 
 %.lds: %.lds.S
 	@$(CC) $(CFLAGS) $(INCS:%='-I%') -P -E $< -o $@ 
@@ -147,8 +147,14 @@ ucosii.axf: $(OBJS)
 
 
 deps := $(OBJS:.o=.d)
+
 clean:
 	@rm -f *.axf *.bin *.lds *.map $(OBJS) $(deps)
+
+distclean:
+	@rm -f *.axf *.bin *.lds *.map
+	@find . -name "*.o" -exec rm -f {} \;
+	@find . -name "*.d" -exec rm -f {} \;
 
 # ===============================================================
 # 6. Deps

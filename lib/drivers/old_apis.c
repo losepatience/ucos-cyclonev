@@ -4,7 +4,7 @@
 #include <at24.h>
 #include <flash.h>
 #include <old_apis.h>
-#include <fpga_uart.h>
+#include <cycserial.h>
 #include <errno.h>
 #include <malloc.h>
 #include <delay.h>
@@ -177,7 +177,10 @@ float IIC_Read_Max11614(u8 Flag)
 #include <dwgpio.h>
 
 static u8 writebuf[256];
-extern void RESET_KB(void);
+extern void RESET_KB(void)
+{
+	return;
+}
 
 u8 IIC_WriteRegs(u8 reg, u8 *buf, u8 cnt)
 {

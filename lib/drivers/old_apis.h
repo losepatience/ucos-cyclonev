@@ -43,7 +43,7 @@ u8 UART_SendCMD(u8 num, u8 *data);
  * APIS for USB
  * ------------------------------------------------------------------------
  */
-#include <fpga_usb.h>
+#include <cycfx3.h>
 typedef void (*TransferCallback)(void *, u8, u32, u32);
 
 typedef struct {

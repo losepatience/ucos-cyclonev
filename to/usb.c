@@ -27,18 +27,6 @@ extern struct Struct_JobStart job_info;
 
 #include <old_apis.h>
 #include <stdio.h>
-#if 0
-#include <usb/common/core/USBGenericDescriptor.h>
-#include <usb/common/core/USBDeviceDescriptor.h>
-#include <usb/common/core/USBConfigurationDescriptor.h>
-#include <usb/common/core/USBInterfaceDescriptor.h>
-#include <usb/common/core/USBGenericRequest.h>
-#include <usb/common/core/USBStringDescriptor.h>
-#include <usb/device/core/USBD.h>
-#include <usb/device/core/USBDDriver.h>
-#include <usb/device/core/USBDDriverDescriptors.h>
-#include <usb/device/core/USBDCallbacks.h>
-#endif
 
 #define DEBUG_NOT_SET_PM_CALI
 

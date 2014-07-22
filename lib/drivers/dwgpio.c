@@ -20,12 +20,12 @@
 
 #include <stdio.h>
 #include <stddef.h>
-#include <dwgpio.h>
 #include <platform.h>
 #include <errno.h>
 #include <asm/io.h>
 #include <asm/regs.h>
-#include <csp.h>
+#include <cycgpio.h>
+#include <dwgpio.h>
 
 #define GPIO_INT_EN_REG_OFFSET		(0x30)
 #define GPIO_INT_MASK_REG_OFFSET	(0x34)
@@ -53,7 +53,6 @@ static InterruptSource pSources[MAX_INTERRUPT_SOURCES];
 static spinlock_t pio_lock;
 
 extern struct gpio_chip __gc[DWGPIO_CHIP_NUM + 4];
-extern int fpga_gpio_init(void);
 
 static int dw_gpio_to_irq(struct gpio_chip *gc, unsigned offset)
 {
@@ -295,13 +294,10 @@ static void gpio_interrupt(void *arg)
 	const Pin *pin = (const Pin *)arg;
 	struct gpio_chip *gc = __get_gpiochip(pin);
 
-#define FPGA_GPIO_IR	(0x8)
-#define FPGA_GPIO_CIR	(0x14)
-
 	if (gc->base <= 29 * (DWGPIO_CHIP_NUM - 1))
 		status = readl(gc->priv + GPIO_INT_STATUS_REG_OFFSET);
 	else
-		status = readl(gc->priv + FPGA_GPIO_IR);
+		status = readl(gc->priv + CYCGPIO_IR);
 
 
 	for (; (status != 0) && (i < numSources); i++) {
@@ -314,7 +310,7 @@ static void gpio_interrupt(void *arg)
 			if (gc->base <= 29 * (DWGPIO_CHIP_NUM - 1))
 				reg = gc->priv + GPIO_INT_EOI_REG_OFFSET;
 			else
-				reg = gc->priv + FPGA_GPIO_CIR;
+				reg = gc->priv + CYCGPIO_CIR;
 
 			pSources[i].handler(pSources[i].pin);
 			status &= ~(pSources[i].pin->mask);
@@ -330,7 +326,7 @@ void PIO_InitializeInterrupts(unsigned int priority)
 	int i;
 
 	dw_gpio_init();
-	fpga_gpio_init();
+	cycgpio_init();
 
 	for (i = 0; i < ARCH_NR_GPIOCHIPS; i++) {
 

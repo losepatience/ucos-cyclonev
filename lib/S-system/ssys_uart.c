@@ -23,12 +23,12 @@
 #include <stdbool.h>
 #include <malloc.h>
 #include <errno.h>
-#include <delay.h>
 
 #include <fifo.h>
 #include <ssl.h>
 #include <platform.h>
-#include <fpga_uart.h>
+#include <cycserial.h>
+#include <serial_core.h>
 
 #include <miscellance.h>
 #ifndef MAX_SAPACKET_LEN
@@ -73,7 +73,7 @@ struct SA_channel {
 	int		tx_toggle;
 	bool		txACK;
 
-	struct mutex	mutex;
+	spinlock_t	lock;
 };
 
 static struct SA_channel *SA_chans;
@@ -109,198 +109,205 @@ static bool SA_is_valid_packet(int num, void *data, int len, u8 chksum)
 	return chksum == tmp;
 }
 
-static int SA_find_packet_st(int num)
-{
-	u8 ch;
-
-	while (fpga_uart_read(num, &ch, 1) == 1)
-		if (ch == 0xaa)
-			return 0;
-
-	return -EAGAIN;
-}
-
-static int SA_recv_packet(int num)
+/* TODO: UART_GetCMD only support callback for now */
+static void SA_callback(void *arg)
 {
 	static u8 cmd[MAX_SAPACKET_LEN] = { 0xaa };
-	u8 ack[2] = { 0xaa, 0x55 };
+	static int idx;
+	int num = *(int *)arg;
+	unsigned char ch;
 
-	if (SA_find_packet_st(num)) {
-		pr_debug("%s: no packet st has been found!\n", __func__);
-		return -EAGAIN;
-	}
+	uart_read(num, &ch, 1);
 
-	if (fpga_uart_read(num, &cmd[1], 1) != 1)
-		return -EIO;
+	if (fifo_unused(SA_chans[num].rxfifo) < MAX_SAPACKET_LEN)
+		return;
 
-	/* this is an ACK from headboard */
-	if (cmd[1] == 0x55) {
-		SA_chans[num].txACK = true;
-		return 0;
-	}
+	if (idx == 0 && ch != 0xaa)
+		return;
 
-	if (fifo_unused(SA_chans[num].rxfifo) < MAX_SAPACKET_LEN) {
-		pr_debug("%s: rxfifo is full!\n", __func__);
-		return -EAGAIN;
-	}
+	if (idx == 1) {
+		if (ch == !SA_chans[num].rx_toggle) {
+			cmd[idx++] = ch;
+		} else {
+			idx = 0;
 
-	/* this packet has already received */
-	if (cmd[1] == SA_chans[num].rx_toggle)
-		return -EAGAIN;
-
-	if (fpga_uart_read(num, &cmd[2], 2) != 2)
-		return -EIO;
-
-
-	int len;
-	if (cmd[3] > 32) {
-		return -EAGAIN;
-	} else
-		len = cmd[3] - 3;
-
-	/* cmd[3] is the length of the received packet */
-	if (fpga_uart_read(num, &cmd[4], len) != len)
-		return -EAGAIN;
-
-	/* cmd[2] is the check sum of the received packet */
- 	if (!SA_is_valid_packet(num, cmd, cmd[3], cmd[2]))
-		return -EAGAIN;
-
-	SA_chans[num].rx_toggle = !SA_chans[num].rx_toggle;
-
-	fifo_in(SA_chans[num].rxfifo, &cmd[3], len);
-	fpga_uart_write(num, ack, 2);	/* ACK */
-
-	return 0;
-}
-
-static bool SA_check_ACK(int num)
-{
-	int retries = 10;
-
-	do {
-		SA_recv_packet(num);
-		if (SA_chans[num].txACK) {
-			SA_chans[num].txACK = false;
-			return true;
+			if (ch == 0x55)	/* this is an ACK */
+				SA_chans[num].txACK = true;
 		}
 
-	} while (--retries);
+	} else if (idx == 3 && (ch > MAX_SAPACKET_LEN || ch < 5)) {
+		idx = 0;
+	} else if (idx > 3 && idx == cmd[3]) {
 
-	return false;
+		const u8 ack[] = { 0xaa, 0x55 };	
+
+		cmd[idx] = ch;
+		idx = 0;
+
+		/* cmd[2] is the check sum of the received packet */
+		if (!SA_is_valid_packet(num, cmd, cmd[3], cmd[2]))
+			return;
+
+		SA_chans[num].rx_toggle = !SA_chans[num].rx_toggle;
+
+		cmd[3] -= 3;
+		fifo_in(SA_chans[num].rxfifo, &cmd[3], cmd[3]);
+		uart_write(num, ack, 2);	/* ACK */
+	} else {
+		cmd[idx++] = ch;
+	}
 }
 
 void UART_SetCheckModel(u8 num, u8 model)
 {
-	mutex_lock(&SA_chans[num].mutex);
+	unsigned long flags = 0;
+
+	spin_lock_irqsave(&SA_chans[num].lock, flags);
 	SA_chans[num].chkmod = model;
-	mutex_unlock(&SA_chans[num].mutex);
+	spin_unlock_irqrestore(&SA_chans[num].lock, flags);
 }
 
 /* virtual uart device. data received would be stored in txfifo */
 u8 UART_MotionGetCMD(u8 *data)
 {
-	int num = UART_MOTION_CHANNEL;
+	unsigned long flags = 0;
+	struct SA_channel *chan;
+	struct fifo *fifo;
+	int len;
+	bool ret = false;
 
-	mutex_lock(&SA_chans[num].mutex);
+	chan = &SA_chans[UART_MOTION_CHANNEL];
+	fifo = chan->txfifo;
 
-	if (fifo_cached(SA_chans[num].txfifo) < 1) {
-		mutex_unlock(&SA_chans[num].mutex);
-		return false;
-	}
+	spin_lock_irqsave(&chan->lock, flags);
 
-	fifo_out(SA_chans[num].txfifo, data, 1);
-	fifo_out(SA_chans[num].txfifo, data + 1, *data - 1);
+	if (fifo_cached(fifo) == 0)
+		goto err_out;
 
-	mutex_unlock(&SA_chans[num].mutex);
-	return true;
+	len = *((int *)fifo_oaddr(fifo));
+	if (len > fifo_cached(fifo))
+		goto err_out;
+
+	fifo_out(fifo, data, len);
+
+	ret = true;
+
+err_out:
+	spin_unlock_irqrestore(&chan->lock, flags);
+	return ret;
 }
 
 static u8 UART_SendMotionCMD(u8 *data)
 {
-       u8 err;
-       u8 len;
-       int num = UART_MOTION_CHANNEL;
+	unsigned long flags = 0;
+	struct SA_channel *chan;
+	struct fifo *fifo;
+	u8 len;
+	u8 err;
 
-       len = data[0];
+	chan = &SA_chans[UART_MOTION_CHANNEL];
+	fifo = chan->txfifo;
+	len = data[0];
 
-       mutex_lock(&SA_chans[num].mutex);
-       if (fifo_unused(SA_chans[num].txfifo) < len) {
-               mutex_unlock(&SA_chans[num].mutex);
-               return false;
-       }
+	spin_lock_irqsave(&chan->lock, flags);
+	if (fifo_unused(fifo) < len) {
+		spin_unlock_irqrestore(&chan->lock, flags);
+		return false;
+	}
 
-       fifo_in(SA_chans[num].txfifo, data, len);
-       //OSFlagPost(mix_FLAG_GRP, MOTION_SEND_CMD, OS_FLAG_SET, &err);
+	fifo_in(fifo, data, len);
+	//OSFlagPost(mix_FLAG_GRP, MOTION_SEND_CMD, OS_FLAG_SET, &err);
 
-       mutex_unlock(&SA_chans[num].mutex);
-       return true;
+	spin_unlock_irqrestore(&chan->lock, flags);
+	return true;
 }
 
 u8 UART_MotionReportCMD(u8 *data)
 {
-	u8 err;
+	unsigned long flags = 0;
+	struct SA_channel *chan;
+	struct fifo *fifo;
 	u8 len;
-	int num = UART_MOTION_CHANNEL;
+	u8 err;
 
+	chan = &SA_chans[UART_MOTION_CHANNEL];
+	fifo = chan->rxfifo;
 	len = data[0];
 
-	mutex_lock(&SA_chans[num].mutex);
-	if (fifo_unused(SA_chans[num].rxfifo) < len) {
-		mutex_unlock(&SA_chans[num].mutex);
+	spin_lock_irqsave(&chan->lock, flags);
+	if (fifo_unused(fifo) < len) {
+		spin_unlock_irqrestore(&chan->lock, flags);
 		return false;
 	}
 
-	fifo_in(SA_chans[num].rxfifo, data, len);
+	fifo_in(fifo, data, len);
 	//OSFlagPost(mix_FLAG_GRP, MOTION_REPORT_CMD, OS_FLAG_SET, &err);
-	mutex_unlock(&SA_chans[num].mutex);
+	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return true;
 }
 
 u8 UART_GetCMD(u8 num, u8 *data)
 {
-	mutex_lock(&SA_chans[num].mutex);
-	while (SA_recv_packet(num))
-		udelay(10);
-	mutex_unlock(&SA_chans[num].mutex);
+	unsigned long flags = 0;
+	struct SA_channel *chan;
+	struct fifo *fifo;
+	bool ret = false;
+	u8 len;
 
-	fifo_out(SA_chans[num].rxfifo, data, 1);
-	fifo_out(SA_chans[num].rxfifo, data + 1, data[0] - 1);
-	return true;
+	chan = &SA_chans[num];
+	fifo = chan->rxfifo;
+
+	spin_lock_irqsave(&chan->lock, flags);
+
+	if (fifo_cached(fifo) == 0)
+		goto out;
+
+	len = *((u8 *)fifo_oaddr(fifo));
+	if (len > fifo_cached(fifo))
+		goto out;
+
+	fifo_out(fifo, data, len);
+	ret = true;
+out:
+	spin_unlock_irqrestore(&chan->lock, flags);
+	return ret;
 }
 
 u8 UART_SendCMD(u8 num, u8 *data)
 {
-	u8 tmp;
-	u8 buf[4];
-	u8 *src = data + 1;
-	u8 len = data[0] - 1;
+	unsigned long flags = 0;
+	struct SA_channel *chan;
+	u8 buf[MAX_SAPACKET_LEN];
+	bool ret = false;
+
+	chan = &SA_chans[num];
 
 	/* motion channel */
 	if (UART_MOTION_CHANNEL == num)
 		return UART_SendMotionCMD(data);
 
+	chan = &SA_chans[num];
+
 	buf[0] = 0xAA;
-	buf[1] = SA_chans[num].tx_toggle;
+	buf[1] = chan->tx_toggle;
 	buf[2] = 0;
+	memcpy(&buf[3], data, data[0]);
 	buf[3] = data[0] + 3;	/* len */
+	buf[2] = SA_gen_chksum(buf, buf[3], chan->chkmod, 0);
 
-	tmp = SA_gen_chksum(buf, 4, SA_chans[num].chkmod, 0);
-	tmp = SA_gen_chksum(src, len, SA_chans[num].chkmod, tmp);
-	buf[2] = tmp;
+	spin_lock_irqsave(&chan->lock, flags);
+	if (!chan->txACK)
+		goto out;
 
-	mutex_lock(&SA_chans[num].mutex);
-
-	do {
-		fpga_uart_write(num, buf, 4);
-		fpga_uart_write(num, src, len);
-		udelay(100);
-	} while (SA_check_ACK(num));
-
-	SA_chans[num].tx_toggle = !SA_chans[num].tx_toggle;
-	mutex_unlock(&SA_chans[num].mutex);
-	return true;
+	if (uart_write(num, buf, buf[3]) == buf[3]) {
+		chan->txACK = false;
+		chan->tx_toggle = !chan->tx_toggle;
+		ret = true;
+	}
+out:
+	spin_unlock_irqrestore(&chan->lock, flags);
+	return ret;
 }
 
 void UART_Init(u8 flag)
@@ -317,20 +324,21 @@ void UART_Init(u8 flag)
 
 	txbuf = malloc(512);
 	if (txbuf == NULL) {
+		free(SA_chans);
 		pr_err("%s: no memory!", __func__);
 		return;
 	}
 
 	do {
-		mutex_init(&SA_chans[i].mutex);
 		SA_chans[i].chkmod = 0;
 		SA_chans[i].rx_toggle = 0;
-		SA_chans[i].tx_toggle = 0;
-		SA_chans[i].txACK = false;
+		SA_chans[i].tx_toggle = 1;
+		SA_chans[i].txACK = true;
 		SA_chans[i].rxfifo = fifo_init(SA_chans[i].rxbuf, 1, 512);
 	} while (++i < UART_CHNUM);
 
-	fpga_uart_init(i);
+
+	cycserial_init(SA_callback);
 
 	/* this is motion channel */
 	SA_chans[UART_CHNUM].txfifo = fifo_init(txbuf, 1, 512);

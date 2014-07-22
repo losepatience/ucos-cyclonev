@@ -19,13 +19,9 @@
  * MA 02111-1307 USA
  */
 
-#ifndef __FPGA_UART_H__
-#define __FPGA_UART_H__
+#ifndef __CYCSERIAL_H__
+#define __CYCSERIAL_H__
 
-#include <asm/regs.h>
-
-int fpga_uart_read(int num, u8 *buf, int len);
-int fpga_uart_write(int num, const u8 *buf, int len);
-int fpga_uart_init(int num);
+int cycserial_init(void (*func)(void *));
 
 #endif

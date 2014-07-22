@@ -39,8 +39,8 @@
 #include <stddef.h>
 #include <list.h>
 #include <spi_flash.h>
-#include <fpga_uart.h>
-#include <fpga_usb.h>
+#include <cycserial.h>
+#include <cycfx3.h>
 #include <old_apis.h>
 
 /*
@@ -228,17 +228,17 @@ static  void  App_TaskStart (void *p_arg)
 	//flash_write(wrbuf, 0, len);
 	flash_read(rdbuf, 0, len);
 
-	dma_init();
-	int rval = dma_receive(0x1000000, 64 * 4);
-	while (1);
-#if 0
+#if 1
 #include <old_apis.h>
 	UART_Init(0);
 	//while (1);
 	memset(rdbuf, 0, len);
 	memset(rdbuf, 0, len);
 	
-	UART_GetCMD(0, rdbuf);
+	int a_cnt = 0, b_cnt = 0;
+	while (!UART_GetCMD(0, rdbuf))
+		a_cnt++;
+
 	UART_SetCheckModel(0, 2);
 
 	char cmd[32] = {2, 0x90};
@@ -248,8 +248,8 @@ static  void  App_TaskStart (void *p_arg)
 	cmd[0] = 4;
 #endif				
 
-	while (1)
-		UART_SendCMD(0, cmd);
+	while (!UART_SendCMD(0, cmd))
+		b_cnt++;
 
 #endif				
 	//lwip_entry(NULL);

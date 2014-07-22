@@ -24,6 +24,25 @@
 
 #include <asm/types.h>
 
+
+#define USBREQ_STANDARD		0	/* standard */
+#define USBREQ_CLASS		1	/* class-specific */
+#define USBREQ_VENDOR		2	/* vendor-specific */
+
+typedef struct {
+	unsigned char	type:8;
+	unsigned char	request:8;
+	unsigned short	value:16;
+	unsigned short	index:16;
+	unsigned short	len:16;
+} usb_request_t;
+
+typedef struct usb_cmd {
+	u16	len;			/* data length */
+	u16	cmd;
+	u8	data[0];
+} usb_cmd_t;
+
 ssize_t fx3_read(int num, void *buf, ssize_t len);
 inline ssize_t fx3_write(int num, const void *buf, ssize_t len);
 inline ssize_t fx3_send_cmd(int num, const void *buf, ssize_t len);

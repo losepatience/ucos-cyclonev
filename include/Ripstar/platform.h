@@ -21,8 +21,9 @@
 #ifndef __PLATFORM_H__
 #define __PLATFORM_H__
 
-#include <asm/types.h>
 #include <stdbool.h>
+#include <asm/types.h>
+#include <errno.h>
 #include <ucos_ii.h>
 #include <csp.h>
 
@@ -30,14 +31,17 @@
 #  define HZ	OS_TICKS_PER_SEC
 #endif
 
-
 static inline void __msleep(unsigned int msecs)
 {
 	OSTimeDlyHMSM(0, 0, 0, msecs);
 }
 
-/* simple implement, not support SMP */
-
+/* --------------------------------------------------------
+ * mutex:
+ *   1. simple implement, not support SMP
+ *   2. the count of mutexes can not be large than
+ *      OS_MAX_EVENTS
+ * -------------------------------------------------------- */
 struct mutex {
 	OS_EVENT *lock;
 };
@@ -72,7 +76,9 @@ static inline void mutex_unlock(struct mutex *mutex)
 	OSSemPost(mutex->lock);
 }
 
-
+/* --------------------------------------------------------
+ * spinlock:
+ * -------------------------------------------------------- */
 typedef struct spinlock {
 	u32 lock;
 } spinlock_t;
@@ -89,6 +95,9 @@ typedef struct spinlock {
 	} while (0)
 
 
+/* --------------------------------------------------------
+ * completion:
+ * -------------------------------------------------------- */
 struct completion {
 	OS_EVENT *com;
 };
@@ -101,6 +110,8 @@ struct completion {
 static inline void init_completion(struct completion *x)
 {
 	x->com = OSSemCreate(0);
+	if (!x->com)
+		while (1);
 }
 
 static inline void complete(struct completion *x)
@@ -109,25 +120,20 @@ static inline void complete(struct completion *x)
 }
 
 long wait_for_completion_timeout(struct completion *x, unsigned long timeout);
-bool wait_for_condition(volatile int *x, unsigned long timeout);
-
+bool wait_for_condition(volatile bool *x, unsigned long timeout);
 
 /* -------------------------------------------------------- */
 /* ---------------------- interrupt ----------------------- */
 /* -------------------------------------------------------- */
 typedef void irqreturn_t;
 typedef irqreturn_t (*irq_handler_t)(void *);
-int request_irq(u32 irq, irq_handler_t handler, void *arg);
-void free_irq(u32 irq);
 
-/* -------------------------------------------------------- */
-/* ---------------------- timer ----------------------- */
-/* -------------------------------------------------------- */
-#if (CPU_CFG_TS_TMR_EN == DEF_ENABLED)
-void CPU_TS_TmrInit(void);
-u32 CPU_TS_TmrRd(void);
-u64 CPU_TS32_to_uSec(u32 ts_cnts);
-u64 CPU_TS64_to_uSec(u64 ts_cnts);
-#endif
+void OS_CSP_BSP_ExceptHandler(u8 exc);
+int request_irq(u32 irq, irq_handler_t handler, void *arg);
+
+static inline void free_irq(u32 irq)
+{
+	CSP_IntVectUnreg(0, (u16)irq);
+}
 
 #endif
