@@ -110,7 +110,7 @@ unsigned long fifo_out(struct fifo *fifo, void *des, unsigned long cnt)
 	return cnt;
 }
 
-void *fifo_iaddr(struct fifo *fifo)
+inline void *fifo_iaddr(struct fifo *fifo)
 {
 	return fifo->data + fifo->in * fifo->esize;
 }
@@ -120,12 +120,23 @@ inline void *fifo_oaddr(struct fifo *fifo)
 	return fifo->data + fifo->out * fifo->esize;
 }
 
-unsigned long fifo_cnt2size(struct fifo *fifo, int cnt)
+void *fifo_oaddr_plus(struct fifo *fifo, unsigned long size)
+{
+	unsigned long idx;
+	int cnt;
+
+	cnt = fifo_size2cnt(fifo, size);
+	idx = (fifo->out + cnt) % fifo->count;
+
+	return fifo->data + idx * fifo->esize;
+}
+
+inline unsigned long fifo_cnt2size(struct fifo *fifo, int cnt)
 {
 	return cnt * fifo->esize;
 }
 
-int fifo_size2cnt(struct fifo *fifo, unsigned long size)
+inline int fifo_size2cnt(struct fifo *fifo, unsigned long size)
 {
 	return size / fifo->esize;
 }

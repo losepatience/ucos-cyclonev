@@ -41,6 +41,7 @@ unsigned long fifo_out(struct fifo *fifo, void *des, unsigned long cnt);
 
 void *fifo_iaddr(struct fifo *fifo);
 void *fifo_oaddr(struct fifo *fifo);
+void *fifo_oaddr_plus(struct fifo *fifo, unsigned long size);
 
 unsigned long fifo_cnt2size(struct fifo *fifo, int cnt);
 int fifo_size2cnt(struct fifo *fifo, unsigned long size);

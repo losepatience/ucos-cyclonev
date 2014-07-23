@@ -69,13 +69,11 @@ struct ezusb_port {
 	void			*base;
 	void			*iobase;
 
-	int			ready;
 	int			burst;
 	int			retries;
 	char			wrbuf[BURST];
 	callback_t		callback;
 };
-
 
 static __ids_t ids[] = {
 	[0] = { 0, USBGenericRequest_IN, 1 << 3 },
@@ -111,26 +109,24 @@ static int wait_port_not_busy(struct ezusb_port *port)
 		if (!stat)
 			break;
 
-		udelay(100);
+		msleep(1);
 	} while (--retries);
 
 	return stat;
 }
 
 /* the waterlevel is fixed to 8 bytes by hardware */
-static void ezusb_isr(void *arg)
+static void ezusb_ep0_isr(void *arg)
 {
 	struct ezusb_port *port = (struct ezusb_port *)arg;
-	unsigned int q[2];
+	static unsigned int q[2];
 
-	if (!port->callback)
-		goto out;
+	if (port->callback) {
+		q[0] = readl(port->iobase);
+		q[1] = readl(port->iobase);
+		port->callback(q);
+	}
 
-	q[0] = readl(port->iobase);
-	q[1] = readl(port->iobase);
-	port->callback((USBGenericRequest *)q);
-
-out:
 	/* clean the corresponding irq bit */
 	setbits32(port->base + EZUSB_CIR, port->id.mask);
 }
@@ -140,18 +136,16 @@ static int __read(struct ezusb_port *port, void *buf, int len)
 	unsigned int *p;
 	unsigned long flags = 0;
 
-	if (wait_port_not_busy(port))
-		return -EBUSY;
-
-	if (len > io_limit)
-		len = io_limit;
-
 	len /= 4;	/* must be 4bytes aligned */
 
 	p = (unsigned int *)buf;
 
 	spin_lock_irqsave(&port->lock, flags);
 	while (len) {
+		u32 stat = readl(port->base + EZUSB_SR);
+		if (stat &= port->id.mask)
+			break;
+
 		*p++ = readl(port->iobase);
 		len--;
 	}
@@ -159,13 +153,11 @@ static int __read(struct ezusb_port *port, void *buf, int len)
 	return (char *)p - (char *)buf;
 }
 
+/* XXX: only used by EP0 */
 static int ezusb_read(struct ezusb_port *port, void *buf, int len)
 {
 	char *p;
 	int ret;
-
-	if (port->ready == 0)
-		return -EIO;
 
 	p = (char *)buf;
 	len -= len % 4;
@@ -173,7 +165,7 @@ static int ezusb_read(struct ezusb_port *port, void *buf, int len)
 
 	while (len > 0) {
 		int l = __read(port, buf, len);
-		if (l <= 0)
+		if (l <= 0 && wait_port_not_busy(port))
 			break;
 
 		len -= l; 
@@ -234,15 +226,13 @@ static int __write(struct ezusb_port *port, const void *buf, int len, int flag)
 	return len;
 }
 
+/* used by ep0 & ep6 */
 static inline ssize_t ezusb_write(struct ezusb_port *port,
 				const void *buf, int len)
 {
 	char *p;
 	int ret;
 	int flag;
-
-	if (port->ready == 0)
-		return -EIO;
 
 	if (port->id.ep == 0)
 		flag = EZUSB_FLAGS_PAD;
@@ -299,12 +289,11 @@ int ezusb_init(callback_t func)
 	port->callback = func;
 
 	/* enable ep0 rx irq */
-	request_irq(CONFIG_EZUSB_IRQ, ezusb_isr, port);
+	request_irq(CONFIG_EZUSB_IRQ, ezusb_ep0_isr, port);
 	setbits32(port->base + EZUSB_IER, port->id.mask);
 
 	return 0;
 }
-
 
 
 static u16 __usb_state;

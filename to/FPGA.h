@@ -32,11 +32,10 @@
 #include "pio/pio.h"
 
 //FPGA Registers
-#define FPGA_FIFO_ADDR	AT91C_EBI_CS5 /* 0x60000000 */
+#define FPGA_ADDR		0xff200400 /* 0x60000000 */
+#define FPGA_FIFO_ADDR		FPGA_ADDR /* 0x60000000 */
 
-//For burst write, FIFODATA use 0x60000000
-#define rFPGA_FIFODAT	(*(volatile unsigned short*)FPGA_FIFO_ADDR)
-#define rFPGA_STATUS	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x2))	//FPGA status register
+#define rFPGA_STATUS		(*(volatile unsigned int*)(FPGA_ADDR + 0x0))	//FPGA status register
 //only for ricoh
 #define rFPGA_STATUS_ERR_CMD    0x8000
 #define rFPGA_STATUS_ERR_STAT   0x4000
@@ -44,14 +43,14 @@
 #define rFPGA_STATUS_TOO_LESS   0x10
 
 
-#define rFPGA_PINCONF   (*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x8)) 
+#define rFPGA_PINCONF		(*(volatile unsigned int*)(FPGA_ADDR + 0x4)) 
 //only for ricoh
 #define rFPGA_PINCONF_W_MASK    0x3FFF
 #define rFPGA_PINCONF_LOCKED    0x8000
 #define rFPGA_PINCONF_ENBALE    0x4000
 
-//#define rFPGA_FWCONF	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0xA)) //Fire working configuration register
-#define rFPGA_COMMAND   (*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0xC))
+//#define rFPGA_FWCONF	(*(volatile unsigned short*)(FPGA_ADDR + 0xA)) //Fire working configuration register
+#define rFPGA_COMMAND   (*(volatile unsigned short*)(FPGA_ADDR + 0x8))
 #define rFPGA_COMMAND_BEGIN_BAND    0x55AA
 #define rFPGA_COMMAND_END_BAND      0x01fe
 #ifdef EPSON_FLASH_IDLE
@@ -78,32 +77,32 @@
 #ifdef HEAD_EPSON_GEN5
 
 //only for epson
-#define rFPGA_DATASEG	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0xE))
+#define rFPGA_DATASEG	(*(volatile unsigned short*)(FPGA_ADDR + 0xE))
 
 //only for FPGA debug
-#define rFPGA_DBG_FireNum   (*(volatile unsigned short*)(FPGA_FIFO_ADDR)) 
-#define rFPGA_DBG_ReadNum_L   (*(volatile unsigned short*)(FPGA_FIFO_ADDR+4)) 
-#define rFPGA_DBG_ReadNum_H   (*(volatile unsigned short*)(FPGA_FIFO_ADDR+6)) 
-#define rFPGA_DBG_WriteNum_L   (*(volatile unsigned short*)(FPGA_FIFO_ADDR+0xA)) 
-#define rFPGA_DBG_WriteNum_H   (*(volatile unsigned short*)(FPGA_FIFO_ADDR+0xE)) 
+#define rFPGA_DBG_FireNum   (*(volatile unsigned short*)(FPGA_ADDR)) 
+#define rFPGA_DBG_ReadNum_L   (*(volatile unsigned short*)(FPGA_ADDR+4)) 
+#define rFPGA_DBG_ReadNum_H   (*(volatile unsigned short*)(FPGA_ADDR+6)) 
+#define rFPGA_DBG_WriteNum_L   (*(volatile unsigned short*)(FPGA_ADDR+0xA)) 
+#define rFPGA_DBG_WriteNum_H   (*(volatile unsigned short*)(FPGA_ADDR+0xE)) 
 
 #if (defined(EPSON_BOTTOM_BOARD_V3)||defined (EPSON_BOTTOM_BOARD_V2_1)) && !defined(SUPPORT_MOTOR_CONTROL)
 #error "Current EPSON_BOTTOM_BOARD_V3 must need SUPPORT_MOTOR_CONTROL"
 #endif
 
 #if defined(COORD_NEW_UV)
-#define rFPGA_EPSON_RegAddr	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x1A))
-#define rFPGA_EPSON_RegPort	 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x1C))
+#define rFPGA_EPSON_RegAddr	(*(volatile unsigned short*)(FPGA_ADDR + 0x1A))
+#define rFPGA_EPSON_RegPort	 (*(volatile unsigned int*)(FPGA_ADDR + 0x1C))
 #define EPSON_REGADDR_X_PRT_COOR        0x2
 #endif
 
 #if defined(SUPPORT_MOTOR_CONTROL) || defined(FPGA_MAINTAIN_COOR)|| defined(EPSON_PRT_FLASH)
 
 //only for epson private register
-#define rFPGA_EPSON_RegAddr	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x1A))
-#define rFPGA_EPSON_RegPort	 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x1C))
-#define rFPGA_EPSON_RegPortL (*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x1C))
-#define rFPGA_EPSON_RegPortH (*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x1E))
+#define rFPGA_EPSON_RegAddr	(*(volatile unsigned short*)(FPGA_ADDR + 0x1A))
+#define rFPGA_EPSON_RegPort	 (*(volatile unsigned int*)(FPGA_ADDR + 0x1C))
+#define rFPGA_EPSON_RegPortL (*(volatile unsigned short*)(FPGA_ADDR + 0x1C))
+#define rFPGA_EPSON_RegPortH (*(volatile unsigned short*)(FPGA_ADDR + 0x1E))
 
 #define EPSON_REGADDR_X_MOTOR_COOR      0x1
 #define EPSON_REGADDR_X_PRT_COOR        0x2
@@ -194,7 +193,7 @@ void SetSafeCmd(INT16U data);
 #define EPSON_REGADDR_X_MOTOR_COOR      0x1
 #define EPSON_REGADDR_X_PRT_COOR        0x2
 #define EPSON_REGADDR_Y_MOTOR_COOR      0x4
-#define rFPGA_RICOH_COORCTRL_L	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x10))
+#define rFPGA_RICOH_COORCTRL_L	(*(volatile unsigned short*)(FPGA_ADDR + 0x18))
 #define ER_CoorCtrl_SMOOTH_DIVIDER      0x7
 #define ER_CoorCtrl_SMOOTH_DIVIDER_720  0x3
 #define ER_CoorCtrl_SMOOTH_DIVIDER_540  0x3
@@ -223,18 +222,18 @@ void SetSafeCmd(INT16U data);
 #define ER_CoorCtrl_EN_DIR_ALL       (0x3<<12)
 #define ER_CoorCtrl_RESET_X       (0x1<<14)
 #define ER_CoorCtrl_RESET_Y       (0x1<<15)
-#define rFPGA_RICOH_COORCTRLSTAT_H	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x12))
+#define rFPGA_RICOH_COORCTRLSTAT_H	(*(volatile unsigned short*)(FPGA_ADDR + 0x12))
 #define ER_CoorCtrl_SINGLE_DOT_MODE (0x1<<29)
 #define ER_CoorCtrl_VSDMODEL      (0x3<<30)
 #define ER_CoorCtrl_VSDMODEL_VSD1 (0x0<<30)
 #define ER_CoorCtrl_VSDMODEL_VSD2 (0x1<<30)
 #define ER_CoorCtrl_VSDMODEL_VSD3 (0x2<<30)
 #define ER_CoorCtrl_VSDMODEL_VSD4 (0x3<<30)
-#define rFPGA_RICOH_FIRESTART_L	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x14))
-#define rFPGA_RICOH_FIRESTART_END_H	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x16))
-#define rFPGA_RICOH_FIREEND_L	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x18))
-#define rFPGA_RICOH_XPOSI0_L    (*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x1C))
-#define rFPGA_RICOH_XPOSI0_CS_H    (*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x1E))
+#define rFPGA_RICOH_FIRESTART_L	(*(volatile unsigned short*)(FPGA_ADDR + 0x14))
+#define rFPGA_RICOH_FIRESTART_END_H	(*(volatile unsigned short*)(FPGA_ADDR + 0x16))
+#define rFPGA_RICOH_FIREEND_L	(*(volatile unsigned short*)(FPGA_ADDR + 0x18))
+#define rFPGA_RICOH_XPOSI0_L    (*(volatile unsigned short*)(FPGA_ADDR + 0x1C))
+#define rFPGA_RICOH_XPOSI0_CS_H    (*(volatile unsigned short*)(FPGA_ADDR + 0x1E))
 #define rFPGA_RICOH_XPOSI0_MATCH_ENABLE (0x1 << 8)
 #define rFPGA_RICOH_XPOSI0_COOR_TYPE (0x2 << 8) //0, feedback, 1, motor
 #define rFPGA_RICOH_XPOSI0_PASS_DIR (0xC << 8)
@@ -244,12 +243,12 @@ void SetSafeCmd(INT16U data);
 #define rFPGA_RICOH_XPOSI0_DIR_ALL (0xC << 8) 
 #define rFPGA_RICOH_XPOSI0_IRQ_STAT (0x10 << 8)
 
-#define rFPGA_RICOH_XMOTORCOOR_L	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x4))
-#define rFPGA_RICOH_XMOTORCOOR_H	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x6))
-#define rFPGA_RICOH_XPRTCOOR_L	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0xA))
-#define rFPGA_RICOH_XPRTCOOR_H	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0xE))
-#define rFPGA_RICOH_YMOTORCOOR_L	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x0))
-#define rFPGA_RICOH_YMOTORCOOR_H	(*(volatile unsigned short*)(FPGA_FIFO_ADDR + 0x1A))
+#define rFPGA_RICOH_XMOTORCOOR_L	(*(volatile unsigned short*)(FPGA_ADDR + 0x4))
+#define rFPGA_RICOH_XMOTORCOOR_H	(*(volatile unsigned short*)(FPGA_ADDR + 0x6))
+#define rFPGA_RICOH_XPRTCOOR_L	(*(volatile unsigned short*)(FPGA_ADDR + 0xA))
+#define rFPGA_RICOH_XPRTCOOR_H	(*(volatile unsigned short*)(FPGA_ADDR + 0xE))
+#define rFPGA_RICOH_YMOTORCOOR_L	(*(volatile unsigned short*)(FPGA_ADDR + 0x0))
+#define rFPGA_RICOH_YMOTORCOOR_H	(*(volatile unsigned short*)(FPGA_ADDR + 0x1A))
 
 #endif
 
