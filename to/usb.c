@@ -25,7 +25,8 @@
 extern struct Struct_JobStart job_info;
 #endif
 
-#include <old_apis.h>
+//#include <old_apis.h>
+#include <ezusb.h>
 #include <stdio.h>
 
 #define DEBUG_NOT_SET_PM_CALI
@@ -120,19 +121,6 @@ void USBDMA_EP2_DoneInterrupt(void)
 	HugeBuf_StartOneReceive();
 	OS_EXIT_CRITICAL();
 }
-
-#if 0
-void USBDMA_EP6_DoneInterrupt(void) 
-{	
-	OS_CPU_SR cpu_sr;
-	OS_ENTER_CRITICAL();	
-	HugeBuf_CompleteOneSendEP6();
-
-	HugeBuf_StartOneSendEP6();			
-	OS_EXIT_CRITICAL();
-}
-#endif
-
 
 
 /// VBus pin instance.
@@ -3404,33 +3392,8 @@ void USB_Task(void* data)
 				if(USBD_IsHighSpeed() == 0)
 				{
 					OSTimeDly(100);
-
-					Trytime = 0;
-					while(USBD_IsHighSpeed() == 0)
-					{
-						if(Trytime >= 0)    
-						{            
-							status_ReportStatus(STATUS_FTA_USB1_USB1CONNECT, STATUS_SET);
-#if (INCLUDE_CONSOL == 1)
-							CONSOL_Printf("USB is linked to a full speed host!\r\n");
-#endif
-							break;
-						}
-
-						TickAfterLastComm = MAX_TICK_INTO_OFFLINE;
-						//USBD_AbortDataWrite(USB_IN_EP);
-						USBD_Disconnect();
-						OSTimeDly(500);
-
-						USBD_Connect();
-						OSTimeDly(300);
-
-						Trytime ++;
-
-					}
-				}
-
-				if(USBD_IsHighSpeed() != 0)
+					status_ReportStatus(STATUS_FTA_USB1_USB1CONNECT, STATUS_SET);
+				} else
 					status_ReportStatus(STATUS_FTA_USB1_USB1CONNECT, STATUS_CLR);
 
 				OS_ENTER_CRITICAL();	

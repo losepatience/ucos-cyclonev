@@ -28,6 +28,8 @@
 #  define NULL ((void *)0)
 #endif
 
+typedef int (*callback_t)(void *);
+
 #define offsetof(type, member) ((size_t) &((type *)0)->member)
 
 #define container_of(ptr, type, member) ({				\

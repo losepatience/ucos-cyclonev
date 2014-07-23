@@ -37,6 +37,8 @@
 
 #define UART_CHNUM	4
 
+int uart_waittime[4];	/* not used, just for complitable */
+
 /*
  * SA protocol:
  *

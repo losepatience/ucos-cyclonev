@@ -40,7 +40,7 @@
 #include <list.h>
 #include <spi_flash.h>
 #include <cycserial.h>
-#include <cycfx3.h>
+#include <ezusb.h>
 #include <old_apis.h>
 
 /*
@@ -235,6 +235,7 @@ static  void  App_TaskStart (void *p_arg)
 	memset(rdbuf, 0, len);
 	memset(rdbuf, 0, len);
 	
+	msleep(1000);
 	int a_cnt = 0, b_cnt = 0;
 	while (!UART_GetCMD(0, rdbuf))
 		a_cnt++;

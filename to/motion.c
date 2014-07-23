@@ -7,11 +7,11 @@
 #include "FPGA.h"
 #include "HugeBuf.h"
 
-#include "pio/pio.h"
-#include "pio/pio_it.h"
-#include "tc/tc.h"
-#include "pmc/pmc.h"
-#include "irq/irq.h"
+//#include "pio/pio.h"
+//#include "pio/pio_it.h"
+//#include "tc/tc.h"
+//#include "pmc/pmc.h"
+//#include "irq/irq.h"
 #include "clean.h"
 
 #include "motion.h"

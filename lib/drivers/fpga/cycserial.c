@@ -59,7 +59,7 @@ static int wait_bus_not_busy(struct uart_port *port, unsigned int bits)
 		if (!(stat & bits))
 			return 0;
 
-		msleep(1);
+		udelay(100);
 
 	} while (retries--);
 

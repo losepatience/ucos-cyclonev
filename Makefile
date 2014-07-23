@@ -92,7 +92,7 @@ INCS := $(shell find $(DIRS) -name "*.h")
 INCS := $(sort $(dir $(INCS)))
 INCS += include include/Ripstar APP to to/porting
 
-DIRS := APP OS lib #to
+DIRS := APP OS lib to
 SRCS := $(shell find $(DIRS) -name "*.S" -o -name "*.c")
 OBJS := $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)

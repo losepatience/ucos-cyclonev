@@ -40,8 +40,8 @@ typedef struct USB_CMD {
 	u8	data[0];
 } USB_CMD_t;
 
-typedef enum CyU3PUSBSpeed {
 
+typedef enum CyU3PUSBSpeed {
     CY_U3P_NOT_CONNECTED = 0x00,	/* not connected. */
     CY_U3P_FULL_SPEED,			/* full speed */
     CY_U3P_HIGH_SPEED,			/* High speed. USB2.0 */
@@ -54,8 +54,12 @@ typedef enum USBCmd {
 	USB_CMD_CONNECT,
 	USB_CMD_DISCONNECT,
 	USB_CMD_ABORT_READ,
-	USB_CMD_ABORT_WRITE,
-	USB_CMD_STALL
+	USB_CMD_ABROT_WRITE,
+	USB_CMD_STALL,
+	USB_CMD_ACK,
+	USB_CMD_RESERVED = 0x0F,
+
+	USB_CMD_HAND_SHAKE = 0x10,
 } USBCmd_t;
 
 
@@ -81,8 +85,7 @@ typedef enum USBCmd {
 #define USBGenericRequest_IN		1	/* device to host */
 
 
-typedef void (*TransferCallback)(void *arg,
-		u8 status, u32 transferred, u32 remaining);
+typedef void (*TransferCallback)(void *, u8, u32, u32);
 
 u8 USBGenericRequest_GetType(const USBGenericRequest *request);
 u8 USBGenericRequest_GetRequest(const USBGenericRequest *request);

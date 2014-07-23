@@ -233,7 +233,6 @@ int dw_gpio_init(void)
 /* --------------------------------------------------------------------------
  * Old APIs
  * -------------------------------------------------------------------------- */
-#ifndef INCOMPATIBLE_WITH_ATMEL
 static struct gpio_chip *__get_gpiochip(const Pin *pin)
 {
 	return (pin == NULL) ? NULL : &__gc[pin->pio];
@@ -411,4 +410,3 @@ void PIO_DisableIt(const Pin *pin)
 		gc->set_imode(gc, 0, pin->mask, 0, 0, 0);
 }
 
-#endif /* INCOMPATIBLE_WITH_ATMEL */
