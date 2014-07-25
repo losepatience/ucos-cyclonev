@@ -35,18 +35,14 @@
 #define CONFIG_UART_BASE	(SOCFPGA_LWH2F_ADDRESS + 0x1000)
 #define CONFIG_UART_IRQ		77
 #define CONFIG_UART_FIFO_SIZE	64
-#define CONFIG_UART_CNT		0x4
 
-#define UART_SR_OFFS		0x00
-#define UART_CR_OFFS		0x04
-#define UART_IR_OFFS		0x08
-#define UART_IER_OFFS		0x0c
-#define UART_IMR_OFFS		0x10
-#define UART_CIR_OFFS		0x14
-#define UART_HEAD0_COM_OFFS	0x20
-#define UART_HEAD1_COM_OFFS	0x24
-#define UART_HEAD2_COM_OFFS	0x28
-#define UART_HEAD3_COM_OFFS	0x2c
+#define UARTSR		0x00
+#define UARTCR		0x04
+#define UARTIR		0x08
+#define UARTIER		0x0c
+#define UARTIMR		0x10
+#define UARTCIR		0x14
+#define UARTIO0		0x20
 
 /* return 1: still busy */
 static int wait_bus_not_busy(struct uart_port *port, unsigned int bits)
@@ -54,7 +50,7 @@ static int wait_bus_not_busy(struct uart_port *port, unsigned int bits)
 	int retries = 5;
 
 	do {
-		unsigned int stat = readl(port->base + UART_SR_OFFS);
+		unsigned int stat = readl(port->base + UARTSR);
 
 		if (!(stat & bits))
 			return 0;
@@ -72,16 +68,16 @@ static void cycserial_isr(void *arg)
 	unsigned int stat;
 	int i;
 
-	stat = readl(port->base + UART_IR_OFFS);
-	for (i = 0; i < ARCH_NR_UARTPORTS - 1; port++, i++) {
-		u32 mask = port->mask << 4;
+	stat = readl(port->base + UARTIR);
+	for (i = 0; i < ARCH_NR_UARTPORTS - 1; i++) {
+		unsigned int mask = 1 << i;
 
 		if (stat & mask) {
-			if (port->xmit_callback)
-				port->xmit_callback(&port->id);
+			if (port->rxcb)
+				port->rxcb(&port->id);
 
 			/* clear the irq bit */
-			setbits32(port->base + UART_CIR_OFFS, mask);
+			setbits32(port->base + UARTCIR, mask);
 		}
 	}
 }
@@ -92,7 +88,7 @@ static int cycserial_read(struct uart_port *port, u8 *buf, int len)
 
 	while (len--) {
 
-		unsigned int stat = readl(port->base + UART_SR_OFFS);
+		unsigned int stat = readl(port->base + UARTSR);
 
 		if (stat & (port->mask << 4))
 			break;
@@ -136,7 +132,7 @@ int cycserial_init(void (*func)(void *))
 
 	saved = port;
 
-	offs = UART_HEAD0_COM_OFFS;
+	offs = UARTIO0;
 	for (i = 0; i < ARCH_NR_UARTPORTS - 1; port++, i++, offs += 4) {
 
 		port->base = (void *)CONFIG_UART_BASE;;
@@ -149,14 +145,14 @@ int cycserial_init(void (*func)(void *))
 		port->read = cycserial_read;
 
 		if (func) {
-			port->xmit_callback = func;
-			setbits32(port->base + UART_IER_OFFS, port->mask << 4);
+			port->rxcb = func;
+			setbits32(port->base + UARTIER, port->mask << 4);
 		}
 
 		port->txfifo = fifo_init(port->txbuf, 1, UART_XMIT_SIZE);
 
 		/* enable rx */
-		setbits32(port->base + UART_CR_OFFS, port->mask << 4 );
+		setbits32(port->base + UARTCR, port->mask << 4 );
 
 		uartport_add(port);
 	}

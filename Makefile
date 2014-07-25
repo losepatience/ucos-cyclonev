@@ -92,7 +92,7 @@ INCS := $(shell find $(DIRS) -name "*.h")
 INCS := $(sort $(dir $(INCS)))
 INCS += include include/Ripstar APP to to/porting
 
-DIRS := APP OS lib to
+DIRS := OS lib to
 SRCS := $(shell find $(DIRS) -name "*.S" -o -name "*.c")
 OBJS := $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)
@@ -139,10 +139,10 @@ ucosii.axf: $(OBJS)
 %.lds: %.lds.S
 	@$(CC) $(CFLAGS) $(INCS:%='-I%') -P -E $< -o $@ 
 
-%.o: %.S
+%.o: %.S Makefile
 	@$(CC) -D__ASSEMBLY__ $(CFLAGS) $(INCS:%='-I%') -MD -c $< -o $@
 
-%.o: %.c
+%.o: %.c Makefile
 	@$(CC) $(CFLAGS) $(INCS:%='-I%') -MD -c $< -o $@
 
 

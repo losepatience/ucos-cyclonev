@@ -47,11 +47,6 @@
 
 #ifdef LCD_MODULE_ZX19264M1A
 static const Pin LcdBusyPin = PIN_KB_LCD_BUSY;
-static const Pin LcdReqPin = PIN_KB_LCD_REQ;
-static Pin LcdDataD0 = PIN_KB_LCD_DATA_D0;  
-static const Pin LcdRWPin = PIN_KB_LCD_RW;
-static const Pin LcdLEPin = PIN_KB_LCD_LE;
-static const Pin LcdResetPin = PIN_KB_LCD_RESET;
 static const Pin ReSetPin = PIN_KB_LCD_nLED;
 #else
 static const Pin LcdLEDPin = PIN_KB_LCD_nLED;
@@ -125,7 +120,6 @@ void LCD_Init()
 	INT8U err;
 	PIO_ConfigureIt(&ReSetPin, Reset_key_Irq_Interrupt);
 	PIO_EnableIt(&ReSetPin);
-	PIO_Set(&LcdRWPin);
 	PIO_ConfigureIt(&LcdBusyPin, LCD_Irq_Interrupt);
 	PIO_EnableIt(&LcdBusyPin);
 	OSFlagPost(mix_FLAG_GRP, LCD_BUSY_STATE, OS_FLAG_CLR, &err);

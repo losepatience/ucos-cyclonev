@@ -25,7 +25,6 @@
 #include <config.h>
 
 #include <job.h>
-#include <old_apis.h>
 #include <hugebuf.h>
 #include <status.h>
 #include <flash.h>

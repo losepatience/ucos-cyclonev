@@ -2,12 +2,9 @@
 #include <string.h>
 #include <i2c.h>
 #include <at24.h>
-#include <flash.h>
 #include <old_apis.h>
-#include <cycserial.h>
 #include <errno.h>
-#include <malloc.h>
-#include <delay.h>
+#include <dwgpio.h>
 
 static struct i2c_adapter *adap_zlg7290;
 static struct i2c_adapter *adap_lcd;
@@ -172,7 +169,6 @@ float IIC_Read_Max11614(u8 Flag)
  * ------------------------------------------------------------------------
  */
 #if 1
-#include <dwgpio.h>
 
 static u8 writebuf[256];
 extern void RESET_KB(void);

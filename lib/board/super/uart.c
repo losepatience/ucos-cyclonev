@@ -186,7 +186,7 @@ u8 UART_MotionGetCMD(u8 *data)
 	if (fifo_cached(fifo) == 0)
 		goto err_out;
 
-	len = *((int *)fifo_oaddr(fifo));
+	len = *((u8 *)fifo_oaddr(fifo));
 	if (len > fifo_cached(fifo))
 		goto err_out;
 
@@ -344,5 +344,6 @@ void UART_Init(u8 flag)
 
 	/* this is motion channel */
 	SA_chans[UART_CHNUM].txfifo = fifo_init(txbuf, 1, 512);
+	SA_chans[UART_CHNUM].rxfifo = fifo_init(SA_chans[i].rxbuf, 1, 512);
 }
 

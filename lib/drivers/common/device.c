@@ -1,7 +1,7 @@
-/* ~.~ *-h-*
+/* ~.~ *-c-*
  *
  * Copyright (c) 2013, John Lee <furious_tauren@163.com>
- * Mon Jul 21 16:34:44 CST 2014
+ * Thu Jul 24 15:37:25 CST 2014
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -19,39 +19,24 @@
  * MA 02111-1307 USA
  */
 
+#include <errno.h>
+#include <device.h>
 
-#ifndef __SERIAL_CORE_H__
-#define __SERIAL_CORE_H__
+int io_pend(struct iomsg *msg)
+{
+	int ret;
 
-#include <platform.h>
-#include <fifo.h>
-#include <stddef.h>
+	mutex_lock(&msg->mutex);
+	msg->start(msg);
 
-#define ARCH_NR_UARTPORTS	(1 + 4)
-#define UART_XMIT_SIZE		(512)
+	if (wait_for_condition(&msg->ready, msg->timeout))
+		ret = msg->len;
+	else if (msg->idx > 0)
+		ret = msg->idx;
+	else
+		ret = -ETIMEDOUT;
+	mutex_lock(&msg->mutex);
 
-struct uart_port {
-	spinlock_t	lock;
-	unsigned char	*base;
-	void		*iobase;
+	return ret;
+}
 
-	unsigned int	id;
-	unsigned int	irq;
-	unsigned int	mask;
-
-	struct fifo	*txfifo;
-	char		txbuf[UART_XMIT_SIZE];
-	void		(*start_tx)(struct uart_port *);
-
-	callback_t	rxcb;
-	int		(*read)(struct uart_port *, unsigned char *, int);
-	/* struct		iomsg; */
-	
-	void		*priv;
-};
-
-int uart_read(int num, unsigned char *buf, int count);
-int uart_write(int num, const unsigned char *buf, int count);
-int uartport_add(struct uart_port *port);
-
-#endif

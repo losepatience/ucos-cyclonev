@@ -155,64 +155,50 @@ INT8U	UV_STATUS_READY();
 
 #if defined(OLD_UV)
 #if defined(MANUFACTURER_DYSS)
-#define UV_CTR_SW1_OPEN()		{UVCtrlPinLP2On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2On, 1);PIO_Set(&UVCtrlPinLP2On);}
-#define UV_CTR_SW1_CLOSE()		{UVCtrlPinLP2On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2On, 1);}
+#define UV_CTR_SW1_OPEN()		do {UVCtrlPinLP2On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2On, 1);PIO_Set(&UVCtrlPinLP2On);} while (0)
+#define UV_CTR_SW1_CLOSE()		do {UVCtrlPinLP2On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2On, 1);} while (0)
 
-#define UV_CTR_SW2_OPEN()		{UVCtrlPinLP2HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2HighPower, 1);PIO_Set(&UVCtrlPinLP2HighPower);}
-#define UV_CTR_SW2_CLOSE()		{UVCtrlPinLP2HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2HighPower,1);}
+#define UV_CTR_SW2_OPEN()		do {UVCtrlPinLP2HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2HighPower, 1);PIO_Set(&UVCtrlPinLP2HighPower);} while (0)
+#define UV_CTR_SW2_CLOSE()		do {UVCtrlPinLP2HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2HighPower,1);} while (0)
+#define UV_CTR_SW3_OPEN()		do {UVCtrlPinLP1On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1On, 1);PIO_Set(&UVCtrlPinLP1On);} while (0)
+#define UV_CTR_SW3_CLOSE()		do {UVCtrlPinLP1On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1On, 1);} while (0)
+#define UV_CTR_SW4_OPEN()		do {UVCtrlPinLP1HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1HighPower, 1);PIO_Set(&UVCtrlPinLP1HighPower);} while (0)
+#define UV_CTR_SW4_CLOSE()		do {UVCtrlPinLP1HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1HighPower,1);} while (0)
 
-#define UV_CTR_SW3_OPEN()		{UVCtrlPinLP1On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1On, 1);PIO_Set(&UVCtrlPinLP1On);}
-#define UV_CTR_SW3_CLOSE()		{UVCtrlPinLP1On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1On, 1);}
+#define UV_CTR_SHUTTER2_OPEN()		do {UVCtrlPinSH2Open.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinSH2Open, 1);PIO_Set(&UVCtrlPinSH2Open);} while (0)
+#define UV_CTR_SHUTTER2_CLOSE()		do {UVCtrlPinSH2Open.type = PIO_INPUT;PIO_Configure(&UVCtrlPinSH2Open,1);} while (0)
+#define UV_CTR_STATUS_SH2_OPEN		do (UVCtrlPinSH2Open.type == PIO_OUTPUT_1) while (0)
 
-#define UV_CTR_SW4_OPEN()		{UVCtrlPinLP1HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1HighPower, 1);PIO_Set(&UVCtrlPinLP1HighPower);}
-#define UV_CTR_SW4_CLOSE()		{UVCtrlPinLP1HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1HighPower,1);}
-
-#define UV_CTR_SHUTTER2_OPEN()		{UVCtrlPinSH2Open.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinSH2Open, 1);PIO_Set(&UVCtrlPinSH2Open);}
-#define UV_CTR_SHUTTER2_CLOSE()		{UVCtrlPinSH2Open.type = PIO_INPUT;PIO_Configure(&UVCtrlPinSH2Open,1);}
-#define UV_CTR_STATUS_SH2_OPEN		(UVCtrlPinSH2Open.type == PIO_OUTPUT_1)
-
-#define UV_CTR_SHUTTER1_OPEN()		{UVCtrlPinSH1Open.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinSH1Open, 1);PIO_Set(&UVCtrlPinSH1Open);}
-#define UV_CTR_SHUTTER1_CLOSE()		{UVCtrlPinSH1Open.type = PIO_INPUT;PIO_Configure(&UVCtrlPinSH1Open,1);}
-#define UV_CTR_STATUS_SH1_OPEN		(UVCtrlPinSH1Open.type == PIO_OUTPUT_1)
+#define UV_CTR_SHUTTER1_OPEN()		do {UVCtrlPinSH1Open.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinSH1Open, 1);PIO_Set(&UVCtrlPinSH1Open);} while (0)
+#define UV_CTR_SHUTTER1_CLOSE()		do {UVCtrlPinSH1Open.type = PIO_INPUT;PIO_Configure(&UVCtrlPinSH1Open,1);} while (0)
+#define UV_CTR_STATUS_SH1_OPEN		do (UVCtrlPinSH1Open.type == PIO_OUTPUT_1) while (0)
 #elif defined(ORIC_FUNCTION)
-#define UV_CTR_SW3_OPEN()		{UVCtrlPinLP2On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2On, 1);PIO_Set(&UVCtrlPinLP2On);}
-#define UV_CTR_SW3_CLOSE()		{UVCtrlPinLP2On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2On, 1);}
+#define UV_CTR_SW3_OPEN()		do {UVCtrlPinLP2On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2On, 1);PIO_Set(&UVCtrlPinLP2On);} while (0)
+#define UV_CTR_SW3_CLOSE()		do {UVCtrlPinLP2On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2On, 1);} while (0)
+#define UV_CTR_SW4_OPEN()		do {UVCtrlPinLP2HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2HighPower, 1);PIO_Set(&UVCtrlPinLP2HighPower);} while (0)
+#define UV_CTR_SW4_CLOSE()		do {UVCtrlPinLP2HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2HighPower,1);} while (0)
+#define UV_CTR_SW2_OPEN()		do {UVCtrlPinLP1On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1On, 1);PIO_Set(&UVCtrlPinLP1On);} while (0)
+#define UV_CTR_SW2_CLOSE()		do {UVCtrlPinLP1On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1On, 1);} while (0)
+#define UV_CTR_SW1_OPEN()		do {UVCtrlPinLP1HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1HighPower, 1);PIO_Set(&UVCtrlPinLP1HighPower);} while (0)
+#define UV_CTR_SW1_CLOSE()		do {UVCtrlPinLP1HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1HighPower,1);} while (0)
+#define UV_CTR_SHUTTER2_OPEN()		do {UVCtrlPinSH2Open.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinSH2Open, 1);PIO_Set(&UVCtrlPinSH2Open);} while (0)
+#define UV_CTR_SHUTTER2_CLOSE()		do {UVCtrlPinSH2Open.type = PIO_INPUT;PIO_Configure(&UVCtrlPinSH2Open,1);} while (0)
+#define UV_CTR_STATUS_SH2_OPEN		do (UVCtrlPinSH2Open.type == PIO_OUTPUT_1) while (0)
 
-#define UV_CTR_SW4_OPEN()		{UVCtrlPinLP2HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2HighPower, 1);PIO_Set(&UVCtrlPinLP2HighPower);}
-#define UV_CTR_SW4_CLOSE()		{UVCtrlPinLP2HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2HighPower,1);}
-
-#define UV_CTR_SW2_OPEN()		{UVCtrlPinLP1On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1On, 1);PIO_Set(&UVCtrlPinLP1On);}
-#define UV_CTR_SW2_CLOSE()		{UVCtrlPinLP1On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1On, 1);}
-
-#define UV_CTR_SW1_OPEN()		{UVCtrlPinLP1HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1HighPower, 1);PIO_Set(&UVCtrlPinLP1HighPower);}
-#define UV_CTR_SW1_CLOSE()		{UVCtrlPinLP1HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1HighPower,1);}
-
-#define UV_CTR_SHUTTER2_OPEN()		{UVCtrlPinSH2Open.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinSH2Open, 1);PIO_Set(&UVCtrlPinSH2Open);}
-#define UV_CTR_SHUTTER2_CLOSE()		{UVCtrlPinSH2Open.type = PIO_INPUT;PIO_Configure(&UVCtrlPinSH2Open,1);}
-#define UV_CTR_STATUS_SH2_OPEN		(UVCtrlPinSH2Open.type == PIO_OUTPUT_1)
-
-#define UV_CTR_SHUTTER1_OPEN()		{UVCtrlPinSH1Open.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinSH1Open, 1);PIO_Set(&UVCtrlPinSH1Open);}
-#define UV_CTR_SHUTTER1_CLOSE()		{UVCtrlPinSH1Open.type = PIO_INPUT;PIO_Configure(&UVCtrlPinSH1Open,1);}
-#define UV_CTR_STATUS_SH1_OPEN		(UVCtrlPinSH1Open.type == PIO_OUTPUT_1)
-
+#define UV_CTR_SHUTTER1_OPEN()		do {UVCtrlPinSH1Open.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinSH1Open, 1);PIO_Set(&UVCtrlPinSH1Open);} while (0)
+#define UV_CTR_SHUTTER1_CLOSE()		do {UVCtrlPinSH1Open.type = PIO_INPUT;PIO_Configure(&UVCtrlPinSH1Open,1);} while (0)
+#define UV_CTR_STATUS_SH1_OPEN		do (UVCtrlPinSH1Open.type == PIO_OUTPUT_1) while (0)
 #elif defined(MANUFACTURER_FULGENCY_FLAT_UV)
-#define UV_CTR_SW1_OPEN()		{UVCtrlPinLP2On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2On, 1);PIO_Set(&UVCtrlPinLP2On);}
-#define UV_CTR_SW1_CLOSE()		{UVCtrlPinLP2On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2On, 1);}
-
-#define UV_CTR_SW2_OPEN()		{UVCtrlPinLP2HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2HighPower, 1);PIO_Set(&UVCtrlPinLP2HighPower);}
-#define UV_CTR_SW2_CLOSE()		{UVCtrlPinLP2HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2HighPower,1);}
-
-//#define CLEAN_CTR_WIPER_OPEN()		{UVCtrlPinLP1On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1On, 1);PIO_Set(&UVCtrlPinLP1On);}
-//#define CLEAN_CTR_WIPER_CLOSE()		{UVCtrlPinLP1On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1On, 1);}
-
-#define UV_CTR_PRT_START_SET()		{UVCtrlPinLP1HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1HighPower, 1);PIO_Set(&UVCtrlPinLP1HighPower);}
-#define UV_CTR_PRT_START_CLEAR()		{UVCtrlPinLP1HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1HighPower,1);}
-
-#define UV_CTR_PRT_FINISH_SET()		{STATUS_PRT.type = PIO_OUTPUT_1;PIO_Configure(&STATUS_PRT, 1);PIO_Set(&STATUS_PRT);}
-#define UV_CTR_PRT_FINISH_CLEAR()		{STATUS_PRT.type = PIO_INPUT;PIO_Configure(&STATUS_PRT,1);}
-
-#define UV_CTR_PRT_Y_HOME_SET()		{Y_HOME_READY.type = PIO_OUTPUT_1;PIO_Configure(&Y_HOME_READY, 1);PIO_Set(&Y_HOME_READY);}
-#define UV_CTR_PRT_Y_HOME_CLEAR()		{Y_HOME_READY.type = PIO_INPUT;PIO_Configure(&Y_HOME_READY,1);}
+#define UV_CTR_SW1_OPEN()		do {UVCtrlPinLP2On.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2On, 1);PIO_Set(&UVCtrlPinLP2On);} while (0)
+#define UV_CTR_SW1_CLOSE()		do {UVCtrlPinLP2On.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2On, 1);} while (0)
+#define UV_CTR_SW2_OPEN()		do {UVCtrlPinLP2HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP2HighPower, 1);PIO_Set(&UVCtrlPinLP2HighPower);} while (0)
+#define UV_CTR_SW2_CLOSE()		do {UVCtrlPinLP2HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP2HighPower,1);} while (0)
+#define UV_CTR_PRT_START_SET()		do {UVCtrlPinLP1HighPower.type = PIO_OUTPUT_1;PIO_Configure(&UVCtrlPinLP1HighPower, 1);PIO_Set(&UVCtrlPinLP1HighPower);} while (0)
+#define UV_CTR_PRT_START_CLEAR()	do 	{UVCtrlPinLP1HighPower.type = PIO_INPUT;PIO_Configure(&UVCtrlPinLP1HighPower,1);} while (0)
+#define UV_CTR_PRT_FINISH_SET()		do {STATUS_PRT.type = PIO_OUTPUT_1;PIO_Configure(&STATUS_PRT, 1);PIO_Set(&STATUS_PRT);} while (0)
+#define UV_CTR_PRT_FINISH_CLEAR()	do 	{STATUS_PRT.type = PIO_INPUT;PIO_Configure(&STATUS_PRT,1);} while (0)
+#define UV_CTR_PRT_Y_HOME_SET()		do {Y_HOME_READY.type = PIO_OUTPUT_1;PIO_Configure(&Y_HOME_READY, 1);PIO_Set(&Y_HOME_READY);} while (0)
+#define UV_CTR_PRT_Y_HOME_CLEAR()	do {Y_HOME_READY.type = PIO_INPUT;PIO_Configure(&Y_HOME_READY,1);} while (0)
 
 #define UV_CTR_SHUTTER1_OPEN()		PIO_Set(&UVCtrlPinSH1Open)
 #define UV_CTR_SHUTTER1_CLOSE()		PIO_Clear(&UVCtrlPinSH1Open)

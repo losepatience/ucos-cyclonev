@@ -479,7 +479,7 @@ char USBD_AbortDataWrite(u8 Endpoint)
 extern void USBDCallbacks_RequestReceived(const USBGenericRequest *req);
 
 /* called in irq, so could not have mutex */
-static int ezusb_callback(void *arg)
+static void ezusb_callback(void *arg)
 {
 	USBGenericRequest *req = (USBGenericRequest *)arg;	
 
@@ -489,7 +489,6 @@ static int ezusb_callback(void *arg)
 	}
 
 	USBDCallbacks_RequestReceived(req);
-	return 0;
 }
 
 u8 USB_Init(void)

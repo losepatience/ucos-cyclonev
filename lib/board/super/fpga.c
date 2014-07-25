@@ -52,10 +52,10 @@ typedef struct circ {
 } circ_t;
 
 
-static volatile INT8U FPGADMA_manualStop = False;
+static volatile INT8U FPGADMA_manualStop = false;
 
 
-volatile INT8U USBDMA_manualStop = False;
+volatile INT8U USBDMA_manualStop = false;
 /* this is irq from fpga. */
 static void fpga_notify_interrupt(void *arg)
 {
@@ -78,14 +78,14 @@ static void fpga_notify_interrupt(void *arg)
 
 void FPGADMA_stop(void)
 {
-	FPGADMA_manualStop = True;
+	FPGADMA_manualStop = true;
 	//11 DMAD_AbortTransfer(FPGA_DMA_CHANNEL_NUM);
 }
 
 
 unsigned char FPGA_SendData(unsigned char first) 
 {
-	unsigned char ret = True;
+	unsigned char ret = true;
 	unsigned short cur_FPGADMA_StepSize;
 
 	circ_t *circ = __to_circ();

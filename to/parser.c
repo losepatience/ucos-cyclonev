@@ -1192,9 +1192,6 @@ INT8U GenerateMotionPrintCMD(INT8U *buf, INT8U bBlankBand)
 	return True;	
 }
 
-static const Pin FPGAMotionYPulsePin = PIN_FPGA_ARM_YPULSE;
-
-//#define TEST_FIRE_BY_FPGA
 #if defined(TEST_FIRE_BY_FPGA)
 INT32S X_posi = 0;
 void FPGAPosi_Test_IntHandler(void * data)

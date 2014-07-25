@@ -33,12 +33,12 @@
 
 #define FPGA_GPIO_IRQ	((72 + 7))
 
-#include <gpio.h>
+#include <dwgpio.h>
 #include <asm/io.h>
 
 static spinlock_t gpio_lock;
 
-struct gpio_chip __gc[3 + 4];
+struct gpio_chip __gc[DWGPIO_CHIP_NUM + 4];
 static int __ngpio[] = { 12, 18, 14, 15 };
 
 static int cycgpio_to_irq(struct gpio_chip *gc, unsigned offset)

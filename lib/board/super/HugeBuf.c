@@ -244,7 +244,7 @@ void HugeBuf_StartOneReceive(void)
 	unsigned long flags = 0;
 
 	if (USBDMA_manualStop) {
-		g_USBTransStoped = True;
+		g_USBTransStoped = true;
 		return;	
 	}
 
@@ -331,7 +331,7 @@ void HugeBuf_CancelJob(void)
 
 	spin_lock_irqsave(&circ->lock, flags);
 
-	USBDMA_manualStop = False;
+	USBDMA_manualStop = false;
 	HugeBuf_Reset();
 	HugBuf_InitReceiveSize();
 	HugeBuf_StartOneReceive();
@@ -395,7 +395,7 @@ void HugeBuf_CancelJob(void)
 			OSTimeDly(10);
 	}
 
-	g_shakehandPassed = False;
+	g_shakehandPassed = false;
 
 	OSTimeDly(10);
 }

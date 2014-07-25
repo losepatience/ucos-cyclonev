@@ -1,7 +1,7 @@
-/* ~.~ *-h-*
+/* ~.~ *-c-*
  *
  * Copyright (c) 2013, John Lee <furious_tauren@163.com>
- * Mon Jul 21 16:34:44 CST 2014
+ * Thu Jul 24 14:22:55 CST 2014
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -19,39 +19,30 @@
  * MA 02111-1307 USA
  */
 
+#ifndef __IIC_DEV__
+#define __IIC_DEV__
 
-#ifndef __SERIAL_CORE_H__
-#define __SERIAL_CORE_H__
+#include <asm/types.h>
 
-#include <platform.h>
-#include <fifo.h>
-#include <stddef.h>
+u8 IIC_WriteEEPRom(u16 addr, u8 *buf, u8 *len);
+inline u8 IIC_WriteEEPRom_Ex(u16 addr, u8 *buf, u16 *len);
+u8 IIC_ReadEEPRom(u16 addr, u8 *buf, u8 *len);
+inline u8 IIC_ReadEEPRom_Ex(u16 addr, u8 *buf, u16 *len);
 
-#define ARCH_NR_UARTPORTS	(1 + 4)
-#define UART_XMIT_SIZE		(512)
+u8 IIC_Write_Max11614(u8 reg, u8 data, u8 pending);
+float IIC_Read_Max11614(u8 Flag);
 
-struct uart_port {
-	spinlock_t	lock;
-	unsigned char	*base;
-	void		*iobase;
+u8 IIC_WriteRegs(u8 reg, u8 *buf, u8 cnt);
+inline u8 IIC_WriteReg(u8 reg, u8 data);
+u8 IIC_ReadReg(u8 reg, u8 *buf, u8 cnt);
 
-	unsigned int	id;
-	unsigned int	irq;
-	unsigned int	mask;
+u8 IIC_Write_LCD_32(u8 reg, u8 *buf, u8 cnt);
+u8 IIC_Read_LCD(u8 reg, u8 *buf, u8 cnt);
 
-	struct fifo	*txfifo;
-	char		txbuf[UART_XMIT_SIZE];
-	void		(*start_tx)(struct uart_port *);
+void IIC_Init(void);
 
-	callback_t	rxcb;
-	int		(*read)(struct uart_port *, unsigned char *, int);
-	/* struct		iomsg; */
-	
-	void		*priv;
-};
 
-int uart_read(int num, unsigned char *buf, int count);
-int uart_write(int num, const unsigned char *buf, int count);
-int uartport_add(struct uart_port *port);
+void UART_Init(u8 flag);
+u8 UART_SendCMD(u8 num, u8 *data);
 
 #endif

@@ -34,9 +34,7 @@ const Pin BellPin = MB_CUST_PIN_BELL;
 const Pin PumpDriver1Pin = PIN_PUMP_DRIVER_1_EN;
 const Pin PumpDriver2Pin = PIN_PUMP_DRIVER_2_EN;
 #endif
-#if !(defined( EPSON_BOTTOM_BOARD_V2_1) || defined( EPSON_BOTTOM_BOARD_V3))
-const Pin VacuumCleanerPin = MB_CUST_PIN_CLEANER;
-#endif
+
 //Fix pump bug;
 //先让黑色泵墨， 在黑色没有泵满的情况下，再让CYAN泵墨，这个时候，CYAN和BLACK会同时泵墨，并且黑色会一直泵墨，
 //直到CYAN停止泵墨. 对其他颜色也是这样. K->C->M->Y->Lc->Lm. 反序则不会出现此问题.

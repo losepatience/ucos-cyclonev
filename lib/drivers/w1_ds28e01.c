@@ -485,22 +485,22 @@ u8 InitSecurityChip(void)
 
 	/* read the whole content of page 1*/
 	if (w1_f2f_read(master, buf, 0x88, 0x18) != 0x18)
-		return False;
+		return false;
 
 	if (buf[0] != 0x55 && buf[0] != 0xAA) {
 
 		//if (w1_f2f_load_secret(master, ds28e01->secret, 0x80))
-			return False;
+			return false;
 
 		buf[0] = 0x55;
 		if (w1_f2f_write(master, buf, 0x88))
-			return False;
+			return false;
 	}
 
 	if (__authenticate(master, 0))
-		return False;
+		return false;
 
-	return True;
+	return true;
 }
 
 u8 WriteBoardAndManufacturerID(u32 Boardid, u16 Manufacturerid)
@@ -511,16 +511,16 @@ u8 WriteBoardAndManufacturerID(u32 Boardid, u16 Manufacturerid)
 
 	/* read the whole content of page 1*/
 	if (w1_f2f_read(master, rdbuf, 0x20, 0x20) != 0x20)
-		return False;
+		return false;
 
 	memcpy(wrbuf, rdbuf, 8);
 	*(u32 *)wrbuf = Boardid;
 	*(u16 *)(wrbuf + sizeof(u32)) = Manufacturerid;
 
 	if (w1_f2f_write(master, wrbuf, 0x20))
-		return False;
+		return false;
 
-	return True;
+	return true;
 }
 
 u8 Init_OneWire(void)
@@ -532,13 +532,13 @@ u8 Init_OneWire(void)
 
 	/* read the whole content of page 1 */
 	if (w1_f2f_read(master, buf, 0x20, 0x20) != 0x20)
-		return False;
+		return false;
 
 	owBoardID = *(u32 *)buf;
 	owManufacturerID = *(u16 *)(buf + sizeof(u32));
 #endif
 
-	return True;
+	return true;
 }
 
 #endif /* INCOMPATIBLE_WITH_ATMEL */
