@@ -28,7 +28,6 @@
  *                                               EXAMPLE #1
  *********************************************************************************************************
  */
-#include "intrinsics.h"
 #include "os_includes.h"
 #include "consol.h"
 #include "flash.h"

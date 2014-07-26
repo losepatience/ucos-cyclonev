@@ -45,7 +45,6 @@ struct uart_port {
 
 	callback_t	rxcb;
 	int		(*read)(struct uart_port *, unsigned char *, int);
-	/* struct		iomsg; */
 	
 	void		*priv;
 };

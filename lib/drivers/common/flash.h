@@ -1,7 +1,7 @@
-/* ~.~ *-c-*
+/* ~.~ *-h-*
  *
  * Copyright (c) 2013, John Lee <furious_tauren@163.com>
- * Thu Jul 24 15:37:25 CST 2014
+ * Tue May  6 18:59:40 CST 2014
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -19,24 +19,16 @@
  * MA 02111-1307 USA
  */
 
-#include <errno.h>
-#include <device.h>
+#ifndef __FLASH_H__
+#define __FLASH_H__
 
-int io_pend(struct iomsg *msg)
-{
-	int ret;
+#include <spi_flash.h>
+/* #include <nand_flash.h> */
 
-	mutex_lock(&msg->mutex);
-	msg->start(msg);
+int flash_write(char *src, ulong addr, ulong cnt);
+int flash_read(char *des, ulong addr, ulong cnt);
 
-	if (wait_for_condition(&msg->ready, msg->timeout))
-		ret = msg->len;
-	else if (msg->idx > 0)
-		ret = msg->idx;
-	else
-		ret = -ETIMEDOUT;
-	mutex_lock(&msg->mutex);
+int flash_init(unsigned int bus, unsigned int cs,
+	unsigned int max_hz, unsigned int mode);
 
-	return ret;
-}
-
+#endif

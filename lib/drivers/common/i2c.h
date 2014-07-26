@@ -28,8 +28,8 @@
 #include <platform.h>
 
 struct i2c_msg {
-	u16 addr;	/* slave address			*/
-	u16 flags;
+	unsigned short		addr;	/* slave address			*/
+	unsigned short		flags;
 #define I2C_M_TEN		0x0010	/* this is a ten bit chip address */
 #define I2C_M_RD		0x0001	/* read data, from slave to master */
 #define I2C_M_STOP		0x8000	/* if I2C_FUNC_PROTOCOL_MANGLING */
@@ -38,8 +38,8 @@ struct i2c_msg {
 #define I2C_M_IGNORE_NAK	0x1000	/* if I2C_FUNC_PROTOCOL_MANGLING */
 #define I2C_M_NO_RD_ACK		0x0800	/* if I2C_FUNC_PROTOCOL_MANGLING */
 #define I2C_M_RECV_LEN		0x0400	/* length will be first received byte */
-	u16 len;		/* msg length				*/
-	u8 *buf;		/* pointer to msg data			*/
+	unsigned short		len;	/* msg length */
+	unsigned char		*buf;	/* pointer to msg data */
 };
 
 struct i2c_adapter {
@@ -48,14 +48,15 @@ struct i2c_adapter {
 	int			busnum;
 	int			retries;
 	int			timeout;
-	void			*priv;
 
-	int (*xfer)(struct i2c_adapter *adap, struct i2c_msg msgs[], int num);
+	int 			(*xfer)(struct i2c_adapter *adap,
+					struct i2c_msg msgs[], int num);
+	void			*priv;
 };
 
-int i2c_is_numbered_adapter_registered(int busnum);
-int i2c_register_adapter(struct i2c_adapter *adap, int busnum);
 struct i2c_adapter *i2c_get_adapter(int busnum);
+int i2c_register_adapter(struct i2c_adapter *adap, int busnum);
+int i2c_is_numbered_adapter_registered(int busnum);
 int i2c_transfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num);
 
 #endif

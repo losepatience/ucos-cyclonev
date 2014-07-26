@@ -1,3 +1,6 @@
+#ifndef __OS_INCLUDES_H__
+#define __OS_INCLUDES_H__
+
 #include <ucos_ii.h>
 #include <board.h>
 #include <asm/types.h>
@@ -10,7 +13,6 @@
 #define OS_TIMEOUT		OS_ERR_TIMEOUT
 #define OS_TASK_NOT_EXIST	OS_ERR_TASK_NOT_EXIST
 
-#define AT91C_DDR2	0
-#define AT91C_ID_UDPHS
-#define AT91C_EBI_CS5	0
-#define LED_INVERSE	0
+#define AT91C_DDR2		0
+
+#endif

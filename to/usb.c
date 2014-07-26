@@ -2,7 +2,6 @@
 #include "os_includes.h"
 #include "consol.h"
 #include "usb.h"
-#include "usb_descriptors.h"
 #include "HugeBuf.h"
 #include "status.h"
 #include "miscellance.h"

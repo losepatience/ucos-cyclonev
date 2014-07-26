@@ -28,16 +28,20 @@
  */
 #include <asm/types.h>
 #include <platform.h>
-#include <spi_flash.h>
 #include <errno.h>
 #include <malloc.h>
 #include <string.h>
+#include <flash.h>
 
 struct flash {
-	struct spi_flash	*chip;
-	char			*wrbuf;
-	u32			sector_size;	/* Erase (sector) size */
 	spinlock_t		lock;
+#ifndef CONFIG_NAND_FLASH
+	struct spi_flash	*chip;
+#else
+	struct nand_flash	*chip;
+#endif
+	u32			sector_size;	/* Erase (sector) size */
+	char			*wrbuf;
 };
 
 static struct flash __flash;
@@ -121,17 +125,28 @@ int flash_read(char *des, ulong addr, ulong cnt)
 	return cnt;
 }
 
-int flash_init(void)
+int flash_init(unsigned int bus, unsigned int cs,
+		unsigned int max_hz, unsigned int mode)
+
 {
 	struct flash *flash = &__flash;
 
-	flash->chip = spi_flash_probe(0, 0, 50000000, SPI_CPOL | SPI_CPHA);
+#ifndef CONFIG_NAND_FLASH
+	flash->chip = spi_flash_probe(bus, cs, max_hz, mode);
+#else
+	flash->chip = nand_flash_probe(bus, cs, max_hz, mode);
+#endif
+
 	if (flash->chip == NULL)
 		return -ENODEV;
 
 	flash->wrbuf = (char *)calloc(1, flash->sector_size);
 	if (flash->wrbuf == NULL) {
+#ifndef CONFIG_NAND_FLASH
 		spi_flash_free(flash->chip);
+#else
+		nand_flash_free(flash->chip);
+#endif
 		return -ENOMEM;
 	}
 

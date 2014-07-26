@@ -1,43 +1,8 @@
 #ifndef _PRINTERS_H_
 #define _PRINTERS_H_
 
-#include "os_includes.h"
-#include    "os_cpu.h"
-
-//MSB, Hardware version, version, sub-version, build, LSB
-//#define BOARD_VERSION	   0x01010300 //Change voltage map
-//#define BOARD_VERSION	   0x01010301 //Change control.c and control.h, fix pump bugs. 
-//#define BOARD_VERSION	   0x01010400 //Add password control
-//#define BOARD_VERSION	   0x01010401 //Change data transfer method to burst: SDRAM => FPGA
-//#define BOARD_VERSION	   0x01010402 //Add some interface for flatbed printer
-//#define BOARD_VERSION	   0x01020000 //Add some interface for UV flatbed printer, x/y/z/f motion, First relase in Human
-//#define BOARD_VERSION	   0x01020100 //Add language protection 20081114
-//#define BOARD_VERSION	   0x01020200 //Y Encoder adjust length, 步进立即生效，双向校准微调 20090327
-//#define BOARD_VERSION	   0x01020300 //Support Konica new 512 head board
-//#define BOARD_VERSION	   0x01020301 //Support auto flashing when begin job and printing....
-//#define BOARD_VERSION	   0x01020302 //Support media sensor
-//#define BOARD_VERSION	   0x01020303 //Support KM512 16 head version 2
-//#define BOARD_VERSION	   0x01040404 //Special version to change the manufacturer ID, 仅给过COLORJET的临时版本.
-
-//#define BOARD_VERSION	   0x01020304 //Support KM512LNX printhead 20091112
-//#define BOARD_VERSION	   0x01020305 //Add one command to support Y-reverse printing
-//#define BOARD_VERSION	   0x01020306 //Support spectra BYHX_HB_V4, support DSP private data, 20100106
-//#define BOARD_VERSION	   0x01020307 //Support KM512LNX ALL in ONE, 可以支持旧头板
-//#define BOARD_VERSION	   0x01020400 //增加状态级别0x00000200，于motion配合。使用老版本时（motion为新版本），这个级别的信息被忽略
-//使用此版本，用老的motion没有影响。	20100128
-
-//#define BOARD_VERSION	   0x01020500 //对GZ项目，增加软件版本限制
-//#define BOARD_VERSION	   0x01020501 //KM512LN增加超频（7.5KHZ），要求头板版本为2.3（CPLD改动）
-//#define BOARD_VERSION	   0x01020600 //20100702,  支持KM512LN打印6.6KZ，条件是头版版本大于等于x.2.1.1, motion版本大于等于x.x.3
-
-//#define BOARD_VERSION	   0x01020601 //Support ink limited password。
-
-//#define BOARD_VERSION	   0x02010101 //Cheney: the first version for updated board.	20100519
-//#define BOARD_VERSION	   0x02020601 //Cheney: after merge code, update to the same version NO. 20100812
-
-//#define BOARD_VERSION	   0x02030601 //Cheney: support Epson printhead
-//#define BOARD_VERSION	   0x02000500 //Handy: Add command to switch KM1024 14PL and 42PL
-//#define BOARD_VERSION	   0x02000600 //ALL Konica head KM256/KM512/KM1024 and 64M/128M memeory use same program.
+#include <os_includes.h>
+#include <os_cpu.h>
 
 #define BOARD_VERSION	   0x02030601 //Cheney: support Epson printhead
 
@@ -836,7 +801,7 @@ typedef struct STRUCT_PRINTER
 
 //for epson allwin, only autoClean_passInterval is valid.
 //for epson micolor, only longflash_passInterval is valid. 
-typedef __packed struct CLEANPARA
+typedef struct CLEANPARA
 {
 	INT8U structsize;
 	INT8U flash;    // 1: 是否自动闪喷，0/1=否/是

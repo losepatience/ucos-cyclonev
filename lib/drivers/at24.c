@@ -33,22 +33,23 @@
 #include <config.h>
 
 struct __at24 {
-	u32 byte_len;		/* size (sum of all addr) */
-	u16 page_size;		/* for writes */
-	u16 flags;
-	u16 addr;
+	struct mutex		mutex;
+	unsigned short		addr;
+	unsigned short		flags;
+	unsigned short		page_size;	/* for writes */
+	int			bus;		/* i2c bus num */
 
-	struct i2c_adapter *adap;
-	struct mutex lock;
-	u8 *writebuf;
-	unsigned write_max;
+
+	struct i2c_adapter	*adap;
+	unsigned int		write_max;
+	unsigned char		*writebuf;
 };
 
 static struct __at24 __24lc32 = {
-	.byte_len = 4096,
-	.page_size = E2PROM_PAGESIZE,
-	.flags = AT24_FLAG_ADDR16,
-	.addr = IIC_EEPROM_ADDR,
+	.addr		= IIC_EEPROM_ADDR,
+	.flags		= AT24_FLAG_ADDR16,
+	.page_size	= E2PROM_PAGESIZE,
+	.bus		= 0
 };
 
 static unsigned io_limit = 128;
@@ -61,7 +62,7 @@ static inline struct __at24 *__get_at24(void)
 static ssize_t __read(struct __at24 *at24, char *buf, loff_t offs, size_t cnt)
 {
 	struct i2c_msg msg[2];
-	u8 msgbuf[2];
+	unsigned char msgbuf[2];
 	int timeout = 10;
 	int i = 0;
 
@@ -81,7 +82,7 @@ static ssize_t __read(struct __at24 *at24, char *buf, loff_t offs, size_t cnt)
 
 	msg[1].addr = at24->addr;
 	msg[1].flags = I2C_M_RD;
-	msg[1].buf = (u8 *)buf;
+	msg[1].buf = (unsigned char *)buf;
 	msg[1].len = cnt;
 
 	do {
@@ -114,7 +115,6 @@ static ssize_t __write(struct __at24 *at24,
 	msg.addr = at24->addr;
 	msg.flags = 0;
 
-	/* msg.buf is u8 and casts will mask the values */
 	msg.buf = at24->writebuf;
 	if (at24->flags & AT24_FLAG_ADDR16)
 		msg.buf[i++] = offs >> 8;
@@ -139,7 +139,7 @@ ssize_t at24_read(char *buf, loff_t off, size_t cnt)
 	struct __at24 *at24 = __get_at24();
 	ssize_t rval = 0;
 
-	mutex_lock(&at24->lock);
+	mutex_lock(&at24->mutex);
 	while (cnt) {
 		ssize_t status = __read(at24, buf, off, cnt);
 		if (status <= 0) {
@@ -153,7 +153,7 @@ ssize_t at24_read(char *buf, loff_t off, size_t cnt)
 		cnt -= status;
 		rval += status;
 	}
-	mutex_unlock(&at24->lock);
+	mutex_unlock(&at24->mutex);
 
 	return rval;
 }
@@ -163,7 +163,7 @@ ssize_t at24_write(const char *buf, loff_t off, size_t cnt)
 	struct __at24 *at24 = __get_at24();
 	ssize_t rval = 0;
 
-	mutex_lock(&at24->lock);
+	mutex_lock(&at24->mutex);
 	while (cnt) {
 		ssize_t status = __write(at24, buf, off, cnt);
 		if (status <= 0) {
@@ -177,7 +177,7 @@ ssize_t at24_write(const char *buf, loff_t off, size_t cnt)
 		cnt -= status;
 		rval += status;
 	}
-	mutex_unlock(&at24->lock);
+	mutex_unlock(&at24->mutex);
 
 	return rval;
 }
@@ -186,7 +186,7 @@ int at24_init(void)
 {
 	struct __at24 *at24 = __get_at24();
 
-	mutex_init(&at24->lock);
+	mutex_init(&at24->mutex);
 
 	at24->write_max = at24->page_size;
 	if (at24->write_max > io_limit)
@@ -198,7 +198,7 @@ int at24_init(void)
 		return -ENOMEM;
 	}
 
-	at24->adap = i2c_get_adapter(0);
+	at24->adap = i2c_get_adapter(at24->bus);
 	if (at24->adap == NULL) {
 		pr_err("%s: adapter0 has not registered\n", __func__);
 		free(at24->writebuf);

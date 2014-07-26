@@ -5,6 +5,7 @@
 #include <old_apis.h>
 #include <errno.h>
 #include <dwgpio.h>
+#include <flash.h>
 
 static struct i2c_adapter *adap_zlg7290;
 static struct i2c_adapter *adap_lcd;
@@ -20,7 +21,7 @@ int device_init(void)
 	/* init i2c adapter and devices on i2c bus, like at24 */
 	IIC_Init();
 
-	rval = flash_init();
+	rval = flash_init(0, 0, 50000000, SPI_CPOL | SPI_CPHA);
 	if (rval) {
 		pr_err("%s: failed to init flash\n", __func__);
 		return rval;

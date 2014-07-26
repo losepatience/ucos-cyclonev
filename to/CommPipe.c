@@ -3,10 +3,6 @@
 #include "global.h"
 #include "HugeBuf.h"
 #include "miscellance.h"
-#if 0
-#include "usb_descriptors.h"
-#include "usb/device/core/usbd.h"
-#endif
 #include "CommPipe.h"
 
 #if defined( HEAD_EPSON_GEN5) || defined(HEAD_RICOH_G4)
