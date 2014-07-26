@@ -13,40 +13,9 @@
 
 #include "pio/pio.h"
 
-#ifdef PUMP_INTERMITTENT
-#define PUMP_PERIOD 300			//泵墨周期
-#define PUMP_TIME_RATIO 1 / 20	//泵墨时间比
-#endif
-//for epson allwin, we use EPSON_BOTTOM_BOARD_V2,
-//  for allwin, we use PumpCtrl9(the old  PIN_PUMP_DRIVER_1_EN) as PIN_CLEAN_RELEASE_1.
-//      use PumpCtrl10(the old  PIN_PUMP_DRIVER_2_EN) as PIN_CLEAN_SUCK_1.
-//      use PumpCtrl7 as PIN_CLEAN_RELEASE_2.
-//      use PumpCtrl8 as PIN_CLEAN_SUCK_2.
-//  for micolor(temp), we use PumpCtrl7 as clean motor A+
-//      use PumpCtrl8 as clean motor B+
-//      use PumpCtrl9 as clean motor A-
-//      use PumpCtrl10 as clean motor B-.
-//      Note: A,B,+,- is our private defination. it may be different with the motor standard because we have NOT the document of this step motor.
-
-
 const Pin BellPin = MB_CUST_PIN_BELL;
-#if !(defined( EPSON_BOTTOM_BOARD_V2) || defined( EPSON_BOTTOM_BOARD_V2_1) || defined( EPSON_BOTTOM_BOARD_V3))
-const Pin PumpDriver1Pin = PIN_PUMP_DRIVER_1_EN;
-const Pin PumpDriver2Pin = PIN_PUMP_DRIVER_2_EN;
-#endif
-
-//Fix pump bug;
-//先让黑色泵墨， 在黑色没有泵满的情况下，再让CYAN泵墨，这个时候，CYAN和BLACK会同时泵墨，并且黑色会一直泵墨，
-//直到CYAN停止泵墨. 对其他颜色也是这样. K->C->M->Y->Lc->Lm. 反序则不会出现此问题.
 
 INT32U g_PumpControl = 0;	
-#ifdef TIMER_ON
-Timer control_timer;
-#endif
-#ifdef PUMP_INTERMITTENT
-#define TIMER_BELL 0x0001
-#define TIMER_PUMP 0x0002
-#endif
 
 #define PUMP_DELAY_TIME	3
 
@@ -58,11 +27,6 @@ static const Pin InkSupplyCtrl5Pin = PIN_INK_SUPPLY_CTRL5;
 static const Pin InkSupplyCtrl6Pin = PIN_INK_SUPPLY_CTRL6;
 static const Pin InkSupplyCtrl7Pin = PIN_INK_SUPPLY_CTRL7;
 static const Pin InkSupplyCtrl8Pin = PIN_INK_SUPPLY_CTRL8;
-#ifdef EPSON_BOTTOM_BOARD_V2
-static const Pin InkSupplyCtrl9Pin = PIN_CLEAN_RELEASE_1;
-static const Pin InkSupplyCtrl10Pin = PIN_CLEAN_SUCK_1;
-#endif
-#ifdef EPSON_BOTTOM_BOARD_V2_1
 static const Pin InkSupplyCtrl9Pin = PIN_INK_SUPPLY_CTRL9;
 static const Pin InkSupplyCtrl10Pin = PIN_INK_SUPPLY_CTRL10;
 static const Pin InkSupplyCtrl11Pin = PIN_INK_SUPPLY_CTRL11;
@@ -71,12 +35,13 @@ static const Pin InkSupplyCtrl13Pin = PIN_INK_SUPPLY_CTRL13;
 static const Pin InkSupplyCtrl14Pin = PIN_INK_SUPPLY_CTRL14;
 static const Pin InkSupplyCtrl15Pin = PIN_INK_SUPPLY_CTRL15;
 #ifdef HEAD_RICOH_G4
+#if liyang
 static const Pin INK_K_LEVEL = PIN_TSAD3;
 static const Pin INK_C_LEVEL = PIN_TSAD2;
 static const Pin INK_M_LEVEL = PIN_TSAD1;
 static const Pin INK_Y_LEVEL = PIN_TSAD0;
 #endif 
-#endif
+#endif 
 
 #define BIT_MAX11614_SETUP_MASK (1<<7)
 #define BIT_MAX11614_CONFIG_MASK (1<<5)
@@ -84,106 +49,7 @@ static const Pin INK_Y_LEVEL = PIN_TSAD0;
 #define BIT_MAX11614_CS_AIN1  (1)
 #define BIT_MAX11614_CS_AIN2  (2)
 #define BIT_MAX11614_CS_AIN3  (3)
-#ifdef EPSON_BOTTOM_BOARD_V3
-#ifdef MICOLOR_AUTOFUCTION
-static const Pin PlateFan1Pin = PIN_INK_SUPPLY_CTRL1;
-static const Pin PlateFan2Pin = PIN_INK_SUPPLY_CTRL2;
-static const Pin PlateFan3Pin = PIN_INK_SUPPLY_CTRL3;
-static const Pin PlateFan4Pin = PIN_INK_SUPPLY_CTRL4;
-#endif
 
-#ifdef EPSON_CLEAN_UPDOWN
-static const Pin CleanRelease1Pin = PIN_INK_SUPPLY_CTRL1;
-static const Pin CleanSuck1Pin = PIN_INK_SUPPLY_CTRL2;
-#endif
-#elif defined( EPSON_BOTTOM_BOARD_V2)
-#ifdef MICOLOR_AUTOFUCTION
-static const Pin PlateFan1Pin = PIN_CLEAN_RELEASE_1;
-static const Pin PlateFan2Pin = PIN_CLEAN_SUCK_1;
-#endif
-#ifdef EPSON_CLEAN_UPDOWN
-#if (defined(EPSON_CLEAN_UPDOWN_TATE_8H_RICOH)||defined(EPSON_4H_CLEAN_SPLIT))
-static const Pin CleanSuck2Pin = PIN_CLEAN_RELEASE_1;
-static const Pin CleanSuck3Pin = PIN_INK_SUPPLY_CTRL8;
-static const Pin CleanSuck4Pin = PIN_INK_SUPPLY_CTRL7;
-#else
-static const Pin CleanRelease1Pin = PIN_CLEAN_RELEASE_1;
-#endif
-static const Pin CleanSuck1Pin = PIN_CLEAN_SUCK_1;
-
-
-#if defined(EPSON_CLEAN_UPDOWN_WIPER_EX)
-static const Pin CleanWipe1Pin = PIN_INK_SUPPLY_CTRL6;
-static const Pin CleanWipe2Pin = PIN_INK_SUPPLY_CTRL3;
-#endif
-
-#endif
-#if defined(EPSON_CLEAN_INTEGRATE_1) ||defined(EPSON_CLEAN_INTEGRATE_2)
-static const Pin CleanWipe1Pin = PIN_INK_SUPPLY_CTRL6;
-static const Pin CleanRelease1Pin = PIN_INK_SUPPLY_CTRL7;
-static const Pin CleanSuck1Pin = PIN_INK_SUPPLY_CTRL8;
-static const Pin CleanWipe2Pin = PIN_INK_SUPPLY_CTRL3;
-static const Pin CleanRelease2Pin = PIN_INK_SUPPLY_CTRL4;
-static const Pin CleanSuck2Pin = PIN_INK_SUPPLY_CTRL5;
-#endif
-#elif defined( EPSON_BOTTOM_BOARD_V2_1)
-#ifdef EPSON_CLEAN_UPDOWN
-#ifdef A1802 //gz
-//static const Pin CleanRelease1Pin = PIN_INK_SUPPLY_CTRL2;
-static const Pin CleanSuck1Pin = PIN_INK_SUPPLY_CTRL1;
-//static const Pin CleanRelease2Pin = PIN_INK_SUPPLY_CTRL5;
-static const Pin CleanSuck2Pin = PIN_INK_SUPPLY_CTRL2;
-#ifdef EPSON_4H_CLEAN_SPLIT
-static const Pin CleanSuck3Pin = PIN_INK_SUPPLY_CTRL3;
-static const Pin CleanSuck4Pin = PIN_INK_SUPPLY_CTRL4;
-#endif
-#else
-static const Pin CleanRelease1Pin = PIN_INK_SUPPLY_CTRL5;
-static const Pin CleanSuck1Pin = PIN_INK_SUPPLY_CTRL3;
-static const Pin CleanRelease2Pin = PIN_INK_SUPPLY_CTRL2;
-static const Pin CleanSuck2Pin = PIN_INK_SUPPLY_CTRL6;
-#endif
-#endif
-
-#ifdef  EPSON_CLEAN_UPDOWN_WIPER_EX
-static const Pin CleanWipe1Pin = PIN_INK_SUPPLY_CTRL1;
-static const Pin CleanWipe2Pin = PIN_INK_SUPPLY_CTRL4;
-#endif
-
-#if defined(EPSON_CLEAN_INTEGRATE_1) ||defined(EPSON_CLEAN_INTEGRATE_2)
-static const Pin CleanWipe1Pin = PIN_INK_SUPPLY_CTRL1;
-static const Pin CleanRelease1Pin = PIN_INK_SUPPLY_CTRL2;
-static const Pin CleanSuck1Pin = PIN_INK_SUPPLY_CTRL3;
-static const Pin CleanWipe2Pin = PIN_INK_SUPPLY_CTRL4;
-static const Pin CleanRelease2Pin = PIN_INK_SUPPLY_CTRL5;
-static const Pin CleanSuck2Pin = PIN_INK_SUPPLY_CTRL6;
-#endif
-#else
-static const Pin CleanRelease1Pin = PIN_INK_SUPPLY_CTRL7;
-static const Pin CleanSuck1Pin = PIN_INK_SUPPLY_CTRL8;
-#endif
-
-#if defined(MICOLOR_AUTOFUCTION)
-#ifdef  EPSON_BOTTOM_BOARD_V2 
-static const Pin LoadMediaSensorPin = PIN_EPSON_LOAD_MEDIA;
-static const Pin MediaFixedSensorPin = PIN_EPSON_MEDIA_FIXED;
-static const Pin LackMediaSensorPin = PIN_EPSON_LACK_OF_MEDIA;
-static const Pin CoverSensorPin = PIN_EPSON_COVER;
-#elif defined(EPSON_BOTTOM_BOARD_V3)
-#define FPGA_EXPAND_IOMASK_EPSON_LOAD_MEDIA		0x8//0x10
-#define FPGA_EXPAND_IOMASK_EPSON_MEDIA_FIXED	0x20
-#define FPGA_EXPAND_IOMASK_EPSON_LACK_OF_MEDIA	0x10//0x8
-#define FPGA_EXPAND_IOMASK_EPSON_COVER			0x40
-#else
-static const Pin LoadMediaSensorPin = {0,0,0,0,0};
-static const Pin MediaFixedSensorPin = {0,0,0,0,0};
-static const Pin LackMediaSensorPin = {0,0,0,0,0};
-static const Pin CoverSensorPin = {0,0,0,0,0};
-static const Pin PlateFan1Pin = {0,0,0,0,0};
-static const Pin PlateFan2Pin = {0,0,0,0,0};
-#endif
-
-#endif
 extern void PUMP_OPEN(INT8U mask);
 //------------------------------------- PUMP_TYPE 1: 8 Color-----------------------------
 #if !(defined(HEAD_RICOH_G4)||defined(EPSON_4H))&&(defined(MB_LEVEL_SENSOR)||defined(HEAD_LEVEL_SENSOR))
@@ -259,16 +125,6 @@ extern void PUMP_OPEN(INT8U mask);
 }
 #endif
 #if (defined(HEAD_RICOH_G4)||defined(EPSON_4H))
-#ifdef MANUFACTURER_DOCAN_UV
-#define INK_S2_BITS (1)
-#define INK_S1_BITS (1<<1)
-#define INK_K_BITS (1<<2)
-#define INK_Y_BITS (1<<3)
-#define INK_M_BITS (1<<4)
-#define INK_C_BITS (1<<5)
-#define INK_S3_BITS (1<<6)
-#define INK_S4_BITS (1<<7)
-#else
 #define INK_K_BITS (1)
 #define INK_C_BITS (1<<1)
 #define INK_M_BITS (1<<2)
@@ -277,7 +133,6 @@ extern void PUMP_OPEN(INT8U mask);
 #define INK_S2_BITS (1<<5)
 #define INK_S3_BITS (1<<6)
 #define INK_S4_BITS (1<<7)
-#endif
 #define INK_LOW 1
 INT32U INK_LEVEL_MASK = 0;
 #endif 

@@ -70,7 +70,7 @@ static void cycserial_isr(void *arg)
 
 	stat = readl(port->base + UARTIR);
 	for (i = 0; i < ARCH_NR_UARTPORTS - 1; i++) {
-		unsigned int mask = 1 << i;
+		unsigned int mask = 1 << (i + 4);
 
 		if (stat & mask) {
 			if (port->rxcb)

@@ -35,7 +35,7 @@
 #  define MAX_SAPACKET_LEN	(32)
 #endif
 
-#define UART_CHNUM	4
+#define UART_CHNUM		(4 + 1)
 
 int uart_waittime[4];	/* not used, just for complitable */
 
@@ -339,11 +339,9 @@ void UART_Init(u8 flag)
 		SA_chans[i].rxfifo = fifo_init(SA_chans[i].rxbuf, 1, 512);
 	} while (++i < UART_CHNUM);
 
+	/* this is the motion channel */
+	SA_chans[i].txfifo = fifo_init(txbuf, 1, 512);
 
 	cycserial_init(SA_callback);
-
-	/* this is motion channel */
-	SA_chans[UART_CHNUM].txfifo = fifo_init(txbuf, 1, 512);
-	SA_chans[UART_CHNUM].rxfifo = fifo_init(SA_chans[i].rxbuf, 1, 512);
 }
 
