@@ -28,7 +28,6 @@
 #include <ssl.h>
 #include <platform.h>
 #include <cycserial.h>
-#include <serial_core.h>
 
 #include <miscellance.h>
 #ifndef MAX_SAPACKET_LEN
@@ -63,22 +62,28 @@ int uart_waittime[4];	/* not used, just for complitable */
  */
 
 struct SA_channel {
-	u8		rxbuf[512];
-	struct fifo	*rxfifo;
-	struct fifo	*txfifo;
+	spinlock_t		lock;
+	unsigned long		irqflags;
 
-#define CHKMOD_ANY	0
-#define CHKMOD_SUM	1
-#define CHKMOD_CRC	2
-	int		chkmod;
-	int		rx_toggle;
-	int		tx_toggle;
-	bool		txACK;
+	unsigned int		fifosize;
 
-	spinlock_t	lock;
+#define CHKMOD_ANY		0
+#define CHKMOD_SUM		1
+#define CHKMOD_CRC		2
+	int			chkmod;
+	int			rx_toggle;
+	int			tx_toggle;
+	bool			txACK;
+	struct fifo		*rxfifo;
+	struct fifo		*txfifo;
 };
 
-static struct SA_channel *SA_chans;
+static struct SA_channel *SA_chans[UART_CHNUM];
+
+static struct SA_channel *to_SA_channel(int num)
+{
+	return SA_chans[num];
+}
 
 static u8 SA_gen_chksum(u8 *data, int len, int flag, u8 chksum)
 {
@@ -96,16 +101,17 @@ static u8 SA_gen_chksum(u8 *data, int len, int flag, u8 chksum)
 
 static bool SA_is_valid_packet(int num, void *data, int len, u8 chksum)
 {
+	struct SA_channel *chan = to_SA_channel(num);
 	u8 tmp;
 
 	*((u8 *)data + 2) = 0;	/* XXX ignore the chksum byte */
 
-	if (SA_chans[num].chkmod == CHKMOD_ANY) {
+	if (chan->chkmod == CHKMOD_ANY) {
 		tmp = SA_gen_chksum(data, len, CHKMOD_SUM, 0);
 		if (tmp != chksum)
 			tmp = SA_gen_chksum(data, len, CHKMOD_CRC, 0);
 	} else {
-		tmp = SA_gen_chksum(data, len, SA_chans[num].chkmod, 0);
+		tmp = SA_gen_chksum(data, len, chan->chkmod, 0);
 	}
 
 	return chksum == tmp;
@@ -114,34 +120,36 @@ static bool SA_is_valid_packet(int num, void *data, int len, u8 chksum)
 /* TODO: UART_GetCMD only support callback for now */
 static void SA_callback(void *arg)
 {
-	static u8 cmd[MAX_SAPACKET_LEN] = { 0xaa };
-	static int idx;
 	int num = *(int *)arg;
+	struct SA_channel *chan = to_SA_channel(num);
 	unsigned char ch;
 
-	uart_read(num, &ch, 1);
+	static u8 cmd[MAX_SAPACKET_LEN] = { 0xaa };
+	static int idx;
 
-	if (fifo_unused(SA_chans[num].rxfifo) < MAX_SAPACKET_LEN)
+	serial_read(num, &ch, 1);
+
+	if (fifo_unused(chan->rxfifo) < MAX_SAPACKET_LEN)
 		return;
 
 	if (idx == 0 && ch != 0xaa)
 		return;
 
 	if (idx == 1) {
-		if (ch == !SA_chans[num].rx_toggle) {
+		if (ch == !chan->rx_toggle) {
 			cmd[idx++] = ch;
 		} else {
 			idx = 0;
 
 			if (ch == 0x55)	/* this is an ACK */
-				SA_chans[num].txACK = true;
+				chan->txACK = true;
 		}
 
 	} else if (idx == 3 && (ch > MAX_SAPACKET_LEN || ch < 5)) {
 		idx = 0;
 	} else if (idx > 3 && idx == cmd[3]) {
 
-		const u8 ack[] = { 0xaa, 0x55 };	
+		const u8 ack[] = { 0xaa, 0x55 };
 
 		cmd[idx] = ch;
 		idx = 0;
@@ -150,11 +158,11 @@ static void SA_callback(void *arg)
 		if (!SA_is_valid_packet(num, cmd, cmd[3], cmd[2]))
 			return;
 
-		SA_chans[num].rx_toggle = !SA_chans[num].rx_toggle;
+		chan->rx_toggle = !chan->rx_toggle;
 
 		cmd[3] -= 3;
-		fifo_in(SA_chans[num].rxfifo, &cmd[3], cmd[3]);
-		uart_write(num, ack, 2);	/* ACK */
+		fifo_in(chan->rxfifo, &cmd[3], cmd[3]);
+		serial_write(num, ack, 2);	/* ACK */
 	} else {
 		cmd[idx++] = ch;
 	}
@@ -162,26 +170,23 @@ static void SA_callback(void *arg)
 
 void UART_SetCheckModel(u8 num, u8 model)
 {
-	unsigned long flags = 0;
+	struct SA_channel *chan = to_SA_channel(num);
 
-	spin_lock_irqsave(&SA_chans[num].lock, flags);
-	SA_chans[num].chkmod = model;
-	spin_unlock_irqrestore(&SA_chans[num].lock, flags);
+	spin_lock_irqsave(&chan->lock, chan->irqflags);
+	chan->chkmod = model;
+	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
 }
 
 /* virtual uart device. data received would be stored in txfifo */
 u8 UART_MotionGetCMD(u8 *data)
 {
-	unsigned long flags = 0;
-	struct SA_channel *chan;
-	struct fifo *fifo;
-	int len;
+	struct SA_channel *chan = to_SA_channel(UART_MOTION_CHANNEL);
+	struct fifo *fifo = chan->txfifo;
 	bool ret = false;
+	int len;
 
-	chan = &SA_chans[UART_MOTION_CHANNEL];
-	fifo = chan->txfifo;
 
-	spin_lock_irqsave(&chan->lock, flags);
+	spin_lock_irqsave(&chan->lock, chan->irqflags);
 
 	if (fifo_cached(fifo) == 0)
 		goto err_out;
@@ -195,72 +200,59 @@ u8 UART_MotionGetCMD(u8 *data)
 	ret = true;
 
 err_out:
-	spin_unlock_irqrestore(&chan->lock, flags);
+	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
 	return ret;
 }
 
 static u8 UART_SendMotionCMD(u8 *data)
 {
-	unsigned long flags = 0;
-	struct SA_channel *chan;
-	struct fifo *fifo;
-	u8 len;
+	struct SA_channel *chan = to_SA_channel(UART_MOTION_CHANNEL);
+	struct fifo *fifo = chan->txfifo;
+	u8 len = data[0];
 	u8 err;
 
-	chan = &SA_chans[UART_MOTION_CHANNEL];
-	fifo = chan->txfifo;
-	len = data[0];
-
-	spin_lock_irqsave(&chan->lock, flags);
+	spin_lock_irqsave(&chan->lock, chan->irqflags);
 	if (fifo_unused(fifo) < len) {
-		spin_unlock_irqrestore(&chan->lock, flags);
+		spin_unlock_irqrestore(&chan->lock, chan->irqflags);
 		return false;
 	}
 
 	fifo_in(fifo, data, len);
 	//OSFlagPost(mix_FLAG_GRP, MOTION_SEND_CMD, OS_FLAG_SET, &err);
 
-	spin_unlock_irqrestore(&chan->lock, flags);
+	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
 	return true;
 }
 
 u8 UART_MotionReportCMD(u8 *data)
 {
-	unsigned long flags = 0;
-	struct SA_channel *chan;
-	struct fifo *fifo;
-	u8 len;
+	struct SA_channel *chan = to_SA_channel(UART_MOTION_CHANNEL);
+	struct fifo *fifo = chan->rxfifo;
+	u8 len = data[0];
 	u8 err;
 
-	chan = &SA_chans[UART_MOTION_CHANNEL];
-	fifo = chan->rxfifo;
-	len = data[0];
 
-	spin_lock_irqsave(&chan->lock, flags);
+	spin_lock_irqsave(&chan->lock, chan->irqflags);
 	if (fifo_unused(fifo) < len) {
-		spin_unlock_irqrestore(&chan->lock, flags);
+		spin_unlock_irqrestore(&chan->lock, chan->irqflags);
 		return false;
 	}
 
 	fifo_in(fifo, data, len);
 	//OSFlagPost(mix_FLAG_GRP, MOTION_REPORT_CMD, OS_FLAG_SET, &err);
-	spin_unlock_irqrestore(&chan->lock, flags);
+	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
 
 	return true;
 }
 
 u8 UART_GetCMD(u8 num, u8 *data)
 {
-	unsigned long flags = 0;
-	struct SA_channel *chan;
-	struct fifo *fifo;
+	struct SA_channel *chan = to_SA_channel(num);
+	struct fifo *fifo = chan->rxfifo;
 	bool ret = false;
 	u8 len;
 
-	chan = &SA_chans[num];
-	fifo = chan->rxfifo;
-
-	spin_lock_irqsave(&chan->lock, flags);
+	spin_lock_irqsave(&chan->lock, chan->irqflags);
 
 	if (fifo_cached(fifo) == 0)
 		goto out;
@@ -272,24 +264,22 @@ u8 UART_GetCMD(u8 num, u8 *data)
 	fifo_out(fifo, data, len);
 	ret = true;
 out:
-	spin_unlock_irqrestore(&chan->lock, flags);
+	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
 	return ret;
 }
 
 u8 UART_SendCMD(u8 num, u8 *data)
 {
-	unsigned long flags = 0;
 	struct SA_channel *chan;
 	u8 buf[MAX_SAPACKET_LEN];
-	bool ret = false;
-
-	chan = &SA_chans[num];
+	bool ret;
 
 	/* motion channel */
 	if (UART_MOTION_CHANNEL == num)
 		return UART_SendMotionCMD(data);
 
-	chan = &SA_chans[num];
+	chan = to_SA_channel(num);
+	ret = false;
 
 	buf[0] = 0xAA;
 	buf[1] = chan->tx_toggle;
@@ -298,50 +288,71 @@ u8 UART_SendCMD(u8 num, u8 *data)
 	buf[3] = data[0] + 3;	/* len */
 	buf[2] = SA_gen_chksum(buf, buf[3], chan->chkmod, 0);
 
-	spin_lock_irqsave(&chan->lock, flags);
+	spin_lock_irqsave(&chan->lock, chan->irqflags);
 	if (!chan->txACK)
 		goto out;
 
-	if (uart_write(num, buf, buf[3]) == buf[3]) {
+	if (serial_write(num, buf, buf[3]) == buf[3]) {
 		chan->txACK = false;
 		chan->tx_toggle = !chan->tx_toggle;
 		ret = true;
 	}
 out:
-	spin_unlock_irqrestore(&chan->lock, flags);
+	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
 	return ret;
+}
+
+static struct SA_channel *SA_add_channel(int num)
+{
+	struct SA_channel *chan;
+	void *buf;
+
+	chan = malloc(sizeof(struct SA_channel));
+	if (chan == NULL) {
+		pr_err("%s: no memory!\n", __func__);
+		return NULL;
+	}
+	memset(chan, 0, sizeof(struct SA_channel));
+
+	chan->fifosize = 512;
+	buf = malloc(chan->fifosize);
+	if (buf == NULL) {
+		free(chan);
+		pr_err("%s: no memory for fifo!\n", __func__);
+		return NULL;
+	}
+
+	chan->chkmod = 0;
+	chan->rx_toggle = 0;
+	chan->tx_toggle = 1;
+	chan->txACK = true;
+	chan->rxfifo = fifo_init(buf, 1, chan->fifosize);
+
+	SA_chans[num] = chan;
+
+	return chan;
 }
 
 void UART_Init(u8 flag)
 {
-	int i = 0;
-	void *txbuf;
+	static unsigned char SA_txbuf[512];
+	struct SA_channel *chan;
+	int num;
 
-	/* there is a virtual channel for motion contorl */
-	SA_chans = calloc(UART_CHNUM + 1, sizeof(struct SA_channel));
-	if (SA_chans == NULL) {
-		pr_err("%s: no memory!", __func__);
-		return;
+	for (num = 0; num < UART_CHNUM; num++) {
+		chan = SA_add_channel(num);
+		if (chan == NULL) {
+			pr_err("%s: failed to add SA channel\n", __func__);
+			return;
+		}
+
+		if (num == UART_CHNUM - 1) {	/* motion channel */
+			chan->txfifo = fifo_init(SA_txbuf, 1, sizeof(SA_txbuf));
+			SA_chans[num] = chan;
+		} else {
+			cyc_uart_port_add(num);
+			serial_register_rxcb(num, SA_callback);
+		}
 	}
-
-	txbuf = malloc(512);
-	if (txbuf == NULL) {
-		free(SA_chans);
-		pr_err("%s: no memory!", __func__);
-		return;
-	}
-
-	do {
-		SA_chans[i].chkmod = 0;
-		SA_chans[i].rx_toggle = 0;
-		SA_chans[i].tx_toggle = 1;
-		SA_chans[i].txACK = true;
-		SA_chans[i].rxfifo = fifo_init(SA_chans[i].rxbuf, 1, 512);
-	} while (++i < UART_CHNUM);
-
-	/* this is the motion channel */
-	SA_chans[i].txfifo = fifo_init(txbuf, 1, 512);
-
-	cycserial_init(SA_callback);
 }
 

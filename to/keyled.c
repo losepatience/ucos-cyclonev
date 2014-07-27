@@ -19,31 +19,14 @@
 
 #include "old_apis.h"
 
-//#define DEBUG_CAL_MOTIONFPGA_FIRE
-//For debug pupose, EINT11 is used to calculate DSP fire signal to FPGA, rising edge trigger
-//For debug pupose, EINT13 is used to calculate FPGA fire signal, falling edge trigger
-//EINT16 is LVDS lock signal, both edge trigger.
-//Need change FPGA code
-
-//Key board interrupt: EINT8/GPG0
-
 static OS_EVENT *I2C_KEY_LCD;
 
 static const Pin KBResetPin = PIN_KB_CTRL_KB_RST;
 static const Pin KBIrqPin = PIN_KB_CTRL_KB_IRQ; //cheney: not used for ALLWIN EPSON HW first version.
 
-//#ifdef DEBUG_CAL_MOTIONFPGA_FIRE
-//static const Pin FPGAMotionXDirPin = PIN_FPGA_ARM_XDIR; //EINT11
-//static const Pin FPGAMotionXPulsePin = PIN_FPGA_ARM_XPULSE; // EINT13
-//#endif
-
 static INT8U keystatus;
 
 extern INT8U MediaMeasured;
-#ifdef ALLWIN_EPSON_SAME
-INT8U pause_cmd_from_dsp = 0;
-#endif
-
 const Pin LVDSLockPin = PIN_LVDS_LOCK_EINT;
 
 void RESET_KB(void)
@@ -57,7 +40,6 @@ void RESET_KB(void)
 void KB_Irq_Interrupt(const Pin * pin)
 {
 	INT8U err;
-	//if (PIO_Get(pin)==0)
 	if (PIO_Get(pin)==1)
 		OSFlagPost(mix_FLAG_GRP, IIC_KEY_FLAG, OS_FLAG_SET, &err);
 }
@@ -67,13 +49,11 @@ void LVDS_LOCK_Interrupt(const Pin * pin)
 	if (PIO_Get(pin) == 1)
 	{
 		Control_SetAlarm(ALARM_TYPE_LVDSLOST, ALARM_CLR);
-		//			CONSOL_Printf("LVDS is Relocked!.r\n");
-	}	
+	}
 	else
 	{
-		//remove for slient
 		Control_SetAlarm(ALARM_TYPE_LVDSLOST, ALARM_SET);
-		CONSOL_Printf("LVDS is Unlocked!\r\n");	
+		CONSOL_Printf("LVDS is Unlocked!\r\n");
 	}
 }
 
@@ -83,28 +63,28 @@ INT8U TEST_IIC_LED()
 	INT8U sub[2];
 	INT8U err;
 
-	OSSemPend(IIC_KeyboardSem, 0, &err);	
+	OSSemPend(IIC_KeyboardSem, 0, &err);
 	for (i = 0; i < 30; i++)
 	{
 		sub[0] = sub[1] = 0;
 
 		OSTimeDly(3);
-		IIC_WriteReg(0x17, 0x55); 
+		IIC_WriteReg(0x17, 0x55);
 		OSTimeDly(3);
 		IIC_ReadReg(0x17, sub,1);
 		OSTimeDly(3);
-		IIC_WriteReg(0x17, 0xAA); 
+		IIC_WriteReg(0x17, 0xAA);
 		OSTimeDly(3);
 		IIC_ReadReg(0x17, sub+1,1);
 		if (sub[0] == 0x55 && sub[1] == 0xAA)
-			break;    		
+			break;
 	}
-	OSSemPost(IIC_KeyboardSem);           /* Release semaphore */    
+	OSSemPost(IIC_KeyboardSem);           /* Release semaphore */
 
 	if (i >= 30)
 		return False;
 	else
-		return True;    
+		return True;
 }
 
 INT8U KB_Init_Again(void)
@@ -116,16 +96,16 @@ INT8U KB_Init_Again(void)
 
 	if(TEST_IIC_LED())
 	{
-		OSSemPend(IIC_KeyboardSem, 0, &err);	
+		OSSemPend(IIC_KeyboardSem, 0, &err);
 		OSTimeDly(3);
 		buf[0] = 0x77;
 		buf[1] = 7;
-		IIC_WriteRegs(0xC, buf, 2); 
+		IIC_WriteRegs(0xC, buf, 2);
 		OSTimeDly(3);
 		memset(buf, 0, 8);
-		IIC_WriteRegs(0x10, buf, 8); 
+		IIC_WriteRegs(0x10, buf, 8);
 		OSTimeDly(3);
-		OSSemPost(IIC_KeyboardSem);           /* Release semaphore */    
+		OSSemPost(IIC_KeyboardSem);           /* Release semaphore */
 		return TRUE;
 	}
 	else
@@ -149,20 +129,20 @@ INT8U KB_Init()
 	PIO_ConfigureIt(&LVDSLockPin, LVDS_LOCK_Interrupt);
 	PIO_EnableIt(&LVDSLockPin);
 #endif
-	OS_EXIT_CRITICAL();	
+	OS_EXIT_CRITICAL();
 
 	if(TEST_IIC_LED())
 	{
-		OSSemPend(IIC_KeyboardSem, 0, &err);	
+		OSSemPend(IIC_KeyboardSem, 0, &err);
 		OSTimeDly(3);
 		buf[0] = 0x77;
 		buf[1] = 7;
-		IIC_WriteRegs(0xC, buf, 2); 
+		IIC_WriteRegs(0xC, buf, 2);
 		OSTimeDly(3);
 		memset(buf, 0, 8);
-		IIC_WriteRegs(0x10, buf, 8); 
+		IIC_WriteRegs(0x10, buf, 8);
 		OSTimeDly(3);
-		OSSemPost(IIC_KeyboardSem);           /* Release semaphore */    
+		OSSemPost(IIC_KeyboardSem);           /* Release semaphore */
 		return TRUE;
 	}
 	else
@@ -181,7 +161,7 @@ INT8U UIAction_Move(void * pData, INT8U dir, INT32S distance)
 			move_dir = dir;
 			move_distance = distance;
 			move_type = 3;
-			status_ReportStatus(CMD_START_MOVE, STATUS_SET);					
+			status_ReportStatus(CMD_START_MOVE, STATUS_SET);
 			return True;
 		}
 		else
@@ -196,14 +176,14 @@ INT8U UIAction_Move(void * pData, INT8U dir, INT32S distance)
 			if(dir == 2 )
 			{
 #ifdef MANUFACTURER_DYSS
-				{         	
+				{
 					int i = 0;
 					int offset =0;
 					int position=0;
 					float add =0.0;
 					int step = epsonCaliSetting.eprCaliSetting.stepPass[0].BaseStep;
 					int passnum = GetLCDMenuPassNum(LCDMenuConfig.Step_PassIndex);
-					step += epsonCaliSetting.eprCaliSetting.stepPass[0].PassStep[passnum-1] * passnum;             	
+					step += epsonCaliSetting.eprCaliSetting.stepPass[0].PassStep[passnum-1] * passnum;
 					if(distance>=step/2)
 					{
 						position = (distance-step/2)/(step/2);
@@ -219,10 +199,10 @@ INT8U UIAction_Move(void * pData, INT8U dir, INT32S distance)
 				move_distance = distance + Y_PLAT_LENGTH;
 			}
 			else
-#endif            
+#endif
 				move_distance = distance;
 			move_type = 3;
-			status_ReportStatus(CMD_START_MOVE, STATUS_SET);					
+			status_ReportStatus(CMD_START_MOVE, STATUS_SET);
 			return True;
 		}
 		else
@@ -255,7 +235,7 @@ INT8U UIAction_Move_Start(void * pData, INT8U dir, INT32S distance)
 			move_dir = dir;
 			move_distance = distance;
 			move_type = 0;
-			status_ReportStatus(CMD_START_MOVE, STATUS_SET);					
+			status_ReportStatus(CMD_START_MOVE, STATUS_SET);
 			return True;
 		}
 		else
@@ -296,7 +276,7 @@ INT8U UIAction_X_GoHome(void * pData)
 INT8U UIAction_X_GoHome_by_key(void * pData)
 {
 	U8 err;
-	if((OSFlagAccept(status_FLAG_GRP, STATUS_NO_X_MOVE_BITS, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR) ||( (OSFlagAccept(status_FLAG_GRP, CMD_PAUSE |STATUS_PRINT|STATUS_PAUSE, OS_FLAG_WAIT_SET_ALL,&err), err == OS_NO_ERR)&& (OSFlagAccept(status_FLAG_GRP,CMD_START_MOVE|STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR) ))			
+	if((OSFlagAccept(status_FLAG_GRP, STATUS_NO_X_MOVE_BITS, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR) ||( (OSFlagAccept(status_FLAG_GRP, CMD_PAUSE |STATUS_PRINT|STATUS_PAUSE, OS_FLAG_WAIT_SET_ALL,&err), err == OS_NO_ERR)&& (OSFlagAccept(status_FLAG_GRP,CMD_START_MOVE|STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR) ))
 	{
 		move_dir = 2;
 		move_distance = 0;
@@ -343,7 +323,7 @@ INT8U UIAction_MeasureMedia(void * pData, INT8U method)
 INT8U UIAction_Move_Left_Start(void * pData)
 {
 	U8 err;
-	if((OSFlagAccept(status_FLAG_GRP, STATUS_NO_X_MOVE_BITS, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR) ||( (OSFlagAccept(status_FLAG_GRP, CMD_PAUSE |STATUS_PRINT|STATUS_PAUSE, OS_FLAG_WAIT_SET_ALL,&err), err == OS_NO_ERR)&& (OSFlagAccept(status_FLAG_GRP,CMD_START_MOVE|STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR) ))			
+	if((OSFlagAccept(status_FLAG_GRP, STATUS_NO_X_MOVE_BITS, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR) ||( (OSFlagAccept(status_FLAG_GRP, CMD_PAUSE |STATUS_PRINT|STATUS_PAUSE, OS_FLAG_WAIT_SET_ALL,&err), err == OS_NO_ERR)&& (OSFlagAccept(status_FLAG_GRP,CMD_START_MOVE|STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR) ))
 	{
 		keystatus|=0x01;
 		if(factoryData.m_nBitFlag & 0x1)
@@ -362,7 +342,7 @@ INT8U UIAction_Move_Left_Start(void * pData)
 INT8U UIAction_Move_Right_Start(void * pData)
 {
 	U8 err;
-	if ((OSFlagAccept(status_FLAG_GRP, STATUS_NO_X_MOVE_BITS, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)||((OSFlagAccept(status_FLAG_GRP, CMD_PAUSE |STATUS_PRINT|STATUS_PAUSE, OS_FLAG_WAIT_SET_ALL,&err), err == OS_NO_ERR)&& (OSFlagAccept(status_FLAG_GRP,CMD_START_MOVE|STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)) )	 
+	if ((OSFlagAccept(status_FLAG_GRP, STATUS_NO_X_MOVE_BITS, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)||((OSFlagAccept(status_FLAG_GRP, CMD_PAUSE |STATUS_PRINT|STATUS_PAUSE, OS_FLAG_WAIT_SET_ALL,&err), err == OS_NO_ERR)&& (OSFlagAccept(status_FLAG_GRP,CMD_START_MOVE|STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)) )
 	{
 		keystatus|=0x02;
 
@@ -392,7 +372,7 @@ INT8U UIAction_Move_Up_Start(void * pData)
 #else
 		keystatus|=0x04;
 #endif
-		status_ReportStatus(CMD_START_MOVE, STATUS_SET);					
+		status_ReportStatus(CMD_START_MOVE, STATUS_SET);
 		return True;
 	}
 	else
@@ -409,10 +389,10 @@ INT8U UIAction_Move_Down_Start(void * pData)
 		move_type = 0;
 #if defined(MANUFACTURER_DYSS)||defined(MANUFACTURER_ADDTOP_EPSON)||defined(LCD_BOARD_B_VERSION)
 		keystatus|=0x3C;
-#else		
+#else
 		keystatus|=0x08;
 #endif
-		status_ReportStatus(CMD_START_MOVE, STATUS_SET);		
+		status_ReportStatus(CMD_START_MOVE, STATUS_SET);
 		return True;
 	}
 	else
@@ -429,10 +409,10 @@ INT8U UIAction_Move_Z_Up_Start(void * pData)
 		move_type = 0;
 #if defined(MANUFACTURER_DYSS)||defined(MANUFACTURER_ADDTOP_EPSON)||defined(LCD_BOARD_B_VERSION)
 		keystatus|=0x3C;
-#else		
+#else
 		keystatus|=0x10;
 #endif
-		status_ReportStatus(CMD_START_MOVE, STATUS_SET);					
+		status_ReportStatus(CMD_START_MOVE, STATUS_SET);
 		return True;
 	}
 	else
@@ -450,10 +430,10 @@ INT8U UIAction_Move_Z_Down_Start(void * pData)
 		move_type = 0;
 #if defined(MANUFACTURER_DYSS)||defined(MANUFACTURER_ADDTOP_EPSON)||defined(LCD_BOARD_B_VERSION)
 		keystatus|=0x3C;
-#else		
+#else
 		keystatus|=0x20;
 #endif
-		status_ReportStatus(CMD_START_MOVE, STATUS_SET);		
+		status_ReportStatus(CMD_START_MOVE, STATUS_SET);
 		return True;
 	}
 	else
@@ -620,7 +600,7 @@ INT8U IIC_Write_LCD(void)
 			OSTimeDly(1);
 		}while(ret != page_num);
 		page_num++;
-	}	
+	}
 
 	OSSemPost(I2C_KEY_LCD);
 
@@ -639,7 +619,7 @@ INT8U IIC_ReadKey(INT8U *data)
 			OSTimeDly(3);
 			if (IIC_ReadReg(ZLG7290_Key, data,3))
 				//if (IIC_ReadReg(ZLG7290_SystemReg, data,10))
-				break;		
+				break;
 		}
 		if (retrycnt <= 0)
 		{
@@ -675,7 +655,7 @@ INT8U IIC_GetKey(INT8U *key, INT8U *repeat, INT8U *funkey)
 	{
 		trust = 0;
 		for (j=i+1;j<5;j++)
-		{			
+		{
 			if ((mkey[i][0] == mkey[j][0])&&(mkey[i][2] == mkey[j][2]))
 				trust++;
 		}
@@ -687,13 +667,13 @@ INT8U IIC_GetKey(INT8U *key, INT8U *repeat, INT8U *funkey)
 		return False;
 
 	//	if ((mkey[i][0] == 0)&&(mkey[i][2] == 0xFF)) //When the function key release, this will occur, so this is not correct
-	//		return False;		
+	//		return False;
 
 	*key = mkey[i][0];
 	*repeat = mkey[i][1];
 	*funkey = mkey[i][2];
 
-	return True;		
+	return True;
 }
 
 INT8U UI_DisplayLED(enum LEDIDEnum ledID, enum LEDStatusENUM ledStatus)
@@ -702,14 +682,14 @@ INT8U UI_DisplayLED(enum LEDIDEnum ledID, enum LEDStatusENUM ledStatus)
 	INT8U addr, bit;
 	INT8U err;
 
-	const INT8U addrTable[] = {PANEL_LED_ADDR_POWERON, PANEL_LED_ADDR_BUSY, PANEL_LED_ADDR_HEAT_PRE, 
+	const INT8U addrTable[] = {PANEL_LED_ADDR_POWERON, PANEL_LED_ADDR_BUSY, PANEL_LED_ADDR_HEAT_PRE,
 		PANEL_LED_ADDR_HEAT_MIDDLE, PANEL_LED_ADDR_HEAT_POST,
 		PANEL_LED_ADDR_DATATRANSFER, PANEL_LED_ADDR_CLEAN_WEAK,
 		PANEL_LED_ADDR_CLEAN_NORMAL, PANEL_LED_ADDR_CLEAN_STRONG,
 		PANEL_LED_ADDR_HEADLEVEL_HIGH, PANEL_LED_ADDR_HEADLEVEL_LOW,
 		PANEL_LED_ADDR_QUALITY_ON, PANEL_LED_ADDR_QUALITY_OFF};
 
-	const INT8U bitTable[] = {PANEL_LED_BIT_POWERON, PANEL_LED_BIT_BUSY, PANEL_LED_BIT_HEAT_PRE, 
+	const INT8U bitTable[] = {PANEL_LED_BIT_POWERON, PANEL_LED_BIT_BUSY, PANEL_LED_BIT_HEAT_PRE,
 		PANEL_LED_BIT_HEAT_MIDDLE, PANEL_LED_BIT_HEAT_POST,
 		PANEL_LED_BIT_DATATRANSFER,PANEL_LED_BIT_CLEAN_WEAK,
 		PANEL_LED_BIT_CLEAN_NORMAL,PANEL_LED_BIT_CLEAN_STRONG,
@@ -725,19 +705,19 @@ INT8U UI_DisplayLED(enum LEDIDEnum ledID, enum LEDStatusENUM ledStatus)
 	if(ledStatus == E_LS_FLASH)
 	{
 		i = (addr -0x10)*8+bit;
-		i |= 0x80; 
+		i |= 0x80;
 		OSTimeDly(3);
-		buf[0] = 0x1; 
+		buf[0] = 0x1;
 		buf[1] = i;
-		IIC_WriteRegs(0x7, buf, 2); 
+		IIC_WriteRegs(0x7, buf, 2);
 		OSTimeDly(3);
 
 		AllLEDFlashStatus |= (1<<(addr -0x10));
 
 		OSTimeDly(3);
-		buf[0] = 0x70; 
+		buf[0] = 0x70;
 		buf[1] = AllLEDFlashStatus;
-		IIC_WriteRegs(0x7, buf, 2); 
+		IIC_WriteRegs(0x7, buf, 2);
 		OSTimeDly(3);
 	}
 	else
@@ -746,22 +726,22 @@ INT8U UI_DisplayLED(enum LEDIDEnum ledID, enum LEDStatusENUM ledStatus)
 		{
 			AllLEDFlashStatus &= ~(1<<(addr -0x10));
 			OSTimeDly(3);
-			buf[0] = 0x70; 
+			buf[0] = 0x70;
 			buf[1] = AllLEDFlashStatus;
-			IIC_WriteRegs(0x7, buf, 2); 
+			IIC_WriteRegs(0x7, buf, 2);
 			OSTimeDly(3);
 		}
 		i = (addr -0x10)*8+bit;
 		if(ledStatus == E_LS_ON)
-			i |= 0x80; 
+			i |= 0x80;
 		OSTimeDly(3);
-		buf[0] = 0x1; 
+		buf[0] = 0x1;
 		buf[1] = i;
-		IIC_WriteRegs(0x7, buf, 2); 
+		IIC_WriteRegs(0x7, buf, 2);
 		OSTimeDly(3);
 	}
 	OSSemPost(IIC_KeyboardSem);           /* Release semaphore */
-	return True;    
+	return True;
 }
 
 INT16U GetUIKeyID(INT8U PanelKeyID)
@@ -776,7 +756,7 @@ INT16U GetUIKeyID(INT8U PanelKeyID)
 		PANEL_KEY_ID_CHECKNOZZLE, PANEL_KEY_ID_HEATER};
 
 	const INT16U KeyIDMapTable[] = {
-		KEYID_LEFT, KEYID_RIGHT,  KEYID_UP,     KEYID_DOWN, 
+		KEYID_LEFT, KEYID_RIGHT,  KEYID_UP,     KEYID_DOWN,
 		KEYID_MENU, KEYID_ENTER,  KEYID_CANCEL, KEYID_PAUSE,
 		KEYID_CLEAN,KEYID_BASEPOINT,KEYID_SHEETCUT,KEYID_PRINTQUALITY,
 		KEYID_CHECKNOZZLE, KEYID_HEATER};
@@ -864,17 +844,17 @@ void Keyboard_Task (void *data)
 				{
 					if(GetUIKeyIDEx(funckey) == KEYID_ENTER)
 					{
-						if( key == PANEL_KEY_ID_UP)	
+						if( key == PANEL_KEY_ID_UP)
 							key = PANEL_KEY_ID_CLEAN;
-						if( oldkey == PANEL_KEY_ID_UP)	
-							oldkey = PANEL_KEY_ID_CLEAN;	
-						if( key == PANEL_KEY_ID_DOWN)	
+						if( oldkey == PANEL_KEY_ID_UP)
+							oldkey = PANEL_KEY_ID_CLEAN;
+						if( key == PANEL_KEY_ID_DOWN)
 							key = PANEL_KEY_ID_SHEETCUT;
-						if( oldkey == PANEL_KEY_ID_DOWN)	
-							oldkey = PANEL_KEY_ID_SHEETCUT;							
+						if( oldkey == PANEL_KEY_ID_DOWN)
+							oldkey = PANEL_KEY_ID_SHEETCUT;
 					}
 				}
-#endif								
+#endif
 				UI_keyid = GetUIKeyID(oldkey);
 				if(UI_keyid != 0xFFFF)
 					LCD_SendKey(UI_keyid, KeyUp);
@@ -922,7 +902,7 @@ INT8U UIAction_CancelPrint(void * pData)
 		else
 		{
 			//copy from USB CMD handler
-			//status_ReportStatus(CMD_CANCEL_REQ, STATUS_CLR); 
+			//status_ReportStatus(CMD_CANCEL_REQ, STATUS_CLR);
 			status_ReportStatus(STATUS_NO_CANCEL, STATUS_CLR);
 			status_ReportStatus(STATUS_PAUSE, STATUS_CLR); //Clear pause
 			status_ReportStatus(CMD_PAUSE, STATUS_CLR); //Clear pause
@@ -937,7 +917,7 @@ INT8U UIAction_CancelPrint(void * pData)
 		Buff[0] = 2;
 		Buff[1] = UART_STOPMOVE_CMD;
 		while(!UART_SendCMD(UART_MOTION_CHANNEL, Buff)) //Stop move
-			OSTimeDly(10);	
+			OSTimeDly(10);
 		return True;
 	}
 	else
@@ -972,8 +952,8 @@ INT8U UIAction_PauseResumePrint(void * pData)
 		else if(OSFlagAccept(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, &err), err == OS_NO_ERR)
 		{
 #if defined(HEAD_RICOH_G4)&&defined(RICOH_CLEAN_PRESS)
-			False_Idle_Off(); 
-#endif        
+			False_Idle_Off();
+#endif
 			if(OSFlagAccept(mix_FLAG_GRP, EPSON_CALI_RUN, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)
 			{
 				((INT16U*)Buff)[0] = EP6_CMD_T_PRINTACTION;
@@ -1056,7 +1036,7 @@ INT8U UIAction_QuickCleaning(void * pData)
 INT8U SetBasePoint(void * pData, float point, INT8U bGoHome, INT8U bFlashPM)
 {
 	U8 err, ret = True;
-	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ? 
+	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ?
 			sizeof(struct USB_RPT_MainUI_Param):sizeof(struct USB_RPT_Media_Info))];
 
 	float width;
@@ -1077,9 +1057,9 @@ INT8U SetBasePoint(void * pData, float point, INT8U bGoHome, INT8U bFlashPM)
 
 	if(bGoHome)
 		UIAction_X_GoHome(pData);
-#if defined( IIC_Key_Board_LCD) 				
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_PrintOrigin, &point);
-#endif	
+#endif
 	if(bFlashPM)
 	{
 		((INT16U*)Buff)[0] = EP6_CMD_T_MAINUI;
@@ -1105,7 +1085,7 @@ INT8U SetBasePoint(void * pData, float point, INT8U bGoHome, INT8U bFlashPM)
 INT8U SetBasePointY(void * pData, float point,INT8U bGoHome, INT8U bFlashPM)
 {
 	U8 err, ret = True;
-	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ? 
+	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ?
 			sizeof(struct USB_RPT_MainUI_Param):sizeof(struct USB_RPT_Media_Info))];
 
 	float width;
@@ -1124,12 +1104,12 @@ INT8U SetBasePointY(void * pData, float point,INT8U bGoHome, INT8U bFlashPM)
 
 	// if(bGoHome)
 	//     UIAction_X_GoHome(pData);
-#if defined( IIC_Key_Board_LCD) 				
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_PrintYOrigin, &point);
 #endif
 	if(bFlashPM)
 	{
-		((INT16U*)Buff)[0] = EP6_CMD_T_MAINUI;	
+		((INT16U*)Buff)[0] = EP6_CMD_T_MAINUI;
 		mainUIPara_ToPM.PrintOrigin = LCDMenuConfig.OriginX;
 		mainUIPara_ToPM.PrintYOrigin = LCDMenuConfig_EX.OriginY;
 		mainUIPara_ToPM.PrintZOrigin = LCDMenuConfig_EX.OriginZ;
@@ -1137,15 +1117,15 @@ INT8U SetBasePointY(void * pData, float point,INT8U bGoHome, INT8U bFlashPM)
 		mainUIPara_ToPM.StepModify = mainUIPara.StepModify;
 		memcpy(&Buff[2], &mainUIPara_ToPM, sizeof(mainUIPara_ToPM));
 		if(!PushCommPipeData(COMMPIPE_ARM_CHANNEL_ID, Buff, 2+sizeof(struct USB_RPT_MainUI_Param), True))
-			ret = False;    
+			ret = False;
 	}
-	return ret;	
+	return ret;
 }
 
 INT8U SetBasePointZ(void * pData, float point,INT8U bGoHome, INT8U bFlashPM)
 {
 	U8 err, ret = True;
-	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ? 
+	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ?
 			sizeof(struct USB_RPT_MainUI_Param):sizeof(struct USB_RPT_Media_Info))];
 
 	float width;
@@ -1161,7 +1141,7 @@ INT8U SetBasePointZ(void * pData, float point,INT8U bGoHome, INT8U bFlashPM)
 
 	OSSemPost(LCDMenuConfigureSem);
 	SaveLCDMenuConfig_EX();
-#if defined( IIC_Key_Board_LCD) 					
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_PrintZOrigin, &point);
 #endif
 
@@ -1179,14 +1159,14 @@ INT8U SetBasePointZ(void * pData, float point,INT8U bGoHome, INT8U bFlashPM)
 		mainUIPara_ToPM.StepModify = mainUIPara.StepModify;
 		memcpy(&Buff[2], &mainUIPara_ToPM, sizeof(mainUIPara_ToPM));
 		if(!PushCommPipeData(COMMPIPE_ARM_CHANNEL_ID, Buff, 2+sizeof(struct USB_RPT_MainUI_Param), True))
-			ret = False;    
+			ret = False;
 	}
-	return ret;	
+	return ret;
 }
 INT8U SetBasePoint_All(void * pData, float pointX, float pointY, float pointZ, INT8U bGoHome, INT8U bFlashPM)
 {
 	U8 err, ret = True;
-	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ? 
+	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ?
 			sizeof(struct USB_RPT_MainUI_Param):sizeof(struct USB_RPT_Media_Info))];
 
 	float width;
@@ -1223,11 +1203,11 @@ INT8U SetBasePoint_All(void * pData, float pointX, float pointY, float pointZ, I
 #endif
 
 	SaveLCDMenuConfig();
-	SaveLCDMenuConfig_EX();	
+	SaveLCDMenuConfig_EX();
 
 	if(bGoHome)
 		UIAction_X_GoHome(pData);
-#if defined( IIC_Key_Board_LCD) 				
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_PrintOrigin, &pointX);
 	LCD_SetMainInfoEx(E_IT_PrintYOrigin, &pointY);
 	LCD_SetMainInfoEx(E_IT_PrintZOrigin, &pointZ);
@@ -1250,7 +1230,7 @@ INT8U SetBasePoint_All(void * pData, float pointX, float pointY, float pointZ, I
 		mediaInfo_ToPM.MediaWidth = LCDMenuConfig.MediaWidth - LCDMenuConfig.OriginX;
 		mediaInfo_ToPM.Margin = LCDMenuConfig.Margin;
 		mediaInfo_ToPM.Prt_Y_Continue = mediaInfo.Prt_Y_Continue =  LCDMenuConfig_EX.PRINT_Y_CONTINUE;
-		mediaInfo_ToPM.MediaLength = mediaInfo.MediaLength =  LCDMenuConfig_EX.MediaL;	
+		mediaInfo_ToPM.MediaLength = mediaInfo.MediaLength =  LCDMenuConfig_EX.MediaL;
 		memcpy(&mediaInfo, &mediaInfo_ToPM, sizeof(mediaInfo_ToPM));
 		memcpy(&Buff[2], &mediaInfo_ToPM, sizeof(mediaInfo_ToPM));
 		if(!PushCommPipeData(COMMPIPE_ARM_CHANNEL_ID, Buff, 2+sizeof(struct USB_RPT_Media_Info), True))
@@ -1311,7 +1291,7 @@ INT8U UIAction_SheetCut(void * pData)
 	if (OSFlagAccept(status_FLAG_GRP, STATUS_NO_Y_MOVE_BITS, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)
 	{
 		CMD_Epson_Operate_Type = CMD_EPSON_T_SHEET_CUT;
-		status_ReportStatus(CMD_EPSON_OPERATION, STATUS_SET);					
+		status_ReportStatus(CMD_EPSON_OPERATION, STATUS_SET);
 		return True;
 	}
 	else
@@ -1435,10 +1415,10 @@ INT8U Menu_Move_Zpoint(void * pData, int Index)
 	INT8U err;
 	if (OSFlagAccept(status_FLAG_GRP, STATUS_NO_Y_MOVE_BITS, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)
 	{
-		move_dir = 4; 		
+		move_dir = 4;
 		move_distance = LCDMenuConfig_EX.OriginZ*Z_BASE_RES + Z_PLAT_LENGTH;
 		move_type = 3;
-		status_ReportStatus(CMD_START_MOVE, STATUS_SET);					
+		status_ReportStatus(CMD_START_MOVE, STATUS_SET);
 		return True;
 	}
 }
@@ -1472,8 +1452,8 @@ INT8U SetCalcParam_RICOH_X_SPEED(void * pData, int Index, int Data)
 		ret = False;
 	OSSemPost(LCDMenuConfigureSem);
 	SaveLCDMenuConfig_EX();
-#if defined( IIC_Key_Board_LCD) 					
-	LCD_SetMainInfoEx(E_IT_HeadHeightLevel, 0);	
+#if defined( IIC_Key_Board_LCD)
+	LCD_SetMainInfoEx(E_IT_HeadHeightLevel, 0);
 #endif
 	return ret;
 }
@@ -1492,7 +1472,7 @@ INT8U GetPRTParam_Y_PRT_CONTINUE_OnOff(void * pData, int Index)
 INT8U SetPRTParam_Y_PRT_CONTINUE_OnOff(void * pData, int Index, int Data)
 {
 	INT8U err, ret = True;
-	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ? 
+	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ?
 			sizeof(struct USB_RPT_MainUI_Param):sizeof(struct USB_RPT_Media_Info))];
 	if(pData == (void *)-1)
 	{
@@ -1519,7 +1499,7 @@ INT8U SetPRTParam_Y_PRT_CONTINUE_OnOff(void * pData, int Index, int Data)
 	mediaInfo_ToPM.MediaWidth =  LCDMenuConfig.MediaWidth - LCDMenuConfig.OriginX;
 	mediaInfo_ToPM.Margin = LCDMenuConfig.Margin;
 	mediaInfo_ToPM.Prt_Y_Continue = mediaInfo.Prt_Y_Continue = LCDMenuConfig_EX.PRINT_Y_CONTINUE;
-	mediaInfo_ToPM.MediaLength = mediaInfo.MediaLength =  LCDMenuConfig_EX.MediaL;	
+	mediaInfo_ToPM.MediaLength = mediaInfo.MediaLength =  LCDMenuConfig_EX.MediaL;
 	memcpy(&mediaInfo, &mediaInfo_ToPM, sizeof(mediaInfo_ToPM));
 	memcpy(&Buff[2], &mediaInfo_ToPM, sizeof(mediaInfo_ToPM));
 	if(!PushCommPipeData(COMMPIPE_ARM_CHANNEL_ID, Buff, 2+sizeof(struct USB_RPT_Media_Info), True))
@@ -1547,7 +1527,7 @@ float Menu_GetBaseYPoint(void * pData, int Index)
 	OSSemPost(LCDMenuConfigureSem);
 	return ret;
 }
-#ifdef MANUFACTURER_DYSS	
+#ifdef MANUFACTURER_DYSS
 INT8U Menu_InputBaseY_CAL_EX(void * pData, int Index, float Data)
 {
 	if(pData == (void *)-1)
@@ -1610,7 +1590,7 @@ INT8U GetPRTParam_Head_Encry_OnOff(void * pData, int Index)
 INT8U SetPRTParam_Head_Encry_OnOff(void * pData, int Index, INT8U mask)
 {
 	INT8U err, ret = True;
-	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ? 
+	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ?
 			sizeof(struct USB_RPT_MainUI_Param):sizeof(struct USB_RPT_Media_Info))];
 	if(pData == (void *)-1)
 	{
@@ -1625,7 +1605,7 @@ INT8U SetPRTParam_Head_Encry_OnOff(void * pData, int Index, INT8U mask)
 	OSSemPend(LCDMenuConfigureSem, 0, &err);
 	if(Index == 0)
 		LCDMenuConfig_EX.Head_Encry_Mask &= ~(1<<mask);
-	else 
+	else
 		LCDMenuConfig_EX.Head_Encry_Mask |= (1<<mask);
 	OSSemPost(LCDMenuConfigureSem);
 	SaveLCDMenuConfig_EX();
@@ -1690,9 +1670,9 @@ INT8U Menu_InputMediaWidth(void * pData, int Index, float Data)
 	LCDMenuConfig.MediaWidth = width;
 	OSSemPost(LCDMenuConfigureSem);
 	SaveLCDMenuConfig();
-#if defined( IIC_Key_Board_LCD) 					
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_MediaWidth, &width);
-#endif	
+#endif
 	((INT16U*)Buff)[0] = EP6_CMD_T_MEDIA;
 	mediaInfo_ToPM.MediaOrigin = LCDMenuConfig.OriginX;
 	mediaInfo_ToPM.MediaWidth = LCDMenuConfig.MediaWidth - LCDMenuConfig.OriginX;
@@ -1700,8 +1680,8 @@ INT8U Menu_InputMediaWidth(void * pData, int Index, float Data)
 
 #ifdef RIPSTAR_FLAT_EX
 	mediaInfo_ToPM.Prt_Y_Continue = mediaInfo.Prt_Y_Continue = LCDMenuConfig_EX.PRINT_Y_CONTINUE;
-	mediaInfo_ToPM.MediaLength = mediaInfo.MediaLength =  LCDMenuConfig_EX.MediaL;	
-#endif	
+	mediaInfo_ToPM.MediaLength = mediaInfo.MediaLength =  LCDMenuConfig_EX.MediaL;
+#endif
 	memcpy(&Buff[2], &mediaInfo_ToPM, sizeof(mediaInfo_ToPM));
 	if(!PushCommPipeData(COMMPIPE_ARM_CHANNEL_ID, Buff, 2+sizeof(struct USB_RPT_Media_Info), True))
 		ret = False;
@@ -1738,20 +1718,20 @@ INT8U Menu_InputMediaLength(void * pData, int Index, float Data)
 
 	LCDMenuConfig_EX.MediaL= width;
 	OSSemPost(LCDMenuConfigureSem);
-	SaveLCDMenuConfig_EX();	
-#if defined( IIC_Key_Board_LCD) 					
+	SaveLCDMenuConfig_EX();
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_MediaLength, &width);
-#endif	
+#endif
 	((INT16U*)Buff)[0] = EP6_CMD_T_MEDIA;
 	mediaInfo_ToPM.MediaOrigin = LCDMenuConfig.OriginX;
 	mediaInfo_ToPM.MediaWidth =  LCDMenuConfig.MediaWidth - LCDMenuConfig.OriginX;
 	mediaInfo_ToPM.Margin = LCDMenuConfig.Margin;
 	mediaInfo_ToPM.Prt_Y_Continue = mediaInfo.Prt_Y_Continue = LCDMenuConfig_EX.PRINT_Y_CONTINUE;
-	mediaInfo_ToPM.MediaLength = mediaInfo.MediaLength =  LCDMenuConfig_EX.MediaL;	
+	mediaInfo_ToPM.MediaLength = mediaInfo.MediaLength =  LCDMenuConfig_EX.MediaL;
 	memcpy(&mediaInfo, &mediaInfo_ToPM, sizeof(mediaInfo_ToPM));
 	memcpy(&Buff[2], &mediaInfo_ToPM, sizeof(mediaInfo_ToPM));
 	if(!PushCommPipeData(COMMPIPE_ARM_CHANNEL_ID, Buff, 2+sizeof(struct USB_RPT_Media_Info), True))
-		ret = False;        
+		ret = False;
 	return ret;
 }
 
@@ -1779,8 +1759,8 @@ INT8U Menu_InputMediaHigh(void * pData, int Index, float Data)
 
 	LCDMenuConfig_EX.MediaH = width;
 	OSSemPost(LCDMenuConfigureSem);
-	SaveLCDMenuConfig_EX();	
-#if defined( IIC_Key_Board_LCD) 				
+	SaveLCDMenuConfig_EX();
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_MediaHigh, &width);
 #endif
 
@@ -1808,7 +1788,7 @@ INT8U Menu_LoadMedia(void * pData, int Index)
 		if(!IsLoadMediaSensorValid())
 		{
 			CMD_Epson_Operate_Type = CMD_EPSON_T_LOAD_MEDIA;
-			status_ReportStatus(CMD_EPSON_OPERATION, STATUS_SET);					
+			status_ReportStatus(CMD_EPSON_OPERATION, STATUS_SET);
 		}
 		return True;
 	}
@@ -1844,17 +1824,17 @@ INT8U SetMediaInfo(float origin, float width, float margin)
 	mediaInfo.MediaOrigin = origin;
 	mediaInfo.MediaWidth = width;
 	mediaInfo.Margin = margin;
-#if defined( IIC_Key_Board_LCD) 			
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_PrintOrigin, &origin);
 	LCD_SetMainInfoEx(E_IT_MediaWidth, (void *)&(LCDMenuConfig.MediaWidth));
-#endif	
+#endif
 	return True;
 }
 
 INT8U SetMeasureResult(	INT32S paper_X_NearEdgePos, INT32S paper_X_FarEdgePos)
 {
 	U8 err, ret = True;
-	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ? 
+	INT8U Buff[2+(sizeof(struct USB_RPT_MainUI_Param)>sizeof(struct USB_RPT_Media_Info) ?
 			sizeof(struct USB_RPT_MainUI_Param):sizeof(struct USB_RPT_Media_Info))];
 	struct USB_RPT_MainUI_Param *pMainUI = (struct USB_RPT_MainUI_Param *)&Buff[2];
 	struct USB_RPT_Media_Info *pMediaInfo = (struct USB_RPT_Media_Info *)&Buff[2];
@@ -1881,7 +1861,7 @@ INT8U SetMeasureResult(	INT32S paper_X_NearEdgePos, INT32S paper_X_FarEdgePos)
 	OSSemPost(LCDMenuConfigureSem);
 	SaveLCDMenuConfig();
 
-#if defined( IIC_Key_Board_LCD) 		
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_PrintOrigin, &origin);
 	LCD_SetMainInfoEx(E_IT_MediaWidth, &width);
 #endif
@@ -1923,7 +1903,7 @@ INT8U Menu_MachineTest(void * pData, int Index)
 	if (OSFlagAccept(status_FLAG_GRP, STATUS_NO_Y_MOVE_BITS, OS_FLAG_WAIT_CLR_ALL,&err), err == OS_NO_ERR)
 	{
 		CMD_Epson_Operate_Type = CMD_EPSON_T_MACHIME_TEST;
-		status_ReportStatus(CMD_EPSON_OPERATION, STATUS_SET);					
+		status_ReportStatus(CMD_EPSON_OPERATION, STATUS_SET);
 		return True;
 	}
 	else
@@ -2016,7 +1996,7 @@ INT8U Menu_GetPlateFanMode(void * pData, int Index)
 	ret = LCDMenuConfig.PlateFanMode;
 	OSSemPost(LCDMenuConfigureSem);
 	return ret;
-}	
+}
 #endif
 
 INT8U Menu_SetAutoStep(void * pData, int Index)
@@ -2094,7 +2074,7 @@ INT8U SetPrintQuality(int Index)
 	LCDMenuConfig.PrintQuality = Index;
 	OSSemPost(LCDMenuConfigureSem);
 	SaveLCDMenuConfig();
-#if defined( IIC_Key_Board_LCD) 	
+#if defined( IIC_Key_Board_LCD)
 	LCD_SetMainInfoEx(E_IT_QualitySetting, &Index);
 #endif
 	return True;
@@ -2370,7 +2350,7 @@ void changeLeddisplay(INT8U state)
 {
 	INT8U buf[2] = {0};
 
-	buf[0] = 0x1; 
+	buf[0] = 0x1;
 	buf[1] = LEDD14DEFINE;
 	if(state == 1)
 	{

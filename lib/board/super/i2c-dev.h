@@ -41,8 +41,4 @@ u8 IIC_Read_LCD(u8 reg, u8 *buf, u8 cnt);
 
 void IIC_Init(void);
 
-
-void UART_Init(u8 flag);
-u8 UART_SendCMD(u8 num, u8 *data);
-
 #endif

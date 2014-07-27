@@ -19,7 +19,6 @@
  * MA 02111-1307 USA
  */
 
-
 #ifndef __SERIAL_CORE_H__
 #define __SERIAL_CORE_H__
 
@@ -31,26 +30,33 @@
 #define UART_XMIT_SIZE		(512)
 
 struct uart_port {
-	spinlock_t	lock;
-	unsigned char	*base;
-	void		*iobase;
+	spinlock_t		lock;
+	unsigned char		*base;
+	void			*iobase;
 
-	unsigned int	id;
-	unsigned int	irq;
-	unsigned int	mask;
+	unsigned int		id;
+	unsigned int		mask;
 
-	struct fifo	*txfifo;
-	char		txbuf[UART_XMIT_SIZE];
-	void		(*start_tx)(struct uart_port *);
+	struct fifo		*txfifo;
+	struct fifo		*rxfifo;
 
-	callback_t	rxcb;
-	int		(*read)(struct uart_port *, unsigned char *, int);
-	
-	void		*priv;
+	void			(*start_tx)(struct uart_port *);
+	unsigned int		irq;			/* irq number */
+	unsigned long		irqflags;		/* irq flags  */
+	unsigned int		fifosize;		/* tx fifo size */
+
+	callback_t		rxcb;
+	void			*priv;
+
 };
 
-int uart_read(int num, unsigned char *buf, int count);
-int uart_write(int num, const unsigned char *buf, int count);
-int uartport_add(struct uart_port *port);
+extern struct uart_port *serial_ports[ARCH_NR_UARTPORTS];
+
+struct uart_port *to_uart_port(int num);
+
+void serial_register_rxcb(int num, callback_t rxcb);
+int serial_read(int num, unsigned char *buf, int count);
+int serial_write(int num, const unsigned char *buf, int count);
+int serial_port_add(struct uart_port *port);
 
 #endif
