@@ -8,10 +8,10 @@
 
 UV_POSI_TYPE UV_POSI = {0};
 
-const Pin UVStatPinLP1ShCl = PIN_UV_STAT_LP1_SH_CL_I; 
-const Pin UVStatPinLP1ShOp = PIN_UV_STAT_LP1_SH_OP_I; 
+const Pin UVStatPinLP1ShCl = PIN_UV_STAT_LP1_SH_CL_I;
+const Pin UVStatPinLP1ShOp = PIN_UV_STAT_LP1_SH_OP_I;
 const Pin UVStatPinLP2ShCl = PIN_UV_STAT_LP2_SH_CL_I;
-const Pin UVStatPinLP2ShOp = PIN_UV_STAT_LP2_SH_OP_I; 
+const Pin UVStatPinLP2ShOp = PIN_UV_STAT_LP2_SH_OP_I;
 const Pin UVStatPinUVRdy = PIN_UV_STAT_UV_RDY;
 const Pin UVStatPinLP1Fault = PIN_UV_STAT_LP1_FAULT;
 const Pin UVStatPinLP2Fault = PIN_UV_STAT_LP2_FAULT;
@@ -65,7 +65,7 @@ void Back_Light_off(void)
 
 void Waste_Ink_CHECK(void)
 {
-	if (!PIO_Get(&UVStatPinUVRdy)) 
+	if (!PIO_Get(&UVStatPinUVRdy))
 		status_ReportStatus(STATUS_WAR_Waste_Ink_FULL, STATUS_SET);
 	else
 		status_ReportStatus(STATUS_WAR_Waste_Ink_FULL, STATUS_CLR);
@@ -75,10 +75,10 @@ INT8U uv_Init()
 {
 	OS_CPU_SR cpu_sr;
 
-	UV_POSI.STOP_UV = True;
+	UV_POSI.STOP_UV = true;
 	Front_Light_off();
 	Back_Light_off();
-	return True;
+	return true;
 }
 
 INT8U uv_PrintScanStart(INT8U bLeft)
@@ -87,9 +87,9 @@ INT8U uv_PrintScanStart(INT8U bLeft)
 	{
 	case 2: //双灯高功率
 		UV_CTR_SHUTTER1_OPEN();
-		uv_isShutter1Open = True;
+		uv_isShutter1Open = true;
 		UV_CTR_SHUTTER2_OPEN();
-		uv_isShutter2Open = True;
+		uv_isShutter2Open = true;
 		break;
 	case 3:	//单灯高功率
 		if(bLeft)
@@ -101,27 +101,27 @@ INT8U uv_PrintScanStart(INT8U bLeft)
 		if(bLeft)
 		{
 			UV_CTR_SHUTTER1_OPEN();
-			uv_isShutter1Open = True;
+			uv_isShutter1Open = true;
 		}
 		else
 		{
 			UV_CTR_SHUTTER2_OPEN();
-			uv_isShutter2Open = True;
+			uv_isShutter2Open = true;
 		}
-		uv_isShutterOpen = True;
+		uv_isShutterOpen = true;
 		break;
 	default:
-		return False;			
+		return false;
 	}
-	return True;
+	return true;
 }
 
 INT8U uv_PrintEndJob()
 {
-	UV_POSI.STOP_UV = True;
+	UV_POSI.STOP_UV = true;
 	Front_Light_off();
 	Back_Light_off();
-	return True;
+	return true;
 }
 
 INT8U uv_PrintScanEnd(INT8U bLeft)
@@ -129,39 +129,39 @@ INT8U uv_PrintScanEnd(INT8U bLeft)
 	if(bLeft)
 	{
 		UV_CTR_SHUTTER1_CLOSE();
-		uv_isShutter1Open = False;
+		uv_isShutter1Open = false;
 	}
 	else
 	{
 		UV_CTR_SHUTTER2_CLOSE();
-		uv_isShutter2Open = False;
+		uv_isShutter2Open = false;
 	}
-	uv_isShutterOpen = False;
-	return True;
+	uv_isShutterOpen = false;
+	return true;
 }
 
 INT8U uv_PrintCancelJob()
 {
-	UV_POSI.STOP_UV = True;
+	UV_POSI.STOP_UV = true;
 	Front_Light_off();
 	Back_Light_off();
-	return True;
+	return true;
 }
 
 INT8U uv_PrintPause()
 {
-	UV_POSI.STOP_UV = True;
+	UV_POSI.STOP_UV = true;
 	Front_Light_off();
 	Back_Light_off();
-	return True;	
+	return true;
 }
 
 INT8U uv_PrintScanErr()
 {
-	UV_POSI.STOP_UV = True;
+	UV_POSI.STOP_UV = true;
 	Front_Light_off();
 	Back_Light_off();
-	return True;	
+	return true;
 }
 
 #undef _UV_C_
