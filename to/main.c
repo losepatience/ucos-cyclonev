@@ -290,9 +290,7 @@ void TaskStart (void *data)
 	INT16S tmps;
 	INT16U addr;
 
-	OS_CSP_TickInit();	/* Initialize the Tick interrupt */
-	OSStatInit();		/* Initialize uC/OS's statistics */
-
+	os_postinit();
 	Global_Init();
 
 	device_init();	/*XXX*/
@@ -2509,12 +2507,7 @@ void main(void)
 
 	CPU_INT08U  err;
 
-	CPU_IntDis();
-	CSP_IntInit();
-	CPU_Init();
-	CPU_IntDis();
-
-	OSInit();
+	os_preinit();
 	IICSem = OSSemCreate(1);             /* Random number semaphore */
 	IIC_KeyboardSem = OSSemCreate(1);
 	CleaningParamSem = OSSemCreate(1);
@@ -2531,7 +2524,7 @@ void main(void)
 			OS_TASK_OPT_STK_CHK | OS_TASK_OPT_STK_CLR);
 
 #if (OS_TASK_NAME_EN > 0u)
-	OSTaskNameSet(APP_CFG_TASK_START_PRIO, (INT8U *)"Start", &err);
+	OSTaskNameSet(START_TASK_PRIO, (INT8U *)"Start", &err);
 #endif
 	OSStart();                              /* Start multitasking                                       */
 }

@@ -18,7 +18,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
  * MA 02111-1307 USA
  */
-#include <os_includes.h>
+
+#include <board.h>
 
 void os_preinit(void)
 {
@@ -26,6 +27,8 @@ void os_preinit(void)
 	CSP_IntInit();
 	CPU_Init();
 	CPU_IntDis();
+
+	OSInit();
 }
 
 void os_postinit(void)
