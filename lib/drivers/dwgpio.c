@@ -24,7 +24,7 @@
 #include <errno.h>
 #include <asm/io.h>
 #include <asm/regs.h>
-#include <cycgpio.h>
+#include <ripstar-gpio.h>
 #include <dwgpio.h>
 
 #define GPIO_INT_EN_REG_OFFSET		(0x30)

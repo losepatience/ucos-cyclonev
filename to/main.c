@@ -2503,7 +2503,7 @@ void TaskStart (void *data)
 /* ********************************************************************* */
 /* Global functions */
 
-void main1(void)
+void main(void)
 {
 	PIO_InitializeInterrupts(IRQ_PRI_PORT);
 

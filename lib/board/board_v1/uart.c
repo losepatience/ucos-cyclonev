@@ -27,7 +27,7 @@
 #include <fifo.h>
 #include <ssl.h>
 #include <platform.h>
-#include <cycserial.h>
+#include <ripstar_uart.h>
 
 #include <miscellance.h>
 #ifndef MAX_SAPACKET_LEN

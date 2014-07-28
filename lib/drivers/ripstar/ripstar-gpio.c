@@ -207,7 +207,7 @@ int cycgpio_init(void)
 		gc->priv	= (void *)(FPGA_GPIO_BASE + i * 0x200);
 		gc->ngpio	= __ngpio[i];
 		gc->base	= tmp;
-		tmp +=		gc->ngpio;
+		tmp		+= gc->ngpio;
 
 		gc->to_irq		= cycgpio_to_irq;
 		gc->direction_input	= cycgpio_direction_input;
