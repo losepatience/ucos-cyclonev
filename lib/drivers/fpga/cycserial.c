@@ -46,12 +46,12 @@
 
 static inline void cyc_uart_start_tx(struct uart_port *port)
 {
-	setbits32(port->base + UARTCR, 1 << port->id);
+	setbits32(port->base + UARTIER, 1 << port->id);
 }
 
 static inline void cyc_uart_stop_tx(struct uart_port *port)
 {
-	clrbits32(port->base + UARTCR, 1 << port->id);
+	clrbits32(port->base + UARTIER, 1 << port->id);
 }
 
 static void cyc_uart_tx_chars(struct uart_port *port)
@@ -93,18 +93,22 @@ static void cyc_uart_isr(void *arg)
 		unsigned int rx = 1 << (shift + 4);
 		unsigned int tx = 1 << shift;
 
-		if (estat & tx)
+		if (estat & tx) {
+			estat &= ~tx;
 			cyc_uart_tx_chars(port);
+			setbits32(port->base + UARTCIR, tx);
+		}
 
 		if (estat & rx) {
+			estat &= ~rx;
 			cyc_uart_rx_chars(port);
 
 			if (port->rxcb)
 				port->rxcb(&port->id);
+
+			setbits32(port->base + UARTCIR, rx);
 		}
 
-		estat &= tx | rx;
-		setbits32(port->base + UARTCIR, rx | tx);
 	}
 }
 
@@ -130,7 +134,7 @@ int cyc_uart_port_add(int num)
 	}
 
 	port->base	= (void *)CONFIG_UART_BASE;;
-	port->iobase	= port->base + UARTIOR * (num << 2);
+	port->iobase	= port->base + UARTIOR + (num << 2);
 	port->id	= num;
 	port->start_tx	= cyc_uart_start_tx;
 	port->rxfifo	= fifo_init(buf, 1, size);
