@@ -1078,17 +1078,6 @@ void Control_Task (void *data)
 
 	timer_init(&control_timer);		//初始化定时器
 #endif
-	if (PIO_Get(&LVDSLockPin) == 1)
-	{
-		Control_SetAlarm(ALARM_TYPE_LVDSLOST, ALARM_CLR);
-		//			CONSOL_Printf("LVDS is Relocked!.r\n");
-	}	
-	else
-	{
-		//remove for slient
-		Control_SetAlarm(ALARM_TYPE_LVDSLOST, ALARM_SET);
-		CONSOL_Printf("LVDS is Unlocked!\r\n");	
-	}
 
 #if (defined(TIMER_ON)&&defined(PUMP_INTERMITTENT))
 	while(1)

@@ -1079,27 +1079,6 @@ void Printer_Init(void)
 	INT8U err;
 	INT16U length;
 	INT8U len;
-#if 0
-	INT8U epromlen;
-	byhxData.boardID = 0xFFFFFFFF;
-	byhxData.manufacturerID = 0xFFFF;
-	byhxData.supportedHeadList[0] = HeadNo_Ricoh_Gen5_2C_100Pin;
-
-	OSSemPend(IICSem, 0, &err);
-	if (IIC_WriteEEPRom(EPR_BYHX_DATA_OFFSET, (INT8U *)&byhxData, &epromlen) == False)
-	{
-		OSSemPost(IICSem);
-		status_ReportStatus(STATUS_FTA_EEPROM_WRITE, STATUS_SET);
-	}
-
-	epromlen = EPR_BYHX_AUTHORITY_FLAG_SIZE;
-	if (IIC_WriteEEPRom(EPR_BYHX_AUTHORITY_FLAG_OFFSET, byhxAuthorityStr, &epromlen) == False)
-	{
-		OSSemPost(IICSem);
-		status_ReportStatus(STATUS_FTA_EEPROM_WRITE, STATUS_SET);
-	}				
-	OSSemPost(IICSem);
-#endif    
 
 	printer.manualCleanPos = PRINTER_MANUAL_CLEAN_POS;
 
@@ -1114,33 +1093,16 @@ void Printer_Init(void)
 	printer.cleanSpeed = PRINTER_CLEAN_SPEED;	
 	printer.feedSpeed = PRINTER_MEDIAFEED_SPEED;
 
-	//cleanPara.flash = True;
-	//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Just test
-#if ((defined(HEAD_RICOH_G4)&&defined(RICOH_CLEAN_PRESS))&&!defined(UV_PRINTER))||defined(MANUFACTURER_DOCAN_UV)
-	cleanPara.flash = True;
-#else	
-#ifdef OPEN_IDLE_FLUSH
-	cleanPara.flash = True;
-#else
+	/* FIXME */
 	cleanPara.flash = False;
-#endif	
-#endif
-	// cleanPara.flash = False;
 
 	cleanPara.pause_gohome = False;
 	cleanPara.flash_interval = 100; //10 times per second. 2007/8/2 in INWEAR
 	cleanPara.longflash_beforeprint = True;
 	cleanPara.autoCleanTimes = 1;
 	cleanPara.manualCleanTimes = 4;
-#if defined (EPSON_CLEAN_INTEGRATE)||defined (EPSON_CLEAN_INTEGRATE_1) ||defined(EPSON_CLEAN_INTEGRATE_2) ||defined(EPSON_CLEAN_INTEGRATE_3)
-	cleanPara.longflash_passInterval = 1;
-#else
 	cleanPara.longflash_passInterval = 10;
-#endif
 	cleanPara.blowInk_passInterval = 10;
-#if defined (EPSON_CLEAN_UPDOWN) || defined (EPSON_CLEAN_INTEGRATE)||defined (EPSON_CLEAN_INTEGRATE_1) ||defined(EPSON_CLEAN_INTEGRATE_2)||defined(EPSON_CLEAN_INTEGRATE_3)
-	cleanPara.autoClean_way = 4;
-#endif
 	password.m_bHaveTimePwd = False;
 	password.m_bHaveOptionPwd = False;
 	password.m_bHaveInkPwd = False;
@@ -1162,26 +1124,6 @@ void Printer_Init(void)
 		status_ReportStatus(STATUS_FTA_EEPROM_READ, STATUS_SET);
 	password.m_sInkPwd[EPR_INK_PASSWORD_STR_SIZE] = 0;
 	OSSemPost(IICSem);
-#if 0
-	i = 0;
-	length = sizeof(EPR_FactoryDataType);
-	while (i < length)
-	{
-		if (length - i > 64)
-			len = 64;
-		else
-			len = length - i;
-		OSSemPend(IICSem, 0, &err);
-		if (IIC_ReadEEPRom(EPR_FACTORY_DATA_OFFSET+i, ((INT8U *)&factoryData)+i, &len) == False)
-		{
-			OSSemPost(IICSem);
-			break;
-		}
-		OSSemPost(IICSem);
-		i += len;			
-	}
-#endif	
-
 #ifdef FUNCTION_CLOSE_LCD
 	UpdateHeadParamName();
 #endif
@@ -1198,20 +1140,6 @@ void Printer_Init(void)
 		printer.xEncoder = 0; ////!0 使用光栅， 0 使用司服编码
 		CONSOL_Printf("Read printer parameters Failed\r\n.");
 	}	
-	//#if defined(HEAD_RICOH_G4)
-#if 0
-#ifdef  RICOH_G5_3H
-	factoryData.HeadType = HeadNo_Ricoh_Gen5_2C_100Pin;
-#else
-#ifdef MANUFACTURER_TATE_EPSON
-	factoryData.HeadType = HeadNo_Ricoh_Gen4_G4;
-	//factoryData.HeadType = HeadNo_Ricoh_Gen4_64Pin;
-#else
-	factoryData.HeadType = HeadNo_Ricoh_Gen4_G4;
-	//factoryData.HeadType = HeadNo_Ricoh_Gen4_64Pin;
-#endif
-#endif
-#endif
 
 #if defined(RICOH_G5_3H)||defined(RICOH_G5_4H)
 	factoryData.HeadType = HeadNo_Ricoh_Gen5_2C_100Pin;

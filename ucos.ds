@@ -29,7 +29,7 @@ start
 #
 # delete any breakpoints
 #
-delete
+##delete
 
 #
 # set hw breakpoint in spl in function, spl_boot_device,
@@ -70,6 +70,6 @@ start
 
 #
 # set breakpoint at start of code that relocates uboot
-thbreak lowlevel_init
+thbreak TaskStart
 cont
 wait 60s

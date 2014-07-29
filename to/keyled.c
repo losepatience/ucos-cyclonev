@@ -27,7 +27,6 @@ static const Pin KBIrqPin = PIN_KB_CTRL_KB_IRQ; //cheney: not used for ALLWIN EP
 static INT8U keystatus;
 
 extern INT8U MediaMeasured;
-const Pin LVDSLockPin = PIN_LVDS_LOCK_EINT;
 
 void RESET_KB(void)
 {
@@ -125,10 +124,6 @@ INT8U KB_Init()
 	PIO_ConfigureIt(&KBIrqPin, KB_Irq_Interrupt);
 	PIO_EnableIt(&KBIrqPin);
 
-#ifndef EPSON_BOTTOM_BOARD_V3
-	PIO_ConfigureIt(&LVDSLockPin, LVDS_LOCK_Interrupt);
-	PIO_EnableIt(&LVDSLockPin);
-#endif
 	OS_EXIT_CRITICAL();
 
 	if(TEST_IIC_LED())

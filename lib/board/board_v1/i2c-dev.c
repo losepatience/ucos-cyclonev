@@ -280,17 +280,16 @@ void IIC_Init(void)
 		return;
 	}
 
-	adap_zlg7290 = i2c_get_adapter(0);
-	adap_lcd = adap_zlg7290;
-
-	if (at24_init())
-		return;
-
 	if (dwi2c_add_numbered_adapter(1)) {
 		pr_err("%s: fails to add i2c adapter 1\n", __func__);
 		return;
 	}
 
-	adap_max11614 = i2c_get_adapter(1);
+	if (at24_init())
+		return;
+
+	adap_zlg7290 = i2c_get_adapter(1);
+	adap_lcd = adap_zlg7290;
+	adap_max11614 = adap_lcd;
 }
 

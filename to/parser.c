@@ -1215,7 +1215,7 @@ INT16U * pStart = NULL;
 INT32U start_size, align_size;
 #endif
 
-#if defined(FPGA_MAINTAIN_COOR)
+#if 0 //liyangdefined(FPGA_MAINTAIN_COOR)
 INT8U IsDelaySendData()
 {
 	//unplement...

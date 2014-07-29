@@ -1,6 +1,8 @@
 #ifndef _MOTION_H_
 
 #define _MOTION_H_
+//#define HEAD_EPSON_GEN5
+#define SUPPORT_MOTOR_CONTROL
 
 #ifdef HEAD_EPSON_GEN5
 #define XORIGIN_OFFSET_MOTOR  0x200000

@@ -383,7 +383,7 @@ static int dwi2c_wait_bus_not_busy(struct dwi2c_data *dwi2c)
 static void dwi2c_xfer_init(struct dwi2c_data *dwi2c)
 {
 	struct i2c_msg *msgs = dwi2c->msgs;
-	u32 ic_con, ic_tar;
+	u32 ic_con, ic_tar = 0;
 
 
 	/* Disable the adapter */
@@ -780,7 +780,8 @@ int dwi2c_add_numbered_adapter(int num)
 	dwi2c->master_cfg = DW_IC_CON_MASTER
 		| DW_IC_CON_SLAVE_DISABLE
 		| DW_IC_CON_RESTART_EN
-		| DW_IC_CON_SPEED_FAST;
+		| DW_IC_CON_SPEED_STD;
+		//| DW_IC_CON_SPEED_FAST;
 
 	rval = dwi2c_hw_init(dwi2c);
 	if (rval)

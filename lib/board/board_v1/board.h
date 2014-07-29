@@ -52,7 +52,7 @@
 	{ 1 << n, DW_BASE_##id, DW_ID_##id, PIO_##dir, PIO_##type }
 
 #define PIN_FPGA_POSITION_IRQ		IO_MR(21, PIOB, INPUT, DEFAULT)
-#define PIN_LVDS_LOCK_EINT		IO_MR(26, PIOA, INPUT, PULLUP)
+/*#define PIN_LVDS_LOCK_EINT		IO_MR(26, PIOA, INPUT, PULLUP)*/
 
 /* -----------------------------------------------------------------------------
  * Mother board interface customized PIN definition.
@@ -113,7 +113,7 @@
 #define PIN_KB_CTRL_KB_IRQ		IO_MR(16, PIOA, INPUT, DEFAULT)
 
 /* used to reset keyboard */
-#define PIN_KB_CTRL_KB_RST		IO_MR(16, PIOA, OUTPUT_0, DEFAULT)
+#define PIN_KB_CTRL_KB_RST		IO_MR(12, PIOB, OUTPUT_0, DEFAULT)
 
 void os_preinit(void);
 void os_postinit(void);

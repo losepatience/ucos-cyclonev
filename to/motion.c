@@ -7,7 +7,7 @@
 #include "FPGA.h"
 #include "HugeBuf.h"
 
-//#include "pio/pio.h"
+#include "pio/pio.h"
 //#include "pio/pio_it.h"
 //#include "tc/tc.h"
 //#include "pmc/pmc.h"
@@ -17,10 +17,50 @@
 #include "motion.h"
 #include "CommPipe.h"
 #include "usb.h"
+#include "fpga_pwm.h"
+#define MOTOR_PWM_X PWM_CH(0)
+#define MOTOR_DIR_X PWM_CH(1)
+#define MOTOR_PWM_Y PWM_CH(2)
+#define MOTOR_DIR_Y PWM_CH(3)
+#define MOTOR_PWM_Z PWM_CH(4)
+#define MOTOR_DIR_Z PWM_CH(5)
+#define MOTOR_PWM_XX PWM_CH(6)
+#define MOTOR_DIR_XX PWM_CH(7)
+#define MOTOR_PWM_YY PWM_CH(8)
+#define MOTOR_DIR_YY PWM_CH(9)
+#define MOTOR_PWM_ZZ PWM_CH(10)
+#define MOTOR_DIR_ZZ PWM_CH(11)
+#define MOTOR_PWM_VM PWM_CH(12)		//虚打PWM输出
+#define MOTOR_DIR_VM PWM_CH(13)
 
+#define MOTOR_PWM(n) PWM_CH(2 * n)
+#define MOTOR_DIR(n) PWM_CH(2 * n + 1)
+
+//设置MOTOR的方向IO
+#define DIR_POS_X 1
+#define DIR_NEG_X 0
+#define DIR_POS_Y 1
+#define DIR_NEG_Y 0
+#define DIR_POS_Z 1
+#define DIR_NEG_Z 0
+
+#define VM_PRT 0
+#define NEW_ADD 1
+#define HE_ADD 0
+#define NP 0
+#define NT 0
+#define CNP 0
+#define OPEN_OLD 0
+//#define VM_PRINT
+#define CVM 0
+#define PIO_LISTSIZE(pPins)    (sizeof(pPins) / sizeof(Pin))
 //#define RECORD_MOTION_MOVEMENT
 //#define VM_PRINT
 #define X_PRINT_ACC_SAFE_DISTANCE   (180)
+#define FPGA_MAINTAIN_COOR
+#define RECORD_MOTION_MOVEMENT
+#define SUPPORT_MOTOR_CONTROL
+#define EPSON_BOTTOM_BOARD_V3
 #if defined(FPGA_MAINTAIN_COOR) || defined(SUPPORT_MOTOR_CONTROL)
 #define FPGA_POSI_COUNT   1
 INT8U bInited_FPGAPosiIT = False;
@@ -1133,8 +1173,8 @@ struct AxisParam_PulseDir_Feedback
 	INT32S Region_End; //-1 means Unkown and NO-limitation.
 	
 	//channel info.
-	AT91PS_PWMC_CH pPWM_channel1;    
-	AT91PS_PWMC_CH pPWM_channel2;    
+	//AT91PS_PWMC_CH pPWM_channel1;
+	//AT91PS_PWMC_CH pPWM_channel2;
 	INT32U  Channel_Mask;
 	INT8U ChannelValidLevel[2];
 	
@@ -1181,7 +1221,10 @@ struct AxisParam_PulseDir_OpenLoop
 {
 	INT8U  AxisID;
 	INT8U  ChannelNO;
-	
+#if NEW_ADD
+	INT16U CoorRegAddr;
+#endif
+
 	struct SensorInfo Origin;
 	INT32S OriginSensorOffset;
 	struct SensorInfo Limit;
@@ -1192,22 +1235,37 @@ struct AxisParam_PulseDir_OpenLoop
 	INT32S Region_End; //-1 means Unkown and NO-limitation.
 	
 	//channel info.
-	AT91PS_TC pTC_channel;    
+#if NT
+	AT91PS_TC pTC_channel;
 	struct ControlIOInfo TC_DirPin;
+#else
+	INT8U PWM_pulse_chid;
+	INT8U PWM_dir_chid;
+#endif
 	INT8U ChannelValidLevel[2];
 	struct ControlIOInfo ControlIO;
-	
+#if NEW_ADD
+	INT16U BaseDPI; //720.
+	INT16U CurrDPI; //720,360,540,270,1440.
+
+	INT8U PWM_modelTable[3]; //index 0 for standby.
+#endif
 	//usually, be 1.
 	//Fix point number which frac bit is 24. 
-	INT32U ratio_User2Control; 
+	INT32U ratio_User2Control; 		//没用到？？
 	float ratio_move; 
-	
+#if NEW_ADD
+	float ratio_print[3];
+#endif
 	//the target coor when stop. the real coor can be different with ideal coor. the next movement will compensate the offset..
 	INT32S CoorIdeal; 
 	INT32S CurCoor;
 	
 	INT8U Dir; //0,standby, 1, positive, 2, negative.
 	INT8U MoveType; //0, segment move; 1, continue move, and stop when receive stop cmd.
+#if NEW_ADD
+	INT8U PWM_model; //based on driver CHIP.
+#endif
 	INT8U AccSegment; //0: constant, 1: speed up, 2: speed down.
 	
 	INT32U speedDownCoor;
@@ -1220,15 +1278,27 @@ struct AxisParam_PulseDir_OpenLoop
 	struct ACCCurveInfo ** pAllCurveTable;
 	
 	INT32U Min_Distance;
-	
+	//for Y coor overflow.
+	INT32U lastCoor;
 	struct EPR_MOTION_AXIS_PARAM * pAxisParam;
 };
-
+#if NEW_ADD
+static struct AxisParam_PulseDir_OpenLoop PD_XParam FAST_DATA_SECTION;
+static struct AxisParam_PulseDir_OpenLoop PD_YParam FAST_DATA_SECTION;
+static struct AxisParam_PulseDir_OpenLoop PD_ZParam FAST_DATA_SECTION;
+static struct AxisParam_PulseDir_OpenLoop PD_CParam FAST_DATA_SECTION;
 static struct AxisParam_PulseDir_OpenLoop ZParam FAST_DATA_SECTION;
 static struct AxisParam_PulseDir_OpenLoop CParam FAST_DATA_SECTION;
 static struct AxisParam_PulseDir_OpenLoop *pTC_Driver1 FAST_DATA_SECTION=NULL;
 static struct AxisParam_PulseDir_OpenLoop *pTC_Driver2 FAST_DATA_SECTION=NULL;
-
+static struct AxisParam_PulseDir_OpenLoop *pPD_DriverX FAST_DATA_SECTION=NULL;
+static struct AxisParam_PulseDir_OpenLoop *pPD_DriverY FAST_DATA_SECTION=NULL;
+#else
+static struct AxisParam_PulseDir_OpenLoop ZParam FAST_DATA_SECTION;
+static struct AxisParam_PulseDir_OpenLoop CParam FAST_DATA_SECTION;
+static struct AxisParam_PulseDir_OpenLoop *pTC_Driver1 FAST_DATA_SECTION=NULL;
+static struct AxisParam_PulseDir_OpenLoop *pTC_Driver2 FAST_DATA_SECTION=NULL;
+#endif
 #define ERROR_HISTORY_LEN   100
 //only for 
 //  1. 不带驱动器和带光栅的DC驱动的X向。
@@ -1251,8 +1321,8 @@ struct AxisParam_DC_PWM
 	INT32S Region_End; //0x7FFFFFFF means Unkown and NO-limitation.
 	
 	//channel info.
-	AT91PS_PWMC_CH pPWM_channel1;    
-	AT91PS_PWMC_CH pPWM_channel2;    
+	//AT91PS_PWMC_CH pPWM_channel1;
+	//AT91PS_PWMC_CH pPWM_channel2;
 	INT32U Channel_Mask;
 	INT8U ChannelValidLevel[2];
 	struct ControlIOInfo ControlIO;
@@ -1325,53 +1395,49 @@ struct AxisParam_DC_PWM
 }   XParam FAST_DATA_SECTION = {0}, YParam FAST_DATA_SECTION = {0}, 
 *pPWMC_Driver1 FAST_DATA_SECTION=NULL, *pPWMC_Driver2 FAST_DATA_SECTION=NULL;
 
-void PWMHandler(void);
-void TCHandler(void);
+#if NEW_ADD
+INT32U pwm_ch_start(INT32U ch, INT8U dir)
+{
+	pwm_override(ch, dir);
+	pwm_irq_almost_enable(ch, 1);
+	pwm_irq_almost_mask(ch, 0);
+	pwm_enable(ch, 1);
+
+	return ch;
+}
+
+INT32U pwm_ch_stop(INT32U ch)
+{
+	pwm_enable(ch, 0);
+	pwm_irq_almost_enable(ch, 0);
+	pwm_irq_almost_mask(ch, 1);
+	pwm_override(ch, 0);
+
+	return ch;
+}
+void WriteReg32Data(INT32U addr, INT32U data);
+INT32U ReadReg32Data(INT32U addr);
+
+#endif
+void PWMHandler(void *);
+void TCHandler(void *);
 INT8U TC_Stop_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC);
 #ifdef VM_PRINT
 INT32U PWM_OFFSET_INDEX = 0;
 INT8U CUR_SPEED_ID = 0;;
-void VM_PWM_START(struct AxisParam_DC_PWM * pDCPWM)
+void VM_PWM_START(struct AxisParam_PulseDir_OpenLoop * pPD_PWM)
 {
-	AT91C_BASE_PWMC_CH0->PWMC_CMR = AT91C_PWMC_CPRE_MCKA | AT91C_PWMC_CALG ;
-	AT91C_BASE_PWMC_CH0->PWMC_CDTYR =(INT16U)(( (float)BOARD_MCK/(pDCPWM->pAxisParam->accParam[CUR_SPEED_ID].EndFreq*16))+0.5f);
-	AT91C_BASE_PWMC_CH0->PWMC_CPRDR = AT91C_BASE_PWMC_CH0->PWMC_CDTYR*2;
-	AT91C_BASE_PWMC_CH0->PWMC_CUPDR = AT91C_BASE_PWMC_CH0->PWMC_CDTYR;
-	
-	AT91C_BASE_PWMC_CH1->PWMC_CMR = AT91C_PWMC_CPRE_MCKA | AT91C_PWMC_CALG | AT91C_PWMC_CPOL;
-	AT91C_BASE_PWMC_CH1->PWMC_CDTYR = (INT16U)(( (float)BOARD_MCK/(pDCPWM->pAxisParam->accParam[CUR_SPEED_ID].EndFreq*16))+0.5f);
-	AT91C_BASE_PWMC_CH1->PWMC_CPRDR = AT91C_BASE_PWMC_CH1->PWMC_CDTYR*2;
-	AT91C_BASE_PWMC_CH1->PWMC_CUPDR = AT91C_BASE_PWMC_CH1->PWMC_CDTYR;
-	if(pDCPWM->Dir == DIRTYPE_POS)
-	{
-		AT91C_BASE_PWMC_CH2->PWMC_CMR = AT91C_PWMC_CPRE_MCKB | AT91C_PWMC_CPOL;
-		AT91C_BASE_PWMC_CH2->PWMC_CDTYR = (INT16U)(( (float)BOARD_MCK/(pDCPWM->pAxisParam->accParam[CUR_SPEED_ID].EndFreq*16))+0.5f)*2;
-		AT91C_BASE_PWMC_CH2->PWMC_CPRDR = AT91C_BASE_PWMC_CH2->PWMC_CDTYR*2;
-		AT91C_BASE_PWMC_CH2->PWMC_CUPDR = AT91C_BASE_PWMC_CH2->PWMC_CDTYR;
-		
-		AT91C_BASE_PWMC_CH3->PWMC_CMR = AT91C_PWMC_CPRE_MCKB;
-		AT91C_BASE_PWMC_CH3->PWMC_CDTYR = (INT16U)(( (float)BOARD_MCK/(pDCPWM->pAxisParam->accParam[CUR_SPEED_ID].EndFreq*16))+0.5f)*2;
-		AT91C_BASE_PWMC_CH3->PWMC_CPRDR = AT91C_BASE_PWMC_CH3->PWMC_CDTYR*2;
-		AT91C_BASE_PWMC_CH3->PWMC_CUPDR = AT91C_BASE_PWMC_CH3->PWMC_CDTYR;
-	}
-	else
-	{
-		AT91C_BASE_PWMC_CH2->PWMC_CMR = AT91C_PWMC_CPRE_MCKB;
-		AT91C_BASE_PWMC_CH2->PWMC_CDTYR = (INT16U)(( (float)BOARD_MCK/(pDCPWM->pAxisParam->accParam[CUR_SPEED_ID].EndFreq*16))+0.5f)*2;
-		AT91C_BASE_PWMC_CH2->PWMC_CPRDR = AT91C_BASE_PWMC_CH2->PWMC_CDTYR*2;
-		AT91C_BASE_PWMC_CH2->PWMC_CUPDR = AT91C_BASE_PWMC_CH2->PWMC_CDTYR;
-		
-		AT91C_BASE_PWMC_CH3->PWMC_CMR = AT91C_PWMC_CPRE_MCKB | AT91C_PWMC_CPOL;
-		AT91C_BASE_PWMC_CH3->PWMC_CDTYR = (INT16U)(( (float)BOARD_MCK/(pDCPWM->pAxisParam->accParam[CUR_SPEED_ID].EndFreq*16))+0.5f)*2;
-		AT91C_BASE_PWMC_CH3->PWMC_CPRDR = AT91C_BASE_PWMC_CH3->PWMC_CDTYR*2;
-		AT91C_BASE_PWMC_CH3->PWMC_CUPDR = AT91C_BASE_PWMC_CH3->PWMC_CDTYR;
-	}
-	AT91C_BASE_PWMC->PWMC_ENA = (AT91C_PWMC_CHID0|AT91C_PWMC_CHID1|AT91C_PWMC_CHID2|AT91C_PWMC_CHID3);
+	//开启后没有连续脉冲，因为在新系统中要想一直有脉冲要一直写buffer
+	INT16U duty = 0;
+
+	duty = (INT16U)(( (float)BOARD_MCK/(pPD_PWM->pAxisParam->accParam[CUR_SPEED_ID].EndFreq*16))+0.5f);
+	pwm_ch_set_pwm(MOTOR_PWM_VM,  duty*2, duty);
+	pwm_override(MOTOR_DIR_VM, pPD_PWM->Dir == DIRTYPE_POS);
 }
 
 void VM_PWM_STOP(void)
 {
-	AT91C_BASE_PWMC->PWMC_DIS = (AT91C_PWMC_CHID0|AT91C_PWMC_CHID1|AT91C_PWMC_CHID2|AT91C_PWMC_CHID3);
+	pwm_ch_stop(MOTOR_PWM_VM);
 }
 #endif
 INT8U BuildDefaultMotionParam(struct EPR_MOTION_PARAM * pMotionParam)
@@ -1400,7 +1466,7 @@ INT8U SaveMotionParam(struct EPR_MOTION_PARAM * pMotionParam)
 	return ret;
 }
 
-INT8U ReadMotionEPRConfig()
+INT8U ReadMotionEPRConfig(void)
 {
 	INT8U err;
 	INT16U length;
@@ -1490,24 +1556,24 @@ INT8U ConfigSensorPin(struct SensorInfo * pSensor, struct EPR_MOTION_AXIS_PARAM 
 		switch(PortId)
 		{
 		case 0:
-			pSensor->PinIO.pio = AT91C_BASE_PIOA;
-			pSensor->PinIO.id = AT91C_ID_PIOA;
+			pSensor->PinIO.pio = DW_BASE_PIOA;
+			pSensor->PinIO.id = DW_ID_PIOA;
 			break;
 		case 1:
-			pSensor->PinIO.pio = AT91C_BASE_PIOB;
-			pSensor->PinIO.id = AT91C_ID_PIOB;
+			pSensor->PinIO.pio = DW_BASE_PIOB;
+			pSensor->PinIO.id = DW_ID_PIOB;
 			break;
 		case 2:
-			pSensor->PinIO.pio = AT91C_BASE_PIOC;
-			pSensor->PinIO.id = AT91C_ID_PIOC;
+			pSensor->PinIO.pio = DW_BASE_PIOC;
+			pSensor->PinIO.id = DW_ID_PIOC;
 			break;
 		case 3:
-			pSensor->PinIO.pio = AT91C_BASE_PIOD;
-			pSensor->PinIO.id = AT91C_ID_PIOD_E;
+			pSensor->PinIO.pio = DW_BASE_PIOD;
+			pSensor->PinIO.id = DW_ID_PIOD_E;
 			break;
 		case 4:
-			pSensor->PinIO.pio = AT91C_BASE_PIOE;
-			pSensor->PinIO.id = AT91C_ID_PIOD_E;
+			pSensor->PinIO.pio = DW_BASE_PIOE;
+			pSensor->PinIO.id = DW_ID_PIOD_E;
 			break;
 		case 5:
 			pSensor->IsFPGAExpandIO = True;
@@ -1609,24 +1675,24 @@ INT8U ConfigSensorPin(struct SensorInfo * pSensor, struct EPR_MOTION_AXIS_PARAM 
 		switch(PortId)
 		{
 		case 0:
-			pSensor->PinIO.pio = AT91C_BASE_PIOA;
-			pSensor->PinIO.id = AT91C_ID_PIOA;
+			pSensor->PinIO.pio = DW_BASE_PIOA;
+			pSensor->PinIO.id = DW_ID_PIOA;
 			break;
 		case 1:
-			pSensor->PinIO.pio = AT91C_BASE_PIOB;
-			pSensor->PinIO.id = AT91C_ID_PIOB;
+			pSensor->PinIO.pio = DW_BASE_PIOB;
+			pSensor->PinIO.id = DW_ID_PIOB;
 			break;
 		case 2:
-			pSensor->PinIO.pio = AT91C_BASE_PIOC;
-			pSensor->PinIO.id = AT91C_ID_PIOC;
+			pSensor->PinIO.pio = DW_BASE_PIOC;
+			pSensor->PinIO.id = DW_ID_PIOC;
 			break;
 		case 3:
-			pSensor->PinIO.pio = AT91C_BASE_PIOD;
-			pSensor->PinIO.id = AT91C_ID_PIOD_E;
+			pSensor->PinIO.pio = DW_BASE_PIOD;
+			pSensor->PinIO.id = DW_ID_PIOD;
 			break;
 		case 4:
-			pSensor->PinIO.pio = AT91C_BASE_PIOE;
-			pSensor->PinIO.id = AT91C_ID_PIOD_E;
+			pSensor->PinIO.pio = DW_BASE_PIOE;
+			pSensor->PinIO.id = DW_ID_PIOE;
 			break;
 		case 5:
 			pSensor->IsFPGAExpandIO = True;
@@ -1725,24 +1791,24 @@ INT8U ConfigCtrlPin(struct ControlIOInfo * pCtrlIO, struct EPR_MOTION_AXIS_PARAM
 	switch(PortId)
 	{
 	case 0:
-		pCtrlIO->PinIO.pio = AT91C_BASE_PIOA;
-		pCtrlIO->PinIO.id = AT91C_ID_PIOA;
+		pCtrlIO->PinIO.pio = DW_BASE_PIOA;
+		pCtrlIO->PinIO.id = DW_ID_PIOA;
 		break;
 	case 1:
-		pCtrlIO->PinIO.pio = AT91C_BASE_PIOB;
-		pCtrlIO->PinIO.id = AT91C_ID_PIOB;
+		pCtrlIO->PinIO.pio = DW_BASE_PIOB;
+		pCtrlIO->PinIO.id = DW_ID_PIOB;
 		break;
 	case 2:
-		pCtrlIO->PinIO.pio = AT91C_BASE_PIOC;
-		pCtrlIO->PinIO.id = AT91C_ID_PIOC;
+		pCtrlIO->PinIO.pio = DW_BASE_PIOC;
+		pCtrlIO->PinIO.id = DW_ID_PIOC;
 		break;
 	case 3:
-		pCtrlIO->PinIO.pio = AT91C_BASE_PIOD;
-		pCtrlIO->PinIO.id = AT91C_ID_PIOD_E;
+		pCtrlIO->PinIO.pio = DW_BASE_PIOD;
+		pCtrlIO->PinIO.id = DW_ID_PIOD;
 		break;
 	case 4:
-		pCtrlIO->PinIO.pio = AT91C_BASE_PIOE;
-		pCtrlIO->PinIO.id = AT91C_ID_PIOD_E;
+		pCtrlIO->PinIO.pio = DW_BASE_PIOE;
+		pCtrlIO->PinIO.id = DW_ID_PIOE;
 		break;
 	default:
 		return False;
@@ -2132,8 +2198,8 @@ INT8U BuildPulseCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_
 	pCurveTable->AccType = ACCTYPE_CYCLETIME;
 	
 	ratio = pAxisParam->transmisstion_ratio_open_loop;
-	
-	if( pAxisParam->accParam[SpeedId].type == AT_Trapezoid)
+
+	if(pAxisParam->accParam[SpeedId].type == AT_Trapezoid)
 	{
 		const struct AccParam *pTrapezoid = (struct AccParam *)&pAxisParam->accParam[SpeedId];
 		
@@ -2275,7 +2341,7 @@ INT8U BuildPulseCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_
 			tick = 0xFFFF;
 		*pCycle = (INT16U)tick;
 		PulseCount ++;
-		pCurveTable->AccDistance = i + *pCycle;
+		pCurveTable->AccDistance = i + *pCycle;		//Tick Num
 		
 		pCurveTable->AccCurveLen = PulseCount;
 		pCurveTable->AccDisTblOffset = 0;
@@ -2304,18 +2370,46 @@ INT8U BuildAllPulseCurve(struct AxisParam_PulseDir_OpenLoop * pPulseDir,
 		if(pAxis_param->validSpeedLevel > MAX_Z_C_SPEED_LEVEL)
 			return False;
 		break;
+	case AXIS_ID_X:
+		pPulseDir->pAllCurveTable = AccCurveIndexTbl.pAllCurveX;
+		if(pAxis_param->validSpeedLevel > MAX_X_SPEED_LEVEL)
+			return False;
+		break;
+	case AXIS_ID_Y:
+		pPulseDir->pAllCurveTable = AccCurveIndexTbl.pAllCurveY;
+		if(pAxis_param->validSpeedLevel > MAX_Y_SPEED_LEVEL)
+			return False;
+		break;
 	default:
 		return False;
 	}
 	
-	for(i = 0; i < pAxis_param->validSpeedLevel; i++)
+	if(pAxis_param->AxisID == AXIS_ID_Z || pAxis_param->AxisID == AXIS_ID_Cleaner ||
+			pAxis_param->AxisID == AXIS_ID_X || pAxis_param->AxisID == AXIS_ID_Y)
 	{
-		pPulseDir->pAllCurveTable[i] = (struct ACCCurveInfo *)currCurveBuf;
-		if( !BuildPulseCurve(pPulseDir->pAllCurveTable[i], pPulseDir, pAxis_param, TC_DIVIDE_NUM, i))
-			return False;
-		currCurveBuf = (INT32U)(pPulseDir->pAllCurveTable[i]->IncTable) + 
-			(pPulseDir->pAllCurveTable[i]->AccCurveLen * sizeof(INT16U) + sizeof(INT32U) -1)/sizeof(INT32U)*sizeof(INT32U) ;
+		for(i = 0; i < pAxis_param->validSpeedLevel; i++)
+		{
+			pPulseDir->pAllCurveTable[i] = (struct ACCCurveInfo *)currCurveBuf;
+			if( !BuildPulseCurve(pPulseDir->pAllCurveTable[i], pPulseDir, pAxis_param, 1, i))
+				return False;
+			currCurveBuf = (INT32U)(pPulseDir->pAllCurveTable[i]->IncTable) +
+				(pPulseDir->pAllCurveTable[i]->AccCurveLen * sizeof(INT16U) + sizeof(INT32U) -1)/sizeof(INT32U)*sizeof(INT32U) ;
+		}
 	}
+#if 0
+	else if(pAxis_param->AxisID == AXIS_ID_X || pAxis_param->AxisID == AXIS_ID_X)
+	{
+		for(i = 0; i < pAxis_param->validSpeedLevel; i++)
+		{
+			pPulseDir->pAllCurveTable[i] = (struct ACCCurveInfo *)currCurveBuf;
+			if(!BuildPWMCurve(pPulseDir->pAllCurveTable[i], pPulseDir, pAxis_param, PWM_MOVE_CYCLE, i))
+				return False;
+			currCurveBuf = (INT32U)(pPulseDir->pAllCurveTable[i]->IncTable) +
+					pPulseDir->pAllCurveTable[i]->AccDisTblOffset +
+					(pPulseDir->pAllCurveTable[i]->AccCurveLen + 1) * sizeof(INT32U);
+		}
+	}
+#endif
 	return True;
 }
 
@@ -2347,203 +2441,100 @@ void PWMHandler_dimmy(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoor)
 }
 pPWMChannelHandle pPWM1Handle, pPWM2Handle; 
 
-INT8U InitPWMChannel()
+typedef void (*pPD_PWMChannel_handle)(struct AxisParam_PulseDir_OpenLoop *, INT32U curCoor);
+void PD_PWMHandle_dimmy(struct AxisParam_PulseDir_OpenLoop *pPDPWM, INT32U curCoor)
 {
-	Pin MotionPWMPins[] = {BOARD_PINS_MB_PWM};
+}
+pPD_PWMChannel_handle pPD_PWMHandleX, pPD_PWMHandleY;
+
+INT8U InitPWMChannel(void)
+{
 	INT8U ret = True;
-	
-	PMC_EnablePeripheral(AT91C_ID_PWMC);
-	
-#ifdef VM_PRINT
-	AT91C_BASE_PWMC->PWMC_MR = (1<<10|1)|(((1<<10|1)<<16));
+	int i = 0;
+
+	pwm_init();
+
+	// PWM_DIR:电机控制的脉冲通道与方向通道
+	// 其中PWM_CH(12)与PWM_CH(13)用作虚打PWM的通道
+	INT32U pwm_pulseCh = PWM_CH(0) | PWM_CH(2) | PWM_CH(4) | PWM_CH(6) | PWM_CH(8) | PWM_CH(10) | PWM_CH(12);
+	INT32U pwm_dirCh = PWM_CH(1) | PWM_CH(3) | PWM_CH(5) | PWM_CH(7) | PWM_CH(9) | PWM_CH(11) | PWM_CH(13);
+
+	pwm_mode_pwm(pwm_pulseCh, 1);		//设置为PWM模式，输出PWM脉冲
+	pwm_mode_pwm(pwm_dirCh, 0);			//设置为IO模式，输出高低电平
+	pwm_override(pwm_dirCh, 0);			//方向IO默认设置为低电平
+
+	if(pTC_Driver1 != NULL)
+	{
+		pTC_Driver1->PWM_pulse_chid = PWM_CHID(2 * pTC_Driver1->ChannelNO);
+		pTC_Driver1->PWM_dir_chid = PWM_CHID(2 * pTC_Driver1->ChannelNO + 1);
+		//极性设置
+		pwm_polar_pos(PWM_CH(pTC_Driver1->PWM_pulse_chid), pPWMC_Driver1->ChannelValidLevel[0]);
+		pwm_polar_pos(PWM_CH(pTC_Driver1->PWM_dir_chid), pPWMC_Driver1->ChannelValidLevel[1]);
+	}
+
+#if defined (EPSON_BOTTOM_BOARD_V3)&&(defined (EPSON_CLEAN_INTEGRATE)||defined (EPSON_CLEAN_INTEGRATE_1)||defined (EPSON_CLEAN_INTEGRATE_2)||defined (EPSON_CLEAN_INTEGRATE_3))
+	if(pTC_Driver2 != NULL && GetCleanPartCount() == 2)
 #else
-	AT91C_BASE_PWMC->PWMC_MR = 0;
+	if(pTC_Driver2 != NULL)
 #endif
-	AT91C_BASE_PWMC->PWMC_DIS = (AT91C_PWMC_CHID0 | AT91C_PWMC_CHID1 | AT91C_PWMC_CHID2 | AT91C_PWMC_CHID3);
-	AT91C_BASE_PWMC->PWMC_IDR = (AT91C_PWMC_CHID0 | AT91C_PWMC_CHID1 | AT91C_PWMC_CHID2 | AT91C_PWMC_CHID3);
-	AT91C_BASE_PWMC->PWMC_ISR;
-	
-	AT91C_BASE_PWMC_CH0->PWMC_CMR = AT91C_PWMC_CALG;
-	AT91C_BASE_PWMC_CH0->PWMC_CDTYR = PWM_STANDBY_CYCLE/2;
-	AT91C_BASE_PWMC_CH0->PWMC_CPRDR = PWM_STANDBY_CYCLE/2;
-	AT91C_BASE_PWMC_CH0->PWMC_CUPDR = PWM_STANDBY_CYCLE/2;
-	
-	AT91C_BASE_PWMC_CH1->PWMC_CMR = AT91C_PWMC_CALG;
-	AT91C_BASE_PWMC_CH1->PWMC_CDTYR = PWM_STANDBY_CYCLE/2;
-	AT91C_BASE_PWMC_CH1->PWMC_CPRDR = PWM_STANDBY_CYCLE/2;
-	AT91C_BASE_PWMC_CH1->PWMC_CUPDR = PWM_STANDBY_CYCLE/2;
-	
-	AT91C_BASE_PWMC_CH2->PWMC_CMR = AT91C_PWMC_CALG;
-	AT91C_BASE_PWMC_CH2->PWMC_CDTYR = PWM_STANDBY_CYCLE/2;
-	AT91C_BASE_PWMC_CH2->PWMC_CPRDR = PWM_STANDBY_CYCLE/2;
-	AT91C_BASE_PWMC_CH2->PWMC_CUPDR = PWM_STANDBY_CYCLE/2;
-	
-	AT91C_BASE_PWMC_CH3->PWMC_CMR = AT91C_PWMC_CALG;
-	AT91C_BASE_PWMC_CH3->PWMC_CDTYR = PWM_STANDBY_CYCLE/2;
-	AT91C_BASE_PWMC_CH3->PWMC_CPRDR = PWM_STANDBY_CYCLE/2;
-	AT91C_BASE_PWMC_CH3->PWMC_CUPDR = PWM_STANDBY_CYCLE/2;
-	
-	PIO_Configure(MotionPWMPins, PIO_LISTSIZE(MotionPWMPins));
-	
+	{
+		pTC_Driver2->PWM_pulse_chid = PWM_CHID(2 * pTC_Driver2->ChannelNO);
+		pTC_Driver2->PWM_dir_chid = PWM_CHID(2 * pTC_Driver2->ChannelNO + 1);
+		//极性设置
+		pwm_polar_pos(PWM_CH(pTC_Driver2->PWM_pulse_chid), pTC_Driver2->ChannelValidLevel[0]);
+		pwm_polar_pos(PWM_CH(pTC_Driver2->PWM_dir_chid), pTC_Driver2->ChannelValidLevel[1]);
+	}
+
 	pPWM1Handle = PWMHandler_dimmy;
-	pPWM2Handle = PWMHandler_dimmy; 
-	
-	if(pPWMC_Driver1 != NULL)
-	{
-		ConfigSensor(&pPWMC_Driver1->Origin);
-		ConfigSensor(&pPWMC_Driver1->Limit);
-		ConfigControlIO(&pPWMC_Driver1->ControlIO, True);
-		ConfigSensor(&pPWMC_Driver1->Fault);
-		ConfigSensor(&pPWMC_Driver1->OverTemp);
-		//	ConfigSensor(struct SensorInfo * pSensor)
-		if(pPWMC_Driver1->ChannelValidLevel[0] == 0)
-			pPWMC_Driver1->pPWM_channel1->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		if(pPWMC_Driver1->ChannelValidLevel[1] == 0)
-			pPWMC_Driver1->pPWM_channel2->PWMC_CMR ^= AT91C_PWMC_CPOL;
-	}
+	pPWM2Handle = PWMHandler_dimmy;
+
+	if(pPD_DriverX == NULL || pPD_DriverY == NULL)
+		return False;
+
+	//极性设置
+	pwm_polar_pos(PWM_CH(pPD_DriverX->PWM_pulse_chid), pPD_DriverX->ChannelValidLevel[0]);
+	pwm_polar_pos(PWM_CH(pPD_DriverX->PWM_dir_chid), pPD_DriverX->ChannelValidLevel[1]);
+	pwm_polar_pos(PWM_CH(pPD_DriverY->PWM_pulse_chid), pPD_DriverY->ChannelValidLevel[0]);
+	pwm_polar_pos(PWM_CH(pPD_DriverY->PWM_dir_chid), pPD_DriverY->ChannelValidLevel[1]);
+
+	ConfigSensor(&pPD_DriverX->Origin);
+	ConfigSensor(&pPD_DriverX->Limit);
+	ConfigControlIO(&pPD_DriverX->ControlIO, True);
+
+	ConfigSensor(&pPD_DriverY->Origin);
+	ConfigSensor(&pPD_DriverY->Limit);
+	ConfigControlIO(&pPD_DriverY->ControlIO, True);
+
+	pwm_handler_ae = TCHandler;				//中断处理函数
+	pwm_ch_stop(pwm_pulseCh);				//
+
+	if(pTC_Driver2 == NULL && pTC_Driver1 == NULL)
+		return False;
 	else
-		ret = False;
-	if(pPWMC_Driver2 != NULL)
-	{
-		ConfigSensor(&pPWMC_Driver2->Origin);
-		ConfigSensor(&pPWMC_Driver2->Limit);
-		ConfigControlIO(&pPWMC_Driver2->ControlIO, True);
-		ConfigSensor(&pPWMC_Driver2->Fault);
-		ConfigSensor(&pPWMC_Driver2->OverTemp);
-		if(pPWMC_Driver2->ChannelValidLevel[0] == 0)
-			pPWMC_Driver2->pPWM_channel1->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		if(pPWMC_Driver2->ChannelValidLevel[1] == 0)
-			pPWMC_Driver2->pPWM_channel2->PWMC_CMR ^= AT91C_PWMC_CPOL;
-	}
-	else
-		ret = False;
-	
-#ifndef VM_PRINT
-	IRQ_ConfigureIT(AT91C_ID_PWMC, IRQ_PRI_PWM, PWMHandler);
-	IRQ_EnableIT(AT91C_ID_PWMC);
-#endif
-	
+		return True;
+
 	return ret;
 }
 
 typedef void (*pTCChannelHandle)(struct AxisParam_PulseDir_OpenLoop * pDCPWM);
 void TCHandler_dimmy(struct AxisParam_PulseDir_OpenLoop * pDCPWM)
 {
+	if(pwm_buffer_isempty(PWM_CH(pDCPWM->PWM_pulse_chid)))
+		pwm_ch_stop(PWM_CH(pDCPWM->PWM_pulse_chid));
 }
 pTCChannelHandle pTC1Handle, pTC2Handle; 
-
-INT8U InitTCChannel()
+pTCChannelHandle pPD_XHandle, pPD_YHandle;
+INT8U InitTCChannel(void)
 {
-	Pin MotionTCPin_1_A = PIN_STEPPER1_PULSE;
-	Pin MotionTCPin_1_A_Init = PIN_STEPPER1_PULSE_INIT;
-	Pin MotionTCPin_1_B = PIN_STEPPER1_DIR;
-	Pin MotionTCPin_2_A = PIN_STEPPER2_PULSE;
-	Pin MotionTCPin_2_A_Init = PIN_STEPPER2_PULSE_INIT;
-	Pin MotionTCPin_2_B = PIN_STEPPER2_DIR;
-	INT8U ret = True;
-	
-	PMC_EnablePeripheral(AT91C_ID_TC);
-	
-	AT91C_BASE_TCB1->TCB_BMR &= ~AT91C_TCB_TC0XC0S;
-	AT91C_BASE_TCB1->TCB_BMR |= AT91C_TCB_TC0XC0S_NONE;
-	AT91C_BASE_TCB1->TCB_BMR &= ~AT91C_TCB_TC1XC1S;
-	AT91C_BASE_TCB1->TCB_BMR |= AT91C_TCB_TC1XC1S_NONE;
-	
-	AT91C_BASE_TC3->TC_CCR = AT91C_TC_CLKDIS;
-	AT91C_BASE_TC3->TC_IDR = AT91C_TC_COVFS | AT91C_TC_LOVRS | AT91C_TC_CPAS | AT91C_TC_CPBS |
-		AT91C_TC_CPCS | AT91C_TC_LDRAS | AT91C_TC_LDRBS | AT91C_TC_ETRGS;
-	AT91C_BASE_TC3->TC_SR;
-	AT91C_BASE_TC3->TC_CMR = TC_TIMER_CLOCK_SRC | AT91C_TC_EEVT_XC0 | 
-		AT91C_TC_ACPA_SET | AT91C_TC_ACPC_CLEAR | AT91C_TC_BCPB_NONE | AT91C_TC_BCPC_NONE |
-			AT91C_TC_WAVESEL_UP_AUTO | AT91C_TC_WAVE;
-	
-	AT91C_BASE_TC4->TC_CCR = AT91C_TC_CLKDIS;
-	AT91C_BASE_TC4->TC_IDR = AT91C_TC_COVFS | AT91C_TC_LOVRS | AT91C_TC_CPAS | AT91C_TC_CPBS |
-		AT91C_TC_CPCS | AT91C_TC_LDRAS | AT91C_TC_LDRBS | AT91C_TC_ETRGS;
-	AT91C_BASE_TC4->TC_SR;
-	AT91C_BASE_TC4->TC_CMR = TC_TIMER_CLOCK_SRC | AT91C_TC_EEVT_XC0 | 
-		AT91C_TC_ACPA_SET | AT91C_TC_ACPC_CLEAR | AT91C_TC_BCPB_NONE | AT91C_TC_BCPC_NONE |
-			AT91C_TC_WAVESEL_UP_AUTO | AT91C_TC_WAVE;
-#ifdef VM_PRINT
-	AT91C_BASE_TC5->TC_CCR = AT91C_TC_CLKDIS;
-	AT91C_BASE_TC5->TC_IDR = AT91C_TC_COVFS | AT91C_TC_LOVRS | AT91C_TC_CPAS | AT91C_TC_CPBS |
-		AT91C_TC_CPCS | AT91C_TC_LDRAS | AT91C_TC_LDRBS | AT91C_TC_ETRGS;
-	AT91C_BASE_TC5->TC_SR;
-	AT91C_BASE_TC5->TC_CMR = AT91C_TC_CLKS_TIMER_DIV1_CLOCK | AT91C_TC_EEVT_XC0 | 
-		AT91C_TC_ACPA_SET | AT91C_TC_ACPC_CLEAR | AT91C_TC_BCPB_NONE | AT91C_TC_BCPC_NONE |
-			AT91C_TC_WAVESEL_UP_AUTO | AT91C_TC_WAVE;
-	
-	AT91C_BASE_TC5->TC_RA = ((BOARD_MCK/2)/(20*1000))/2 +0.5; //20KHz
-	AT91C_BASE_TC5->TC_RC = AT91C_BASE_TC5->TC_RA*2;
-	AT91C_BASE_TC5->TC_RB = AT91C_BASE_TC5->TC_RA*2;
-#endif
-	
-	pTC1Handle = TCHandler_dimmy;
-	pTC2Handle = TCHandler_dimmy; 
-	
-	if(pTC_Driver1 != NULL)
-	{
-		if(!pTC_Driver1->ChannelValidLevel[0])
-			AT91C_BASE_TC3->TC_CMR = TC_TIMER_CLOCK_SRC | AT91C_TC_EEVT_XC0 | 
-				AT91C_TC_ACPA_CLEAR | AT91C_TC_ACPC_SET | AT91C_TC_BCPB_NONE | AT91C_TC_BCPC_NONE |
-					AT91C_TC_WAVESEL_UP_AUTO | AT91C_TC_WAVE;
-		PIO_Configure(&MotionTCPin_1_A, PIO_LISTSIZE(MotionTCPin_1_A));
-		if(!pTC_Driver1->ChannelValidLevel[1])
-			MotionTCPin_1_B.type = PIO_OUTPUT_1;
-		PIO_Configure(&MotionTCPin_1_B, PIO_LISTSIZE(MotionTCPin_1_B));
-		ConfigControlIO(&pTC_Driver1->ControlIO, True); //keep stepper as reset
-		pTC_Driver1->TC_DirPin.PinIO = MotionTCPin_1_B;
-		pTC_Driver1->TC_DirPin.ValidLevel = pTC_Driver1->ChannelValidLevel[1];
-	}
-	else
-	{
-		PIO_Configure(&MotionTCPin_1_A_Init, PIO_LISTSIZE(MotionTCPin_1_A_Init));
-		PIO_Configure(&MotionTCPin_1_B, PIO_LISTSIZE(MotionTCPin_1_B));
-	}
-#if defined (EPSON_BOTTOM_BOARD_V3)&&(defined (EPSON_CLEAN_INTEGRATE)||defined (EPSON_CLEAN_INTEGRATE_1)||defined (EPSON_CLEAN_INTEGRATE_2)||defined (EPSON_CLEAN_INTEGRATE_3)) 
-	if(pTC_Driver2 != NULL && GetCleanPartCount() == 2)
-#else   
-		if(pTC_Driver2 != NULL)
-#endif
-		{
-			if(!pTC_Driver2->ChannelValidLevel[0])
-				AT91C_BASE_TC4->TC_CMR = TC_TIMER_CLOCK_SRC | AT91C_TC_EEVT_XC0 | 
-					AT91C_TC_ACPA_CLEAR | AT91C_TC_ACPC_SET | AT91C_TC_BCPB_NONE | AT91C_TC_BCPC_NONE |
-						AT91C_TC_WAVESEL_UP_AUTO | AT91C_TC_WAVE;
-			PIO_Configure(&MotionTCPin_2_A, PIO_LISTSIZE(MotionTCPin_2_A));
-			if(!pTC_Driver2->ChannelValidLevel[1])
-				MotionTCPin_2_B.type = PIO_OUTPUT_1;
-			PIO_Configure(&MotionTCPin_2_B, PIO_LISTSIZE(MotionTCPin_2_B));
-			ConfigControlIO(&pTC_Driver2->ControlIO, True); //keep stepper as reset
-			pTC_Driver2->TC_DirPin.PinIO = MotionTCPin_2_B;
-			pTC_Driver2->TC_DirPin.ValidLevel = pTC_Driver2->ChannelValidLevel[1];
-		}
-		else
-		{
-			PIO_Configure(&MotionTCPin_2_A_Init, PIO_LISTSIZE(MotionTCPin_2_A_Init));
-			PIO_Configure(&MotionTCPin_2_B, PIO_LISTSIZE(MotionTCPin_2_B));
-		}
-	
-#ifdef VM_PRINT
-	IRQ_ConfigureIT(AT91C_ID_TC, IRQ_PRI_TC, PWMHandler);
-	AT91C_BASE_TC5->TC_SR;
-	AT91C_BASE_TC5->TC_CCR = AT91C_TC_CLKEN|AT91C_TC_SWTRG;
-#else
-	IRQ_ConfigureIT(AT91C_ID_TC, IRQ_PRI_TC, TCHandler);
-#endif
-	IRQ_EnableIT(AT91C_ID_TC);
-	
-	if(pTC_Driver2 == NULL && pTC_Driver1 == NULL)
-		return False;
-	else
-		return True;
+	return True;
 }
 
-INT8U Motion_Init()
+INT8U Motion_Init(void)
 {
+
 	INT32U i;
 	INT8U ret = True;
-	
+#if 1
 	currCurveBuf = ACCTABLE_ADDR;
 	
 	//read e2prom.
@@ -2554,11 +2545,11 @@ INT8U Motion_Init()
 	
 	for(i = 0; i < motionParam.AxisCount; i++)
 	{
-		struct AxisParam_DC_PWM * pDCPWM = NULL;
+		//struct AxisParam_DC_PWM * pDCPWM = NULL;
 		struct AxisParam_PulseDir_OpenLoop * pStepperTC = NULL;
 		struct EPR_MOTION_AXIS_PARAM * pAxisParam = &motionParam.axis_param[i];
 		float ratio;
-		
+
 		if(pAxisParam->AxisID == AXIS_ID_X)
 		{
 			if( pAxisParam->motorType != MT_DC || 
@@ -2567,7 +2558,7 @@ INT8U Motion_Init()
 					   pAxisParam->PWM_ChannelID >= 2 )
 				return False;
 			else
-				pDCPWM = &XParam;
+				pStepperTC = &PD_XParam;
 		}
 		else if(pAxisParam->AxisID == AXIS_ID_Y)
 		{
@@ -2580,7 +2571,7 @@ INT8U Motion_Init()
 					   pAxisParam->PWM_ChannelID >= 2 )
 				return False;
 			else
-				pDCPWM = &YParam;
+				pStepperTC = &PD_YParam;
 		}
 		else if(pAxisParam->AxisID == AXIS_ID_Z)
 		{
@@ -2609,96 +2600,51 @@ INT8U Motion_Init()
 		else
 			return False;
 		
-		if(pDCPWM != NULL)
+		if(pAxisParam->PWM_ChannelID < 2)	//X or Y
 		{
-			memset(pDCPWM, 0, sizeof(struct AxisParam_DC_PWM));
-			pDCPWM->AxisID = pAxisParam->AxisID;
-			pDCPWM->ChannelNO = pAxisParam->PWM_ChannelID;
+			memset(pStepperTC, 0, sizeof(struct AxisParam_PulseDir_OpenLoop));
+			pStepperTC->AxisID = pAxisParam->AxisID;
+			pStepperTC->ChannelNO = pAxisParam->PWM_ChannelID;
 			
-			if(pAxisParam->controlType == CT_CLOSE_LOOP_MOTOR)
-			{
-				if(pAxisParam->AxisID == AXIS_ID_X)
-					pDCPWM->CoorRegAddr = EPSON_REGADDR_X_MOTOR_COOR;
-				else
-					pDCPWM->CoorRegAddr = EPSON_REGADDR_Y_MOTOR_COOR;
-			}
-			else if(pAxisParam->controlType == CT_CLOSE_LOOP)
-			{
-				if(pAxisParam->AxisID == AXIS_ID_X)
-					pDCPWM->CoorRegAddr = EPSON_REGADDR_X_PRT_COOR;
-				else
-					//pDCPWM->CoorRegAddr = EPSON_REGADDR_Y_FEEDBACK_COOR;
-					pDCPWM->CoorRegAddr = EPSON_REGADDR_Y_MOTOR_COOR;
-			}
-			else //CT_DOUBLE_CLOSE_LOOP
-			{
-				if(pAxisParam->AxisID == AXIS_ID_X)
-				{
-					pDCPWM->CoorRegAddr = EPSON_REGADDR_X_MOTOR_COOR;
-					pDCPWM->CoorRegAddr_DoubleFeedback = EPSON_REGADDR_X_PRT_COOR;
-				}
-				else
-				{ 
-					//pDCPWM->CoorRegAddr = EPSON_REGADDR_Y_MOTOR_COOR;
-					//pDCPWM->CoorRegAddr_DoubleFeedback = EPSON_REGADDR_Y_FEEDBACK_COOR;
-					return False;
-				}
-			}
+			ratio = pAxisParam->transmisstion_ratio_open_loop;
+			pStepperTC->ratio_move = ratio;
+
+			pAxisParam->motorType = MT_Stepper;
+			pAxisParam->controlType = CT_OPEN_LOOP;
+			pAxisParam->driveType = DT_PulseAndDir;
 			
-			if(!ConfigSensorPin(&(pDCPWM->Origin), pAxisParam, MSID_ORIGIN))
+			if(!ConfigSensorPin(&(pStepperTC->Origin), pAxisParam, MSID_ORIGIN))
 			{
 				if(pAxisParam->AxisID == AXIS_ID_X)
 					return False;
 			}
 			
-			ConfigSensorPin(&(pDCPWM->Limit), pAxisParam, MSID_LIMIT);
-			
-			if(pAxisParam->controlType == CT_CLOSE_LOOP)
-			{
-				ratio = pAxisParam->transmisstion_ratio_close_loop[0];
-				pDCPWM->ratio_move = ratio; 
-				pDCPWM->ratio_print[0] = ratio; 
-				pDCPWM->ratio_print[1] = pAxisParam->transmisstion_ratio_close_loop[1]; 
-				pDCPWM->ratio_print[2] = pAxisParam->transmisstion_ratio_close_loop[2]; 
-			}
-			else
-			{
-				ratio = pAxisParam->transmisstion_ratio_open_loop;
-				pDCPWM->ratio_move = ratio; 
-				pDCPWM->ratio_print[0] = ratio; 
-				pDCPWM->ratio_print[1] = ratio * pAxisParam->transmisstion_ratio_close_loop[0] / pAxisParam->transmisstion_ratio_close_loop[1]; 
-				pDCPWM->ratio_print[2] = ratio * pAxisParam->transmisstion_ratio_close_loop[0] / pAxisParam->transmisstion_ratio_close_loop[2]; 
-			}
-			
+			ConfigSensorPin(&(pStepperTC->Limit), pAxisParam, MSID_LIMIT);
 			if(pAxisParam->AxisID == AXIS_ID_X)
 			{
-				pDCPWM->Origin_Offset = XORIGIN_OFFSET_MOTOR;
-				pDCPWM->Origin_Offset_Feedback = XORIGIN_OFFSET;
+				pStepperTC->Origin_Offset = XORIGIN_OFFSET_MOTOR;
+			}
+
+			if(!(pAxisParam->option & SO_FIXED_REGION) && pStepperTC->Limit.IsValid)
+			{
+				pStepperTC->IsCheckTerm = True;
+				pStepperTC->Region_End = (INT32S)(0x7FFFFFFF);
 			}
 			else
 			{
-				pDCPWM->Origin_Offset_Feedback = pDCPWM->Origin_Offset = 0;
-			}
-			if(!(pAxisParam->option & SO_FIXED_REGION) && pDCPWM->Limit.IsValid)
-			{
-				pDCPWM->IsCheckTerm = True;
-				pDCPWM->Region_End = (INT32S)(0x7FFFFFFF);
-			}
-			else
-			{
-				pDCPWM->IsCheckTerm = False;
-				pDCPWM->Region_End = (INT32S)(0x7FFFFFFF);
+				pStepperTC->IsCheckTerm = False;
+				pStepperTC->Region_End = (INT32S)(0x7FFFFFFF);
 				if( pAxisParam->option & SO_FIXED_REGION)
 				{
-					pDCPWM->Region_End = (INT32S)(ratio * pAxisParam->Fixed_MoveRegion_EndPoint);
-					pDCPWM->Region_End += pDCPWM->Origin_Offset;
+					pStepperTC->Region_End = (INT32S)(ratio * pAxisParam->Fixed_MoveRegion_EndPoint);
+					pStepperTC->Region_End += pStepperTC->Origin_Offset;
 				}
 			}
-			pDCPWM->OriginSensorOffset = (INT32S)(ratio * pAxisParam->OriginOffset);
+			pStepperTC->OriginSensorOffset = (INT32S)(ratio * pAxisParam->OriginOffset);
 			if( pAxisParam->option & SO_FIXED_REGION)
 			{
-				pDCPWM->Region_Start = (INT32S)(ratio * pAxisParam->Fixed_MoveRegion_StartPoint);
-				pDCPWM->Region_Start += pDCPWM->Origin_Offset;
+				pStepperTC->Region_Start = (INT32S)(ratio * pAxisParam->Fixed_MoveRegion_StartPoint);
+				pStepperTC->Region_Start += pStepperTC->Origin_Offset;
 			}
 			else
 			{
@@ -2706,122 +2652,70 @@ INT8U Motion_Init()
 				   pAxisParam->Fixed_MoveRegion_StartPoint != 0x80000000 &&
 					   pAxisParam->Fixed_MoveRegion_StartPoint != 0x80000001 )
 				{
-					pDCPWM->Region_Start = (INT32S)(ratio * pAxisParam->Fixed_MoveRegion_StartPoint);
-					pDCPWM->Region_Start += pDCPWM->Origin_Offset;
+					pStepperTC->Region_Start = (INT32S)(ratio * pAxisParam->Fixed_MoveRegion_StartPoint);
+					pStepperTC->Region_Start += pStepperTC->Origin_Offset;
 				}   
 				else
-					pDCPWM->Region_Start = (INT32S)(0x80000001);
+					pStepperTC->Region_Start = (INT32S)(0x80000001);
 			}
 			
-			if( pDCPWM->ChannelNO == 0)
-			{
-				pPWMC_Driver1 = pDCPWM;
-				pDCPWM->pPWM_channel1 = AT91C_BASE_PWMC_CH0;
-				pDCPWM->pPWM_channel2 = AT91C_BASE_PWMC_CH1;
-				pDCPWM->Channel_Mask = (AT91C_PWMC_CHID0|AT91C_PWMC_CHID1);
-			}
+			pStepperTC->PWM_pulse_chid = 2 * pStepperTC->ChannelNO;
+			pStepperTC->PWM_dir_chid = 2 * pStepperTC->ChannelNO + 1;
+			if( pStepperTC->ChannelNO == 0)
+				pPD_DriverX = pStepperTC;
 			else
-			{
-				pPWMC_Driver2 = pDCPWM;
-				pDCPWM->pPWM_channel1 = AT91C_BASE_PWMC_CH2;
-				pDCPWM->pPWM_channel2 = AT91C_BASE_PWMC_CH3;
-				pDCPWM->Channel_Mask = (AT91C_PWMC_CHID2|AT91C_PWMC_CHID3);
-			}
+				pPD_DriverY = pStepperTC;
+
 			if( pAxisParam->ControlIOPolarityMask & (1<<MCID_PWM1))
-				pDCPWM->ChannelValidLevel[0] = True;
+				pStepperTC->ChannelValidLevel[0] = True;
 			else
-				pDCPWM->ChannelValidLevel[0] = False;
+				pStepperTC->ChannelValidLevel[0] = False;
 			if( pAxisParam->ControlIOPolarityMask & (1<<MCID_PWM2))
-				pDCPWM->ChannelValidLevel[1] = True;
+				pStepperTC->ChannelValidLevel[1] = True;
 			else
-				pDCPWM->ChannelValidLevel[1] = False;
+				pStepperTC->ChannelValidLevel[1] = False;
 			if( pAxisParam->ControlIOPolarityMask & (1<<MCID_Ctrl0))
-				pDCPWM->ControlIO.ValidLevel = True;
+				pStepperTC->ControlIO.ValidLevel = True;
 			else
-				pDCPWM->ControlIO.ValidLevel = False;
-			if(!ConfigCtrlPin(&pDCPWM->ControlIO, pAxisParam, MCID_Ctrl0))
+				pStepperTC->ControlIO.ValidLevel = False;
+			if(!ConfigCtrlPin(&pStepperTC->ControlIO, pAxisParam, MCID_Ctrl0))
 				return False;
-			ConfigSensorPin(&(pDCPWM->Fault), pAxisParam, MSID_FAULT);
-			ConfigSensorPin(&(pDCPWM->OverTemp), pAxisParam, MSID_OVERTEMP);
+			//ConfigSensorPin(&(pStepperTC->Fault), pAxisParam, MSID_FAULT);
+			//ConfigSensorPin(&(pStepperTC->OverTemp), pAxisParam, MSID_OVERTEMP);
 			
 			if(pAxisParam->AxisID == AXIS_ID_X)
 			{
-				pDCPWM->BaseDPI = 720;
-				pDCPWM->CurrDPI = 720;
+				pStepperTC->BaseDPI = 720;
+				pStepperTC->CurrDPI = 720;
 			}
 			else
 			{
-				pDCPWM->BaseDPI = 1;
-				pDCPWM->CurrDPI = 1;
+				pStepperTC->BaseDPI = 1;
+				pStepperTC->CurrDPI = 1;
 			}
-			if(!BuildPWMRatioTable(pDCPWM->ratioTable_StepPerCycle, pDCPWM, 
-								   pAxisParam, PWM_MOVE_CYCLE, pAxisParam->validSpeedLevel))
-				return False;
-			if(!BuildAllPWMCurve(pDCPWM, pAxisParam, PWM_MOVE_CYCLE)) //PWMCycleTick based on MCK(133Mhz).
-			{
+			
+			pStepperTC->PWM_modelTable[0] = pAxisParam->PWM_Model[0];
+			pStepperTC->PWM_modelTable[1] = pAxisParam->PWM_Model[1];
+			pStepperTC->PWM_modelTable[2] = pAxisParam->PWM_Model[2];
+
+			pStepperTC->Dir = DIRTYPE_STANDBY;
+			pStepperTC->CoorIdeal = pStepperTC->Origin_Offset;
+			pStepperTC->CurCoor = pStepperTC->CoorIdeal;
+			pStepperTC->MoveType = MOVETYPE_CONTINUE;
+			pStepperTC->PWM_model = pStepperTC->PWM_modelTable[0] ; //based on driver CHIP.
+			pStepperTC->AccSegment = ACCSEGTYPE_SPEED_UP; //0: constant, 1: speed up, 2: speed down.
+			pStepperTC->speedDownCoor = pStepperTC->Origin_Offset;
+			pStepperTC->speedDownIndex = 0;
+			pStepperTC->pAccTable = NULL;
+			pStepperTC->AccTableLen = 0;
+			pStepperTC->AccTableIndex = 0;
+			pStepperTC->ratio_move = ratio;
+			pStepperTC->Min_Distance = 0;
+			
+			//pStepperTC->lastCoor = 0;
+			if(!BuildAllPulseCurve(pStepperTC, pAxisParam))
 				status_ReportStatus(STATUS_FTA + SciError_Parameter, STATUS_SET);
-				return False;
-			}
-			if(!BuildAllPID((INT32U*)pDCPWM->PIDTable, pDCPWM, pAxisParam))
-				return False;
-			pDCPWM->PWM_modelTable[0] = pAxisParam->PWM_Model[0];
-			pDCPWM->PWM_modelTable[1] = pAxisParam->PWM_Model[1];
-			pDCPWM->PWM_modelTable[2] = pAxisParam->PWM_Model[2];
-			
-			pDCPWM->CoorIdeal = pDCPWM->Origin_Offset;
-			pDCPWM->Coor_nonRollback = pDCPWM->CoorIdeal;
-			if(pAxisParam->AxisID == AXIS_ID_X)
-				pDCPWM->PermitStopError = PWM_X_PERMIT_ERROR;
-			else
-				pDCPWM->PermitStopError = PWM_Y_PERMIT_ERROR;
-			pDCPWM->Coor_NextCycle = pDCPWM->CoorIdeal;
-			pDCPWM->Coor_NextCycle_Frac = 0;
-			pDCPWM->ratio_StepPerCycle = 0;
-			
-			pDCPWM->Dir = DIRTYPE_STANDBY;
-			pDCPWM->MoveType = MOVETYPE_CONTINUE; 
-			pDCPWM->PWM_model = pDCPWM->PWM_modelTable[0] ; //based on driver CHIP.
-			pDCPWM->AccSegment = ACCSEGTYPE_SPEED_UP; //0: constant, 1: speed up, 2: speed down.
-			
-			pDCPWM->curPWMTick = 0;
-			pDCPWM->curPWMTickInAccSegment = 0;
-			
-			pDCPWM->speedDownCoor = pDCPWM->Origin_Offset;
-			pDCPWM->speedDownIndex = 0;
-			
-			pDCPWM->pAccTable = NULL;
-			pDCPWM->AccTableLen = 0;
-			pDCPWM->AccTableIndex = 0;
-			
-			//PIDREG3 part
-			pDCPWM->e = 0;
-			pDCPWM->e1 = 0;
-			pDCPWM->e2 = 0;
-			pDCPWM->Kp = 0;
-			pDCPWM->Ki = 0;
-			pDCPWM->Kd = 0;
-			pDCPWM->fixpoint_bit = 0;
-			pDCPWM->pid_out_max = 0;
-			pDCPWM->pid_out_min = 0;
-			pDCPWM->pid_out = 0;
-			pDCPWM->pid_out_frac = 0;
-			pDCPWM->pid_i_out_frac = 0;
-			memset(pDCPWM->e_history, 0, ERROR_HISTORY_LEN*sizeof(int));
-			pDCPWM->e_i = 0;
-			
-			pDCPWM->PWM_CycleTime = PWM_STANDBY_CYCLE/2;
-			pDCPWM->PWM_MaxValue = PWM_STANDBY_CYCLE/2 -50;
-			pDCPWM->PWM_MinValue = 50; 
-			pDCPWM->PWM_CurValue = 0;
-			pDCPWM->PWM_OverLoadNum = 0;
-			
-			pDCPWM->PWM_MaxOverLoadNum = PWM_MAX_LOAD_NUM;//200
-			pDCPWM->PWM_DeadTime = PWM_DEAD_TIME; 
-			pDCPWM->Min_Distance = pDCPWM->PermitStopError;
-			
-			pDCPWM->lastCoor = 0;
-			
-			pDCPWM->pAxisParam = pAxisParam;
+			pStepperTC->pAxisParam = pAxisParam;
 		}
 		else
 		{   //open_loop, pulse_dir
@@ -2869,16 +2763,33 @@ INT8U Motion_Init()
 				pStepperTC->Region_Start = (INT32S)(0x80000001);
 			
 			//channel info.
-			if(pStepperTC->ChannelNO == 2)
+			if(pStepperTC->ChannelNO == 0)
+			{
+				pPD_DriverX = pStepperTC;
+			}
+			else if(pStepperTC->ChannelNO == 1)
+			{
+				pPD_DriverY = pStepperTC;
+			}
+			else if(pStepperTC->ChannelNO == 2)
 			{
 				pTC_Driver1 = pStepperTC;
-				pStepperTC->pTC_channel = AT91C_BASE_TC3;
+
 			}
-			else
+			else if (pStepperTC->ChannelNO == 3)
 			{
 				pTC_Driver2 = pStepperTC;
-				pStepperTC->pTC_channel = AT91C_BASE_TC4;
+
 			}
+			else
+			{}
+
+			if(pStepperTC->ChannelNO >= 0 && pStepperTC->ChannelNO <= 3)
+			{
+				pStepperTC->PWM_pulse_chid = 2 * pStepperTC->ChannelNO;
+				pStepperTC->PWM_dir_chid = 2 * pStepperTC->ChannelNO + 1;
+			}
+
 			if( pAxisParam->ControlIOPolarityMask & (1<<MCID_PWM1))
 				pStepperTC->ChannelValidLevel[0] = True;
 			else
@@ -2942,6 +2853,7 @@ INT8U Motion_Init()
 		printer.org_oppLimit = XParam.pAxisParam->Fixed_Position[MPID_MOVEEND];
 	}
 	
+#endif
 	return ret;
 }
 
@@ -3014,7 +2926,7 @@ INT8U PWM_SafeCheck(struct AxisParam_DC_PWM * pDCPWM)
 	}
 }
 
-inline void PWMHandler_GetCoor(INT32U * curCh1Coor, INT32U * curCh2Coor) FAST_FUNC_SECTION
+inline void PWMHandler_GetCoor_old(INT32U * curCh1Coor, INT32U * curCh2Coor) FAST_FUNC_SECTION
 {
 	OS_CPU_SR cpu_sr;
 	INT32U LAST_COOR[2] = {0};
@@ -3132,50 +3044,131 @@ inline void PWMHandler_GetCoor(INT32U * curCh1Coor, INT32U * curCh2Coor) FAST_FU
 //for not record case,  it will spend 0x500~0x600 clock for standby adjustment. 1/4 loading of CPU time.
 //for record case. it will spend 0x800~0x900 clock for standby adjustment. 1/3 loading of CPU time .
 // NOTE: if PWM freq is 20Khz, the PWM cycle is 6666 clock, about 0x1A0A.
+#if HE_ADD
 INT32U LAST_COOR[2] = {0xFFFFFFFF, 0xFFFFFFFF};
 void PWMHandler(void) FAST_FUNC_SECTION
 { 
+}
+#else
+INT32U LAST_COOR[2] = {0xFFFFFFFF, 0xFFFFFFFF};
+void PWMHandler_old(void *arg) FAST_FUNC_SECTION
+{
+#if 0
+	int i = 0;
+	uint32_t chId = (uint32_t)arg;
+	static uint32_t cnt = 0;
+	int chIndex = 0;
+
+	static uint8_t level = 0;
+		static uint32_t periodNum = 100;
+		static uint32_t period1 = 5000;
+		static uint32_t period2 = 3000;
+		static uint32_t period3 = 3000;
+		static uint32_t duty1 = 1500;
+		static uint32_t duty2 = 0;
+		static uint32_t duty3 = 1500;
+		static uint32_t period_s = 5000;
+		static uint32_t period_e = 1000;
+		static uint32_t duty_acc = 500;
+		static uint8_t acc_time = 1;	//秒
+		static uint32_t per_tatal_num = 0;
+
+		static uint32_t cur_per = 3000;
+		uint32_t per = acc_time * 1000 * 10 / ((period_s * 10 / 1000) * (period_s * 10 / 1000 - 1) / 2
+				- (period_e * 10 / 1000) * (period_e * 10 / 1000 - 1) / 2);
+
+
+		if(per_tatal_num++ < 10 * 1000 * 60)	//加
+		{
+
+			if(cur_per >= period_e)
+			{
+				if(cnt++ < per)
+				{
+					pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
+				}
+				else if(cnt >= per)
+				{
+					pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
+					cur_per--;
+					cnt = 0;
+				}
+			}
+			else
+			{
+				pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
+			}
+		}
+		else if(per_tatal_num++ < 10 * 1000 * 110)	// 匀
+		{
+			pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
+		}
+		else if(per_tatal_num++ < 10 * 1000 * 180)	//减
+		{
+			if(cur_per < period_s)
+			{
+				if(cnt++ < per)
+				{
+					pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
+				}
+				else if(cnt >= per)
+				{
+					pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
+					cur_per++;
+					cnt = 0;
+				}
+			}
+			else
+			{
+				pwm_ch_set_pwm(chIndex, cur_per, 0);
+			}
+		}
+		else
+		{
+			per_tatal_num = 0;
+		}
+		pwm_irq_almost_enable(PWM_GRP0, 1);
+		pwm_enable(PWM_GRP0, 1);
+#else
+
 	INT32U curCh1Coor, curCh2Coor;
-	INT32U isr = AT91C_BASE_PWMC->PWMC_ISR & AT91C_BASE_PWMC->PWMC_IMR & AT91C_BASE_PWMC->PWMC_SR;
-	
-	PWMHandler_GetCoor(&curCh1Coor, &curCh2Coor);
-	
+	INT32U isr = 0;
+
+	//PWMHandler_GetCoor(&curCh1Coor, &curCh2Coor);
+
 	if(LAST_COOR[0]!=0xFFFFFFFF && (absv(LAST_COOR[0] - curCh1Coor) > 1000))
 		curCh1Coor = pPWMC_Driver1->Coor_NextCycle - pPWMC_Driver1->e;
 	else
 		LAST_COOR[0] = curCh1Coor;
-	
+
 	if(LAST_COOR[1]!=0xFFFFFFFF && (absv(LAST_COOR[1] - curCh2Coor) > 1000))
 		curCh2Coor = pPWMC_Driver2->Coor_NextCycle - pPWMC_Driver2->e;
 	else
-		LAST_COOR[1] = curCh2Coor;	 
-	
-#ifdef VM_PRINT
-	isr = AT91C_BASE_TC5->TC_SR & AT91C_BASE_TC5->TC_IMR;
-	(*pPWM1Handle)(pPWMC_Driver1, curCh1Coor);
-#else
-	if(isr & (AT91C_PWMC_CHID0|AT91C_PWMC_CHID1))
-		(*pPWM1Handle)(pPWMC_Driver1, curCh1Coor);
-	if(isr & (AT91C_PWMC_CHID2|AT91C_PWMC_CHID3))
-		(*pPWM2Handle)(pPWMC_Driver2, curCh2Coor);
+		LAST_COOR[1] = curCh2Coor;
+	(*pPD_PWMHandleX)(pPD_DriverX, curCh1Coor);
+	if(isr & (PWM_CH(0)|PWM_CH(1)))
+		(*pPD_PWMHandleX)(pPD_DriverX, curCh1Coor);
+	if(isr & (PWM_CH(2)|PWM_CH(3)))
+		(*pPD_PWMHandleX)(pPD_DriverY, curCh2Coor);
 #endif
 }
+#endif
 
-INT8U ExitResetStatus()
+INT8U ExitResetStatus(void)
 {
-	if(pPWMC_Driver1 != NULL)
+	if(pPD_DriverX != NULL)
 	{
-		if(!pPWMC_Driver1->ControlIO.ValidLevel)
-			PIO_Set(&pPWMC_Driver1->ControlIO.PinIO);
+		if(!pPD_DriverX->ControlIO.ValidLevel)
+			PIO_Set(&pPD_DriverX->ControlIO.PinIO);
 		else
-			PIO_Clear(&pPWMC_Driver1->ControlIO.PinIO);
+			PIO_Clear(&pPD_DriverX->ControlIO.PinIO);
 	}
-	if(pPWMC_Driver2 != NULL)
+	if(pPD_DriverY != NULL)
 	{
-		if(!pPWMC_Driver2->ControlIO.ValidLevel)
-			PIO_Set(&pPWMC_Driver2->ControlIO.PinIO);
+		if(!pPD_DriverY->ControlIO.ValidLevel)
+			PIO_Set(&pPD_DriverY->ControlIO.PinIO);
 		else
-			PIO_Clear(&pPWMC_Driver2->ControlIO.PinIO);
+			PIO_Clear(&pPD_DriverY->ControlIO.PinIO);
 	}
 	if(pTC_Driver1 != NULL)
 	{
@@ -3194,7 +3187,7 @@ INT8U ExitResetStatus()
 	return True;
 }
 
-INT8U PWM_Urgent_Stop(struct AxisParam_DC_PWM * pDCPWM)
+INT8U PWM_Urgent_Stop(struct AxisParam_PulseDir_OpenLoop * pDCPWM)
 {
 	OS_CPU_SR cpu_sr;
 	
@@ -3204,51 +3197,25 @@ INT8U PWM_Urgent_Stop(struct AxisParam_DC_PWM * pDCPWM)
 	else
 		PIO_Clear(&pDCPWM->ControlIO.PinIO);
 	
-	pDCPWM->PWM_CycleTime = PWM_STANDBY_CYCLE/2;
-	
 #ifndef VM_PRINT
-	pDCPWM->pPWM_channel1->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-	if(pDCPWM->ChannelValidLevel[0] == 0)
-		pDCPWM->pPWM_channel1->PWMC_CMR ^= AT91C_PWMC_CPOL;
-	pDCPWM->pPWM_channel2->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-	if(pDCPWM->ChannelValidLevel[1] == 0)
-		pDCPWM->pPWM_channel2->PWMC_CMR ^= AT91C_PWMC_CPOL;
-	pDCPWM->pPWM_channel1->PWMC_CPRDR = pDCPWM->PWM_CycleTime;
-	pDCPWM->pPWM_channel2->PWMC_CPRDR = pDCPWM->PWM_CycleTime;
-	pDCPWM->pPWM_channel1->PWMC_CDTYR = pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-	pDCPWM->pPWM_channel2->PWMC_CDTYR = pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
+	pwm_ch_stop(PWM_CH(pDCPWM->PWM_pulse_chid));
 #endif
 	if( pDCPWM->ChannelNO == 0)
-		pPWM1Handle = PWMHandler_dimmy;
+		pPD_XHandle = TCHandler_dimmy;
 	else
-		pPWM2Handle = PWMHandler_dimmy;
+		pPD_YHandle = TCHandler_dimmy;
 #ifdef VM_PRINT
 	VM_PWM_STOP();
-	AT91C_BASE_TC5->TC_IDR = AT91C_TC_CPCS;
-#else
-	AT91C_BASE_PWMC->PWMC_IDR = pDCPWM->Channel_Mask;
-	AT91C_BASE_PWMC->PWMC_DIS = pDCPWM->Channel_Mask;
 #endif
-	
-#ifdef   HEAD_EPSON_GEN5
-	SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, ER_CoorCtrl_SMOOTH_DIVIDER_720 | ER_CoorCtrl_SMOOTH_MULTI_720);
-#else
-	rFPGA_RICOH_COORCTRL_L = ER_CoorCtrl_SMOOTH_DIVIDER_720 |ER_CoorCtrl_SMOOTH_MULTI_720;
-#endif
+
+	WriteReg32Data(REG_COOR_SYS_CTRL, ER_CoorCtrl_SMOOTH_DIVIDER_720 | ER_CoorCtrl_SMOOTH_MULTI_720);
 	pDCPWM->BaseDPI = 720;
 	pDCPWM->CurrDPI = 720;
 	
 	//pDCPWM->CoorIdeal
-	pDCPWM->Coor_NextCycle = pDCPWM->CoorIdeal;
-	pDCPWM->Coor_NextCycle_Frac = 0;
-	pDCPWM->ratio_StepPerCycle = 0;
-	
 	pDCPWM->Dir = DIRTYPE_STANDBY;
 	pDCPWM->MoveType = MOVETYPE_CONTINUE;
 	pDCPWM->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
-	
-	pDCPWM->curPWMTick = 0;
-	pDCPWM->curPWMTickInAccSegment = 0;
 	
 	pDCPWM->speedDownCoor = 0;
 	pDCPWM->speedDownIndex = 0;
@@ -3256,26 +3223,6 @@ INT8U PWM_Urgent_Stop(struct AxisParam_DC_PWM * pDCPWM)
 	pDCPWM->pAccTable = NULL;
 	pDCPWM->AccTableLen = 0;
 	pDCPWM->AccTableIndex = 0;
-	
-	pDCPWM->PWM_MaxValue = PWM_STANDBY_CYCLE/2 -50;
-	pDCPWM->PWM_MinValue = 50; 
-	pDCPWM->PWM_CurValue = 0;
-	pDCPWM->PWM_OverLoadNum = 0;
-	
-	pDCPWM->e = 0;
-	pDCPWM->e1 = 0;
-	pDCPWM->e2 = 0;
-	pDCPWM->Kp = pDCPWM->PIDTable[0][0];
-	pDCPWM->Ki = pDCPWM->PIDTable[0][1];
-	pDCPWM->Kd = pDCPWM->PIDTable[0][2];
-	pDCPWM->fixpoint_bit = PID_SHIFT_BIT; 
-	pDCPWM->pid_out_max = pDCPWM->PWM_CycleTime/2;
-	pDCPWM->pid_out_min = -(pDCPWM->PWM_CycleTime/2);
-	pDCPWM->pid_out = 0;
-	pDCPWM->pid_out_frac = 0;
-	pDCPWM->pid_i_out_frac = 0;
-	memset(pDCPWM->e_history, 0, ERROR_HISTORY_LEN*sizeof(int));
-	pDCPWM->e_i = 0;
 	
 	OS_EXIT_CRITICAL();
 	return True;
@@ -3354,277 +3301,19 @@ INT8U calcPID(struct AxisParam_DC_PWM * pDCPWM) FAST_FUNC_SECTION
 	return True;
 }
 
-void PWMHandler_Standby_UNI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoor) FAST_FUNC_SECTION
-{
-#ifdef VM_PRINT
-	curCoor = pDCPWM->Coor_NextCycle;
-#else
-	pDCPWM->e = (INT32S)(pDCPWM->Coor_NextCycle - curCoor);
-	if( calcPID(pDCPWM))
-	{
-		//start status: CPOL = 0, CUPDR = 100%
-		if( pDCPWM->PWM_CurValue >= 0)
-		{
-			pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime - pDCPWM->PWM_CurValue;
-			pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-		}
-		else
-		{
-			pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-			pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime + pDCPWM->PWM_CurValue;
-		}
-	}
-#endif
-	pDCPWM->curPWMTick ++;
-	PutMoveRecord(pDCPWM->Dir, pDCPWM->AccSegment, pDCPWM->MoveType, (pDCPWM->AxisID == AXIS_ID_X), 
-				  False, pDCPWM->PWM_CurValue, pDCPWM->Coor_NextCycle, curCoor);
-}
-
-void PWMHandler_Standby_BI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoor) FAST_FUNC_SECTION
-{
-#ifdef VM_PRINT
-	curCoor = pDCPWM->Coor_NextCycle;
-#else
-	pDCPWM->e = (INT32S)(pDCPWM->Coor_NextCycle - curCoor);
-	if( calcPID(pDCPWM))
-	{
-		//start status: X1: CPOL = 0, CUPDR = (50% - deadtime); X1: CPOL = 1, CUPDR = (50% + deadtime).
-		pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime - pDCPWM->PWM_CurValue;
-		pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime - (pDCPWM->PWM_CurValue + pDCPWM->PWM_DeadTime);
-	}
-#endif
-	pDCPWM->curPWMTick ++;
-	PutMoveRecord(pDCPWM->Dir, pDCPWM->AccSegment, pDCPWM->MoveType, (pDCPWM->AxisID == AXIS_ID_X), 
-				  False, pDCPWM->PWM_CurValue, pDCPWM->Coor_NextCycle, curCoor);
-}
-
-void PWM_Start_Standy(struct AxisParam_DC_PWM * pDCPWM, INT32U standbyPos, INT8U bKeepPIDErr, INT8U LastPWMModel)
-{
-	pDCPWM->CoorIdeal = standbyPos;
-	pDCPWM->Coor_NextCycle = standbyPos;
-	pDCPWM->Coor_NextCycle_Frac = 0;
-	pDCPWM->ratio_StepPerCycle = 0;
-	
-	pDCPWM->Dir = DIRTYPE_STANDBY;
-	pDCPWM->MoveType = MOVETYPE_CONTINUE;
-	pDCPWM->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
-	
-	pDCPWM->curPWMTick = 0;
-	pDCPWM->curPWMTickInAccSegment = 0;
-	
-	pDCPWM->speedDownCoor = 0;
-	pDCPWM->speedDownIndex = 0;
-	
-	pDCPWM->pAccTable = NULL;
-	pDCPWM->AccTableLen = 0;
-	pDCPWM->AccTableIndex = 0;
-	
-	pDCPWM->PWM_CycleTime = PWM_STANDBY_CYCLE/2;
-	pDCPWM->PWM_OverLoadNum = 0;
-	switch(pDCPWM->PWM_model)
-	{
-	case PWMTYPE_UNI_POLAR:
-		pDCPWM->PWM_MaxValue = (pDCPWM->PWM_CycleTime - 50);
-		pDCPWM->PWM_MinValue = -(pDCPWM->PWM_CycleTime - 50); 
-		if(bKeepPIDErr)
-		{
-			if(LastPWMModel == PWMTYPE_BI_POLAR)
-			{
-				pDCPWM->PWM_CurValue = (pDCPWM->PWM_CurValue - (pDCPWM->PWM_CycleTime - pDCPWM->PWM_DeadTime)/2) * 2;
-				if(pDCPWM->PWM_CurValue > pDCPWM->PWM_MaxValue)
-					pDCPWM->PWM_CurValue = pDCPWM->PWM_MaxValue;
-				else if(pDCPWM->PWM_CurValue < pDCPWM->PWM_MinValue)
-					pDCPWM->PWM_CurValue = pDCPWM->PWM_MinValue;
-			}
-		}
-		else
-			pDCPWM->PWM_CurValue = 0;
-		break;
-	default:
-	case PWMTYPE_BI_POLAR:
-		pDCPWM->PWM_MaxValue = (pDCPWM->PWM_CycleTime - 50);
-		pDCPWM->PWM_MinValue = 50; 
-		if(bKeepPIDErr)
-		{
-			if(LastPWMModel == PWMTYPE_UNI_POLAR)
-			{
-				pDCPWM->PWM_CurValue = pDCPWM->PWM_CurValue/2 + (pDCPWM->PWM_CycleTime - pDCPWM->PWM_DeadTime)/2;
-				if(pDCPWM->PWM_CurValue > pDCPWM->PWM_MaxValue)
-					pDCPWM->PWM_CurValue = pDCPWM->PWM_MaxValue;
-				else if(pDCPWM->PWM_CurValue < pDCPWM->PWM_MinValue)
-					pDCPWM->PWM_CurValue = pDCPWM->PWM_MinValue;
-			}
-		}
-		else
-			pDCPWM->PWM_CurValue = (pDCPWM->PWM_CycleTime - pDCPWM->PWM_DeadTime)/2;
-		break;
-	}
-	
-	//PIDREG3 part
-	if(!bKeepPIDErr)
-	{
-		pDCPWM->e = 0;
-		pDCPWM->e1 = 0;
-		pDCPWM->e2 = 0;
-		memset(pDCPWM->e_history, 0, ERROR_HISTORY_LEN*sizeof(int));
-		pDCPWM->e_i = 0;
-	}
-	pDCPWM->Kp = pDCPWM->PIDTable[0][0];
-	pDCPWM->Ki = pDCPWM->PIDTable[0][1];
-	pDCPWM->Kd = pDCPWM->PIDTable[0][2];
-	pDCPWM->fixpoint_bit = PID_SHIFT_BIT; 
-	pDCPWM->pid_out_max = pDCPWM->PWM_CycleTime/2;
-	pDCPWM->pid_out_min = -(pDCPWM->PWM_CycleTime/2);
-	pDCPWM->pid_out = 0;
-	pDCPWM->pid_out_frac = 0;
-	
-	//AT91C_BASE_PWMC->PWMC_MR = 0;
-#ifndef VM_PRINT
-	pDCPWM->pPWM_channel1->PWMC_CPRDR = pDCPWM->PWM_CycleTime;
-	pDCPWM->pPWM_channel2->PWMC_CPRDR = pDCPWM->PWM_CycleTime;
-	switch(pDCPWM->PWM_model)
-	{
-	case PWMTYPE_UNI_POLAR:
-		pDCPWM->pPWM_channel1->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-		if(pDCPWM->ChannelValidLevel[0] == 0)
-			pDCPWM->pPWM_channel1->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel2->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-		if(pDCPWM->ChannelValidLevel[1] == 0)
-			pDCPWM->pPWM_channel2->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel1->PWMC_CDTYR = pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-		pDCPWM->pPWM_channel2->PWMC_CDTYR = pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-		if( pDCPWM->ChannelNO == 0)
-			pPWM1Handle = PWMHandler_Standby_UNI_POLAR;
-		else
-			pPWM2Handle = PWMHandler_Standby_UNI_POLAR;
-		AT91C_BASE_PWMC->PWMC_IER = pDCPWM->Channel_Mask;
-		AT91C_BASE_PWMC->PWMC_ENA = pDCPWM->Channel_Mask;
-		break;
-	case PWMTYPE_BI_POLAR:
-		pDCPWM->pPWM_channel1->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-		if(pDCPWM->ChannelValidLevel[0] == 0)
-			pDCPWM->pPWM_channel1->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel2->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG | AT91C_PWMC_CPOL;
-		if(pDCPWM->ChannelValidLevel[1] == 0)
-			pDCPWM->pPWM_channel2->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel1->PWMC_CDTYR = pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime - pDCPWM->PWM_CurValue;
-		pDCPWM->pPWM_channel2->PWMC_CDTYR = pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime - (pDCPWM->PWM_CurValue + pDCPWM->PWM_DeadTime);;
-		if( pDCPWM->ChannelNO == 0)
-			pPWM1Handle = PWMHandler_Standby_BI_POLAR;
-		else
-			pPWM2Handle = PWMHandler_Standby_BI_POLAR;
-		AT91C_BASE_PWMC->PWMC_IER = pDCPWM->Channel_Mask;
-		AT91C_BASE_PWMC->PWMC_ENA = pDCPWM->Channel_Mask;
-		break;
-	case PWMTYPE_STANDBY_LOWLOOP:
-		pDCPWM->pPWM_channel1->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-		if(pDCPWM->ChannelValidLevel[0] == 0)
-			pDCPWM->pPWM_channel1->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel2->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-		if(pDCPWM->ChannelValidLevel[1] == 0)
-			pDCPWM->pPWM_channel2->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel1->PWMC_CDTYR = pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-		pDCPWM->pPWM_channel2->PWMC_CDTYR = pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-		if( pDCPWM->ChannelNO == 0)
-			pPWM1Handle = PWMHandler_dimmy;
-		else
-			pPWM2Handle = PWMHandler_dimmy;
-		AT91C_BASE_PWMC->PWMC_IDR = pDCPWM->Channel_Mask;
-		AT91C_BASE_PWMC->PWMC_DIS = pDCPWM->Channel_Mask;
-		break;
-	}
-#endif
-}
-
-INT8U PWM_Start_Standy_X(struct AxisParam_DC_PWM * pDCPWM, INT32U standbyPos, INT8U bKeepPIDErr)
-{
-	OS_CPU_SR cpu_sr;
-	INT8U LastPWMModel;
-	
-	if(!PWM_SafeCheck(pDCPWM))
-		return False;
-	
-	OS_ENTER_CRITICAL();
-#ifdef   HEAD_EPSON_GEN5
-	SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, ER_CoorCtrl_SMOOTH_DIVIDER_720 | ER_CoorCtrl_SMOOTH_MULTI_720);
-#else
-	rFPGA_RICOH_COORCTRL_L = ER_CoorCtrl_SMOOTH_DIVIDER_720 |ER_CoorCtrl_SMOOTH_MULTI_720;
-#endif
-	pDCPWM->BaseDPI = 720;
-	pDCPWM->CurrDPI = 720;
-	
-	LastPWMModel = pDCPWM->PWM_model;
-	pDCPWM->PWM_model = pDCPWM->PWM_modelTable[0] ;
-	
-	if( pDCPWM->PWM_model != PWMTYPE_UNI_POLAR &&
-	   pDCPWM->PWM_model != PWMTYPE_BI_POLAR &&
-		   pDCPWM->PWM_model != PWMTYPE_STANDBY_LOWLOOP 
-			   //&& pDCPWM->PWM_model != PWMTYPE_STANDBY_HIGHLOOP
-			   )
-		pDCPWM->PWM_model = PWMTYPE_BI_POLAR;
-	
-	PWM_Start_Standy(pDCPWM, standbyPos, bKeepPIDErr, LastPWMModel);
-	
-	OS_EXIT_CRITICAL();
-	return True;
-}
-
-INT8U PWM_Start_Standy_Y(struct AxisParam_DC_PWM * pDCPWM, INT32U standbyPos, INT8U bKeepPIDErr)
-{
-	OS_CPU_SR cpu_sr;
-	INT8U LastPWMModel;
-	
-	if(!PWM_SafeCheck(pDCPWM))
-		return False;
-	
-	OS_ENTER_CRITICAL();
-	
-	pDCPWM->BaseDPI = 1;
-	pDCPWM->CurrDPI = 1;
-	
-	LastPWMModel = pDCPWM->PWM_model;
-	pDCPWM->PWM_model = pDCPWM->PWM_modelTable[0] ;
-	
-	if( pDCPWM->PWM_model != PWMTYPE_UNI_POLAR &&
-	   pDCPWM->PWM_model != PWMTYPE_BI_POLAR &&
-		   pDCPWM->PWM_model != PWMTYPE_STANDBY_LOWLOOP 
-			   //&& pDCPWM->PWM_model != PWMTYPE_STANDBY_HIGHLOOP
-			   )
-		pDCPWM->PWM_model = PWMTYPE_UNI_POLAR;
-	
-	PWM_Start_Standy(pDCPWM, standbyPos, bKeepPIDErr, LastPWMModel);
-	
-	OS_EXIT_CRITICAL();
-	return True;
-}
-
 #define PWM_Stop_X(a)    PWM_Stop(a)
 #define PWM_Stop_Y(a)    PWM_Stop(a)
-INT8U PWM_Stop(struct AxisParam_DC_PWM * pDCPWM)
+INT8U PWM_Stop(struct AxisParam_PulseDir_OpenLoop * pPD_PWM)
 {
-	OS_CPU_SR cpu_sr;
-	
-	OS_ENTER_CRITICAL();
-	
-	AT91C_BASE_PWMC->PWMC_IDR = pDCPWM->Channel_Mask;
-#ifdef VM_PRINT
-	AT91C_BASE_TC5->TC_IDR = AT91C_TC_CPCS;
-#else
-	pDCPWM->pPWM_channel1->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-	if(pDCPWM->ChannelValidLevel[0] == 0)
-		pDCPWM->pPWM_channel1->PWMC_CMR ^= AT91C_PWMC_CPOL;
-	pDCPWM->pPWM_channel2->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-	if(pDCPWM->ChannelValidLevel[1] == 0)
-		pDCPWM->pPWM_channel2->PWMC_CMR ^= AT91C_PWMC_CPOL;
-	AT91C_BASE_PWMC->PWMC_DIS = pDCPWM->Channel_Mask;
-#endif
-	
-	if(pDCPWM->ChannelNO == 0)
-		pPWM1Handle = PWMHandler_dimmy;
+
+	//在停止时，FPGA的缓冲里可能还有未执行完的脉冲，因此该stop函数要修改
+	if(pPD_PWM->ChannelNO == 0)
+		pPD_XHandle = TCHandler_dimmy;
 	else
-		pPWM2Handle = PWMHandler_dimmy; 
-	
-	OS_EXIT_CRITICAL();
+		pPD_YHandle = TCHandler_dimmy;
+
+	pPD_PWM->Dir = DIRTYPE_STANDBY;
+
 	return True;
 }
 
@@ -3634,12 +3323,15 @@ INT32U PWM_NUM = 0;
 INT8U BEGIN_PWM =False;
 INT8U IS_PRINT =False;
 #endif
-void PWMHandler_PosDir_UNI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoor) FAST_FUNC_SECTION
+
+void PWMHandler_PosDir_UNI_POLAR(struct AxisParam_PulseDir_OpenLoop * pStepperTC) FAST_FUNC_SECTION
 {
+	pStepperTC->CurCoor ++;
+	INT32U period = 0;
+
 #ifdef VM_PRINT
 	static INT8U first1 =True, first2 =True;
 	INT32U cur_print_coor;
-	curCoor = pDCPWM->Coor_NextCycle;
 	if(BEGIN_PWM == True)
 	{
 		if(PWM_NUM > 0)
@@ -3648,22 +3340,25 @@ void PWMHandler_PosDir_UNI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoo
 				PWM_NUM = 0;
 			else
 				PWM_NUM--;
-			if(first2 ==True)
+			if(first1 == True)
 			{
-				VM_PWM_START(pDCPWM);
-				first2 =False;
+				pwm_ch_start(MOTOR_PWM_VM, pStepperTC->Dir);
+				VM_PWM_START(pStepperTC);
+				first1 = False;
 			}
+			else
+				VM_PWM_START(pStepperTC);
+
 		}
 		else
 		{
 			if(IS_PRINT == True)
 			{
-#ifdef   HEAD_EPSON_GEN5  			
-				cur_print_coor = ReadSafeEpsonRegInt(EPSON_REGADDR_X_PRT_COOR);	
-#elif defined(HEAD_RICOH_G4)
-				cur_print_coor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
-#endif
-				if(pDCPWM->Dir == DIRTYPE_POS)
+				VM_PWM_START(pStepperTC);
+
+				cur_print_coor = REG_PRT_COOR_X;
+
+				if(pStepperTC->Dir == DIRTYPE_POS)
 				{
 					if((cur_print_coor - 0x40000)>= (printInfo.PrintMove_Start>printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
 					{
@@ -3691,99 +3386,85 @@ void PWMHandler_PosDir_UNI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoo
 		}
 	}
 #else
-	pDCPWM->e = (INT32S)(pDCPWM->Coor_NextCycle - curCoor);
-	if(calcPID(pDCPWM))
-	{
-		//start status: CPOL = 0, CUPDR = 100%
-		pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime - pDCPWM->PWM_CurValue;
-		pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-	}
-	PutMoveRecord(pDCPWM->Dir, pDCPWM->AccSegment, pDCPWM->MoveType, (pDCPWM->AxisID == AXIS_ID_X), 
-				  False, pDCPWM->PWM_CurValue, pDCPWM->Coor_NextCycle, curCoor);
+	//calcPID
+	//set duty and period
+	//PutMoveRecord
+
 #endif
-	
-	pDCPWM->curPWMTick ++;
-	
-	if(pDCPWM->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
+
+	if(pStepperTC->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
 	{
-		pDCPWM->Coor_NextCycle_Frac += pDCPWM->ratio_StepPerCycle;
-		pDCPWM->Coor_NextCycle += (pDCPWM->Coor_NextCycle_Frac >> 24);
-		pDCPWM->Coor_NextCycle_Frac &= 0xFFFFFF;
-		if( (INT32S)pDCPWM->Coor_NextCycle >= (INT32S)pDCPWM->speedDownCoor )
+		if( (INT32S)pStepperTC->CurCoor >= (INT32S)pStepperTC->speedDownCoor )
 		{
-			pDCPWM->AccSegment = ACCSEGTYPE_SPEED_DOWN;
-			pDCPWM->curPWMTickInAccSegment = 0;
-			pDCPWM->AccTableIndex = pDCPWM->speedDownIndex;
-			
-			pDCPWM->Coor_NextCycle = pDCPWM->speedDownCoor;
+			pStepperTC->AccSegment = ACCSEGTYPE_SPEED_DOWN;
+			pStepperTC->AccTableIndex = pStepperTC->speedDownIndex;
 		}
-		else
-			pDCPWM->curPWMTickInAccSegment ++;
+		period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+		pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 	}
-	else if(pDCPWM->AccSegment == ACCSEGTYPE_SPEED_UP)
+	else if (pStepperTC->AccSegment == ACCSEGTYPE_SPEED_UP)
 	{
 #ifdef VM_PRINT
-		if((PWM_OFFSET_INDEX > pDCPWM->AccTableLen -pDCPWM->AccTableIndex)&&(pDCPWM->ChannelNO == 0)&&(first1 == True))
+		if((PWM_OFFSET_INDEX > pStepperTC->AccTableLen - pStepperTC->AccTableIndex)&&
+				(pStepperTC->ChannelNO == 0)&&(first1 == True))
 		{
 			first1 = False;
 			BEGIN_PWM = True;
 		}
 #endif
-		pDCPWM->Coor_NextCycle += pDCPWM->pAccTable[pDCPWM->AccTableIndex];
-		pDCPWM->AccTableIndex ++;
-		pDCPWM->curPWMTickInAccSegment ++;
-		if( (INT32S)pDCPWM->Coor_NextCycle >= (INT32S)pDCPWM->speedDownCoor)
+		pStepperTC->AccTableIndex ++;
+		if( (INT32S)pStepperTC->CurCoor >= (INT32S)pStepperTC->speedDownCoor)
 		{
-			pDCPWM->AccSegment = ACCSEGTYPE_SPEED_DOWN;
-			pDCPWM->curPWMTickInAccSegment = 0;
-			pDCPWM->AccTableIndex = pDCPWM->speedDownIndex;
-			
-			pDCPWM->Coor_NextCycle = pDCPWM->speedDownCoor;
+			pStepperTC->AccSegment = ACCSEGTYPE_SPEED_DOWN;
+			pStepperTC->AccTableIndex = pStepperTC->speedDownIndex;
 		}
-		else if(pDCPWM->AccTableIndex == pDCPWM->AccTableLen)
+		else if(pStepperTC->AccTableIndex == pStepperTC->AccTableLen)
 		{
-			pDCPWM->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
-			pDCPWM->curPWMTickInAccSegment = 0;
+			pStepperTC->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
+			pStepperTC->AccTableIndex --;
 		}
+		period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+		pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 	}
 	else
 	{
-		pDCPWM->curPWMTickInAccSegment ++;
-		if( pDCPWM->AccTableIndex == (INT32U)-1)
+		if( pStepperTC->AccTableIndex == (INT32U)-1)
 		{
-			if( (INT32S)curCoor >= (INT32S)(pDCPWM->Coor_NextCycle - pDCPWM->PermitStopError))
+			//if( (INT32S)pStepperTC->CurCoor >= (INT32S)(pStepperTC->CoorIdeal - pStepperTC->PermitStopError))
+			if( (INT32S)pStepperTC->CurCoor >= (INT32S)(pStepperTC->CoorIdeal))
 			{
-				if(pDCPWM->AxisID == AXIS_ID_X)
+				if(pStepperTC->AxisID == AXIS_ID_X)
 				{
-					PWM_Stop_X(pDCPWM);
-					PWM_Start_Standy_X(pDCPWM, pDCPWM->CoorIdeal, True);
+					PWM_Stop_X(pStepperTC);
 #ifdef VM_PRINT
-					first1 =True;first2=True;
-					CURCOOR=pDCPWM->CoorIdeal;
+					first1 = True;first2= True;
+					CURCOOR=pStepperTC->CoorIdeal;
 #endif
 				}
 				else
 				{
-					PWM_Stop_Y(pDCPWM);
-					PWM_Start_Standy_Y(pDCPWM, pDCPWM->CoorIdeal, True);
+					PWM_Stop_Y(pStepperTC);
 				}
-				reportMoveCompleted(pDCPWM->AxisID);
+				reportMoveCompleted(pStepperTC->AxisID);
 			}
 		}
 		else
 		{
-			pDCPWM->Coor_NextCycle += pDCPWM->pAccTable[pDCPWM->AccTableIndex];
-			pDCPWM->AccTableIndex --;
+			period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+			pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
+			pStepperTC->AccTableIndex --;
 		}
 	}
 }
 
-void PWMHandler_NegDir_UNI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoor) FAST_FUNC_SECTION
+void PWMHandler_NegDir_UNI_POLAR(struct AxisParam_PulseDir_OpenLoop * pStepperTC) FAST_FUNC_SECTION
 {
+	pStepperTC->CurCoor --;
+	INT32U period = 0;
+
 #ifdef VM_PRINT
 	static INT8U first1 =True, first2 =True;
 	INT32U cur_print_coor;
-	curCoor = pDCPWM->Coor_NextCycle;
 	if(BEGIN_PWM == True)
 	{
 		if(PWM_NUM > 0)
@@ -3792,22 +3473,25 @@ void PWMHandler_NegDir_UNI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoo
 				PWM_NUM = 0;
 			else
 				PWM_NUM--;
-			if(first2 ==True)
+			if(first1 == True)
 			{
-				VM_PWM_START(pDCPWM);
-				first2 =False;
+				pwm_ch_start(MOTOR_PWM_VM, pStepperTC->Dir);
+				VM_PWM_START(pStepperTC);
+				first1 = False;
 			}
+			else
+				VM_PWM_START(pStepperTC);
+
 		}
 		else
 		{
 			if(IS_PRINT == True)
 			{
-#ifdef   HEAD_EPSON_GEN5  			
-				cur_print_coor = ReadSafeEpsonRegInt(EPSON_REGADDR_X_PRT_COOR);	
-#elif defined(HEAD_RICOH_G4)
-				cur_print_coor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
-#endif
-				if(pDCPWM->Dir == DIRTYPE_POS)
+				VM_PWM_START(pStepperTC);
+
+				cur_print_coor = REG_PRT_COOR_X;
+
+				if(pStepperTC->Dir == DIRTYPE_POS)
 				{
 					if((cur_print_coor - 0x40000)>= (printInfo.PrintMove_Start>printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
 					{
@@ -3835,601 +3519,176 @@ void PWMHandler_NegDir_UNI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoo
 		}
 	}
 #else
-	pDCPWM->e = (INT32S)(curCoor - pDCPWM->Coor_NextCycle);
-	if(calcPID(pDCPWM))
-	{
-		//start status: CPOL = 0, CUPDR = 100%
-		pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-		pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime - pDCPWM->PWM_CurValue;
-	}
-	PutMoveRecord(pDCPWM->Dir, pDCPWM->AccSegment, pDCPWM->MoveType, (pDCPWM->AxisID == AXIS_ID_X), 
-				  False, pDCPWM->PWM_CurValue, pDCPWM->Coor_NextCycle, curCoor);
+	//calcPID
+	//set duty and period
+	//PutMoveRecord
+
 #endif
-	
-	pDCPWM->curPWMTick ++;
-	
-	if(pDCPWM->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
+	if(pStepperTC->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
 	{
-		pDCPWM->Coor_NextCycle_Frac += pDCPWM->ratio_StepPerCycle;
-		pDCPWM->Coor_NextCycle -= (pDCPWM->Coor_NextCycle_Frac >> 24);
-		pDCPWM->Coor_NextCycle_Frac &= 0xFFFFFF;
-		if( (INT32S)pDCPWM->Coor_NextCycle <= (INT32S)pDCPWM->speedDownCoor )
+		if( (INT32S)pStepperTC->CurCoor <= (INT32S)pStepperTC->speedDownCoor )
 		{
-			pDCPWM->AccSegment = ACCSEGTYPE_SPEED_DOWN;
-			pDCPWM->curPWMTickInAccSegment = 0;
-			pDCPWM->AccTableIndex = pDCPWM->speedDownIndex;
-			
-			pDCPWM->Coor_NextCycle = pDCPWM->speedDownCoor;
+			pStepperTC->AccSegment = ACCSEGTYPE_SPEED_DOWN;
+			pStepperTC->AccTableIndex = pStepperTC->speedDownIndex;
 		}
-		else
-			pDCPWM->curPWMTickInAccSegment ++;
+		period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+		pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 	}
-	else if(pDCPWM->AccSegment == ACCSEGTYPE_SPEED_UP)
+	else if (pStepperTC->AccSegment == ACCSEGTYPE_SPEED_UP)
 	{
-#ifdef VM_PRINT
-		if((PWM_OFFSET_INDEX > pDCPWM->AccTableLen -pDCPWM->AccTableIndex)&&(pDCPWM->ChannelNO == 0)&&(first1 == True))
+		pStepperTC->AccTableIndex ++;
+		if( (INT32S)pStepperTC->CurCoor <= (INT32S)pStepperTC->speedDownCoor)
 		{
-			first1 = False;
-			BEGIN_PWM = True;
+			pStepperTC->AccSegment = ACCSEGTYPE_SPEED_DOWN;
+			pStepperTC->AccTableIndex = pStepperTC->speedDownIndex;
 		}
-#endif
-		pDCPWM->Coor_NextCycle -= pDCPWM->pAccTable[pDCPWM->AccTableIndex];
-		pDCPWM->AccTableIndex ++;
-		pDCPWM->curPWMTickInAccSegment ++;
-		if( (INT32S)pDCPWM->Coor_NextCycle <= (INT32S)pDCPWM->speedDownCoor)
+		else if(pStepperTC->AccTableIndex == pStepperTC->AccTableLen)
 		{
-			pDCPWM->AccSegment = ACCSEGTYPE_SPEED_DOWN;
-			pDCPWM->curPWMTickInAccSegment = 0;
-			pDCPWM->AccTableIndex = pDCPWM->speedDownIndex;
-			
-			pDCPWM->Coor_NextCycle = pDCPWM->speedDownCoor;
+			pStepperTC->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
+			pStepperTC->AccTableIndex --;
 		}
-		else if(pDCPWM->AccTableIndex == pDCPWM->AccTableLen)
-		{
-			pDCPWM->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
-			pDCPWM->curPWMTickInAccSegment = 0;
-		}
+		period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+		pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 	}
 	else
 	{
-		pDCPWM->curPWMTickInAccSegment ++;
-		if( pDCPWM->AccTableIndex == (INT32U)-1)
+		if( pStepperTC->AccTableIndex == (INT32U)-1)
 		{
-			if( (INT32S)curCoor <= (INT32S)(pDCPWM->Coor_NextCycle + pDCPWM->PermitStopError))
+			if( (INT32S)pStepperTC->CurCoor <= (INT32S)(pStepperTC->CoorIdeal))
 			{
-				pDCPWM->e = - pDCPWM->e;
-				pDCPWM->e1 = - pDCPWM->e1;
-				pDCPWM->e2 = - pDCPWM->e2;
-				int index=0;
-				for(index =0; index <ERROR_HISTORY_LEN ; index ++)
+				if(pStepperTC->AxisID == AXIS_ID_X)
 				{
-					pDCPWM->e_history[index] = - pDCPWM->e_history[index];
-				}
-				if(pDCPWM->AxisID == AXIS_ID_X)
-				{
-					PWM_Stop_X(pDCPWM);
-					PWM_Start_Standy_X(pDCPWM, pDCPWM->CoorIdeal, True);
+					PWM_Stop_X(pStepperTC);
 #ifdef VM_PRINT
 					first1 =True;first2=True;
-					CURCOOR=pDCPWM->CoorIdeal;
+					CURCOOR=pStepperTC->CoorIdeal;
 #endif
 				}
 				else
 				{
-					PWM_Stop_Y(pDCPWM);
-					PWM_Start_Standy_Y(pDCPWM, pDCPWM->CoorIdeal, True);
+					PWM_Stop_Y(pStepperTC);
 				}
-				reportMoveCompleted(pDCPWM->AxisID);
+				reportMoveCompleted(pStepperTC->AxisID);
 			}
 		}
 		else
 		{
-			pDCPWM->Coor_NextCycle -= pDCPWM->pAccTable[pDCPWM->AccTableIndex];
-			pDCPWM->AccTableIndex --;
+			pStepperTC->AccTableIndex --;
+			period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+			pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 		}
 	}
 }
 
-void PWMHandler_PosDir_BI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoor) FAST_FUNC_SECTION
-{
-#ifdef VM_PRINT
-	static INT8U first1 =True, first2 =True;
-	INT32U cur_print_coor;
-	curCoor = pDCPWM->Coor_NextCycle;
-	if(BEGIN_PWM == True)
-	{
-		if(PWM_NUM > 0)
-		{
-			if(IS_PRINT == True)
-				PWM_NUM = 0;
-			else
-				PWM_NUM--;
-			if(first2 ==True)
-			{
-				VM_PWM_START(pDCPWM);
-				first2 =False;
-			}
-		}
-		else
-		{
-			if(IS_PRINT == True)
-			{
-#ifdef   HEAD_EPSON_GEN5  			
-				cur_print_coor = ReadSafeEpsonRegInt(EPSON_REGADDR_X_PRT_COOR);	
-#elif defined(HEAD_RICOH_G4)
-				cur_print_coor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
-#endif	
-				if(pDCPWM->Dir == DIRTYPE_POS)
-				{
-					if((cur_print_coor - 0x40000)>= (printInfo.PrintMove_Start>printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
-					{
-						VM_PWM_STOP();
-						BEGIN_PWM = False;
-						first1 = False;
-					}
-				}
-				else
-				{
-					if((cur_print_coor - 0x40000)<= (printInfo.PrintMove_Start<printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
-					{
-						VM_PWM_STOP();
-						BEGIN_PWM = False;
-						first1 = False;
-					}
-				}
-			}
-			else
-			{
-				VM_PWM_STOP();
-				BEGIN_PWM = False;
-				first1 = False;
-			}
-		}
-	}
-#else
-	pDCPWM->e = (INT32S)(INT16S)(INT16U)(pDCPWM->Coor_NextCycle - curCoor);
-	if(calcPID(pDCPWM))
-	{
-		//start status: X1: CPOL = 0, CUPDR = 50% - deadtime/2; X1: CPOL = 1, CUPDR = 50% - deadtime/2.
-		pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime - pDCPWM->PWM_CurValue;
-		pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime - (pDCPWM->PWM_CurValue + pDCPWM->PWM_DeadTime);
-	}
-	PutMoveRecord(pDCPWM->Dir, pDCPWM->AccSegment, pDCPWM->MoveType, (pDCPWM->AxisID == AXIS_ID_X), 
-				  False, pDCPWM->PWM_CurValue, pDCPWM->Coor_NextCycle, curCoor);
-#endif
-	
-	pDCPWM->curPWMTick ++;
-	
-	if(pDCPWM->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
-	{
-		pDCPWM->Coor_NextCycle_Frac += pDCPWM->ratio_StepPerCycle;
-		pDCPWM->Coor_NextCycle += (pDCPWM->Coor_NextCycle_Frac >> 24);
-		pDCPWM->Coor_NextCycle_Frac &= 0xFFFFFF;
-		if( (INT32S)pDCPWM->Coor_NextCycle >= (INT32S)pDCPWM->speedDownCoor )
-		{
-			pDCPWM->AccSegment = ACCSEGTYPE_SPEED_DOWN;
-			pDCPWM->curPWMTickInAccSegment = 0;
-			pDCPWM->AccTableIndex = pDCPWM->speedDownIndex;
-			
-			pDCPWM->Coor_NextCycle = pDCPWM->speedDownCoor;
-		}
-		else
-			pDCPWM->curPWMTickInAccSegment ++;
-	}
-	else if(pDCPWM->AccSegment == ACCSEGTYPE_SPEED_UP)
-	{
-#ifdef VM_PRINT
-		if((PWM_OFFSET_INDEX > pDCPWM->AccTableLen -pDCPWM->AccTableIndex)&&(pDCPWM->ChannelNO == 0)&&(first1 == True))
-		{
-			first1 = False;
-			BEGIN_PWM = True;
-		}
-#endif
-		pDCPWM->Coor_NextCycle += pDCPWM->pAccTable[pDCPWM->AccTableIndex];
-		pDCPWM->AccTableIndex ++;
-		pDCPWM->curPWMTickInAccSegment ++;
-		if( (INT32S)pDCPWM->Coor_NextCycle >= (INT32S)pDCPWM->speedDownCoor)
-		{
-			pDCPWM->AccSegment = ACCSEGTYPE_SPEED_DOWN;
-			pDCPWM->curPWMTickInAccSegment = 0;
-			pDCPWM->AccTableIndex = pDCPWM->speedDownIndex;
-			
-			pDCPWM->Coor_NextCycle = pDCPWM->speedDownCoor;
-		}
-		else if(pDCPWM->AccTableIndex == pDCPWM->AccTableLen)
-		{
-			pDCPWM->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
-			pDCPWM->curPWMTickInAccSegment = 0;
-		}
-	}
-	else
-	{
-		pDCPWM->curPWMTickInAccSegment ++;
-		if( pDCPWM->AccTableIndex == (INT32U)-1)
-		{
-			if( (INT32S)curCoor >= (INT32S)(pDCPWM->Coor_NextCycle - pDCPWM->PermitStopError))
-			{
-				if(pDCPWM->AxisID == AXIS_ID_X)
-				{
-					PWM_Stop_X(pDCPWM);
-					PWM_Start_Standy_X(pDCPWM, pDCPWM->CoorIdeal, True);
-#ifdef VM_PRINT
-					first1 =True;first2=True;
-					CURCOOR=pDCPWM->CoorIdeal;
-#endif
-				}
-				else
-				{
-					PWM_Stop_Y(pDCPWM);
-					PWM_Start_Standy_Y(pDCPWM, pDCPWM->CoorIdeal, True);
-				}
-				reportMoveCompleted(pDCPWM->AxisID);
-			}
-		}
-		else
-		{
-			pDCPWM->Coor_NextCycle += pDCPWM->pAccTable[pDCPWM->AccTableIndex];
-			pDCPWM->AccTableIndex --;
-		}
-	}
-}
-
-void PWMHandler_NegDir_BI_POLAR(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoor) FAST_FUNC_SECTION
-{
-#ifdef VM_PRINT
-	static INT8U first1 =True, first2 =True;
-	INT32U cur_print_coor;
-	curCoor = pDCPWM->Coor_NextCycle;
-	if(BEGIN_PWM == True)
-	{
-		if(PWM_NUM > 0)
-		{
-			if(IS_PRINT == True)
-				PWM_NUM = 0;
-			else
-				PWM_NUM--;
-			if(first2 ==True)
-			{
-				VM_PWM_START(pDCPWM);
-				first2 =False;
-			}
-		}
-		else
-		{
-			if(IS_PRINT == True)
-			{
-#ifdef   HEAD_EPSON_GEN5  			
-				cur_print_coor = ReadSafeEpsonRegInt(EPSON_REGADDR_X_PRT_COOR);	
-#elif defined(HEAD_RICOH_G4)
-				cur_print_coor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
-#endif	
-				if(pDCPWM->Dir == DIRTYPE_POS)
-				{
-					if((cur_print_coor - 0x40000)>= (printInfo.PrintMove_Start>printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
-					{
-						VM_PWM_STOP();
-						BEGIN_PWM = False;
-						first1 = False;
-					}
-				}
-				else
-				{
-					if((cur_print_coor - 0x40000)<= (printInfo.PrintMove_Start<printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
-					{
-						VM_PWM_STOP();
-						BEGIN_PWM = False;
-						first1 = False;
-					}
-				}
-			}
-			else
-			{
-				VM_PWM_STOP();
-				BEGIN_PWM = False;
-				first1 = False;
-			}
-		}
-	}
-#else
-	pDCPWM->e = (INT32S)(INT16S)(INT16U)(pDCPWM->Coor_NextCycle - curCoor);
-	if(calcPID(pDCPWM))
-	{
-		//start status: X1: CPOL = 0, CUPDR = 50% - deadtime/2; X1: CPOL = 1, CUPDR = 50% - deadtime/2.
-		pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime - pDCPWM->PWM_CurValue;
-		pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime - (pDCPWM->PWM_CurValue + pDCPWM->PWM_DeadTime);
-	}
-	PutMoveRecord(pDCPWM->Dir, pDCPWM->AccSegment, pDCPWM->MoveType, (pDCPWM->AxisID == AXIS_ID_X), 
-				  False, pDCPWM->PWM_CurValue, pDCPWM->Coor_NextCycle, curCoor);
-#endif
-	
-	pDCPWM->curPWMTick ++;
-	
-	if(pDCPWM->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
-	{
-		pDCPWM->Coor_NextCycle_Frac += pDCPWM->ratio_StepPerCycle;
-		pDCPWM->Coor_NextCycle -= (pDCPWM->Coor_NextCycle_Frac >> 24);
-		pDCPWM->Coor_NextCycle_Frac &= 0xFFFFFF;
-		if( (INT32S)pDCPWM->Coor_NextCycle <= (INT32S)pDCPWM->speedDownCoor )
-		{
-			pDCPWM->AccSegment = ACCSEGTYPE_SPEED_DOWN;
-			pDCPWM->curPWMTickInAccSegment = 0;
-			pDCPWM->AccTableIndex = pDCPWM->speedDownIndex;
-			
-			pDCPWM->Coor_NextCycle = pDCPWM->speedDownCoor;
-		}
-		else
-			pDCPWM->curPWMTickInAccSegment ++;
-	}
-	else if(pDCPWM->AccSegment == ACCSEGTYPE_SPEED_UP)
-	{
-#ifdef VM_PRINT
-		if((PWM_OFFSET_INDEX > pDCPWM->AccTableLen -pDCPWM->AccTableIndex)&&(pDCPWM->ChannelNO == 0)&&(first1 == True))
-		{
-			first1 = False;
-			BEGIN_PWM = True;
-		}
-#endif
-		pDCPWM->Coor_NextCycle -= pDCPWM->pAccTable[pDCPWM->AccTableIndex];
-		pDCPWM->AccTableIndex ++;
-		pDCPWM->curPWMTickInAccSegment ++;
-		if( (INT32S)pDCPWM->Coor_NextCycle <= (INT32S)pDCPWM->speedDownCoor)
-		{
-			pDCPWM->AccSegment = ACCSEGTYPE_SPEED_DOWN;
-			pDCPWM->curPWMTickInAccSegment = 0;
-			pDCPWM->AccTableIndex = pDCPWM->speedDownIndex;
-			
-			pDCPWM->Coor_NextCycle = pDCPWM->speedDownCoor;
-		}
-		else if(pDCPWM->AccTableIndex == pDCPWM->AccTableLen)
-		{
-			pDCPWM->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
-			pDCPWM->curPWMTickInAccSegment = 0;
-		}
-	}
-	else
-	{
-		pDCPWM->curPWMTickInAccSegment ++;
-		if( pDCPWM->AccTableIndex == (INT32U)-1)
-		{
-			if( (INT32S)curCoor <= (INT32S)(pDCPWM->Coor_NextCycle + pDCPWM->PermitStopError))
-			{
-				if(pDCPWM->AxisID == AXIS_ID_X)
-				{
-					PWM_Stop_X(pDCPWM);
-					PWM_Start_Standy_X(pDCPWM, pDCPWM->CoorIdeal, True);
-#ifdef VM_PRINT
-					first1 =True;first2=True;
-					CURCOOR=pDCPWM->CoorIdeal;
-#endif
-				}
-				else
-				{
-					PWM_Stop_Y(pDCPWM);
-					PWM_Start_Standy_Y(pDCPWM, pDCPWM->CoorIdeal, True);
-				}
-				reportMoveCompleted(pDCPWM->AxisID);
-			}
-		}
-		else
-		{
-			pDCPWM->Coor_NextCycle -= pDCPWM->pAccTable[pDCPWM->AccTableIndex];
-			pDCPWM->AccTableIndex --;
-		}
-	}
-}
-
-INT8U PWM_Start_Movement(struct AxisParam_DC_PWM * pDCPWM, INT8U speedID, 
+INT8U PWM_Start_Movement(struct AxisParam_PulseDir_OpenLoop * pDCPWM, INT8U speedID,
 						 INT32U endCoor, INT8U moveType, INT32U distance, INT32U currCoor)
 {
-	struct ACCCurveInfo * pAccTable;
+	struct ACCCurveInfo * pAccTable = pDCPWM->pAllCurveTable[speedID];
 	INT32U i;
-	
-	//doesn't consider coor value overflow. it is the job of caller.
+
 	pDCPWM->CoorIdeal = endCoor;
-	pDCPWM->Coor_NextCycle = currCoor;
-	pDCPWM->Coor_NextCycle_Frac = 0;
-	pDCPWM->ratio_StepPerCycle = pDCPWM->ratioTable_StepPerCycle[speedID];
-	
 	pDCPWM->MoveType = moveType;
 	pDCPWM->AccSegment =  ACCSEGTYPE_SPEED_UP;
-	
-	pDCPWM->curPWMTick = 0;
-	pDCPWM->curPWMTickInAccSegment = 0;
-	
+
 	pAccTable = pDCPWM->pAllCurveTable[speedID];
-	pDCPWM->pAccTable = pAccTable->IncTable;
+	pDCPWM->pAccTable = (INT16U*)pAccTable->IncTable;
 	pDCPWM->AccTableLen = pAccTable->AccCurveLen;
 	pDCPWM->AccTableIndex = 0;
-#ifdef VM_PRINT
-	CUR_SPEED_ID = speedID;
-#endif
-	
-	if(distance < (INT32U)pAccTable->IncTable[0]*2)
-		return False;
-	
-	if(distance >= pAccTable->AccDistance *2)
+
+	if(pDCPWM->CoorIdeal > pDCPWM-> CurCoor)
 	{
-		if(pDCPWM->Dir == DIRTYPE_POS)
-			pDCPWM->speedDownCoor = endCoor - pAccTable->AccDistance;
-		else
-			pDCPWM->speedDownCoor = endCoor + pAccTable->AccDistance;
-		pDCPWM->speedDownIndex = pAccTable->AccCurveLen - 1;
+		distance = pDCPWM->CoorIdeal - pDCPWM-> CurCoor;
+		pDCPWM->Dir = DIRTYPE_POS;
+		pwm_override(PWM_CH(pDCPWM->PWM_dir_chid), 1);
 	}
 	else
 	{
-		INT32U * pAccDisTable = (INT32U *)(pAccTable->IncTable + pAccTable->AccDisTblOffset) + 1;
-		INT32U start,end;
-		
-		start = 0;
-		end = pAccTable->AccCurveLen-1;
-		distance <<= ACC_DISTANCE_SHIFT_BIT;
-		while(end - start > 1)
-		{
-			i = (start + end)/2;
-			if(pAccDisTable[i] *2 > distance)
-			{
-				end = i;
-			}
-			else if(pAccDisTable[i] *2 < distance)
-			{
-				start = i;
-			}
-			else
-			{
-				start = i;
-				break;
-			}
-		}
-		if(pDCPWM->Dir == DIRTYPE_POS)
-			pDCPWM->speedDownCoor = endCoor - (pAccDisTable[start]>>ACC_DISTANCE_SHIFT_BIT);
+		distance = pDCPWM->CoorIdeal - pDCPWM-> CurCoor;
+		pDCPWM->Dir = DIRTYPE_NEG;
+		pwm_override(PWM_CH(pDCPWM->PWM_dir_chid), 0);
+	}
+
+	pAccTable = pDCPWM->pAllCurveTable[speedID];
+	pDCPWM->pAccTable = (INT16U*)pAccTable->IncTable;
+	pDCPWM->AccTableLen = pAccTable->AccCurveLen;
+	if( distance < 2)
+	{
+		pDCPWM->AccSegment = ACCSEGTYPE_SPEED_DOWN;
+		pDCPWM->AccTableIndex = 0;
+		pDCPWM->speedDownCoor = pDCPWM-> CurCoor;
+		pDCPWM->speedDownIndex = 0;
+	}
+	else if(distance <= 2 * pDCPWM->AccTableLen)
+	{
+		pDCPWM->AccSegment = ACCSEGTYPE_SPEED_UP;
+		pDCPWM->AccTableIndex = 0;
+		if( pDCPWM->Dir == DIRTYPE_POS)
+			pDCPWM->speedDownCoor = pDCPWM->CoorIdeal - distance/2;
 		else
-			pDCPWM->speedDownCoor = endCoor + (pAccDisTable[start]>>ACC_DISTANCE_SHIFT_BIT);
-		pDCPWM->speedDownIndex = start-1;
+			pDCPWM->speedDownCoor = pDCPWM->CoorIdeal + distance/2;
+		pDCPWM->speedDownIndex = distance/2 - 1;
+	}
+	else
+	{
+		pDCPWM->AccSegment = ACCSEGTYPE_SPEED_UP;
+		pDCPWM->AccTableIndex = 0;
+		if( pDCPWM->Dir == DIRTYPE_POS)
+			pDCPWM->speedDownCoor = pDCPWM->CoorIdeal - pDCPWM->AccTableLen;
+		else
+			pDCPWM->speedDownCoor = pDCPWM->CoorIdeal + pDCPWM->AccTableLen;
+		pDCPWM->speedDownIndex = pDCPWM->AccTableLen - 1;
+	}
+
 #ifdef VM_PRINT
 		BEGIN_PWM = True;
 #endif
-	}
 #ifdef VM_PRINT
 	if(pDCPWM->Dir == DIRTYPE_POS)
-		PWM_NUM = ( ((float)(endCoor - currCoor)*0x1000000)/pDCPWM->ratio_StepPerCycle);
+		PWM_NUM = ( ((float)(endCoor - currCoor)*0x1000000)/pDCPWM->ratio_move);
 	else
-		PWM_NUM = ( ((float)(currCoor - endCoor)*0x1000000)/pDCPWM->ratio_StepPerCycle);
-#endif  
-	pDCPWM->PWM_CycleTime = PWM_MOVE_CYCLE/2;
-	pDCPWM->PWM_OverLoadNum = 0;
-	pDCPWM->PWM_MaxValue = (pDCPWM->PWM_CycleTime - 50);
-	switch(pDCPWM->PWM_model)
+		PWM_NUM = ( ((float)(currCoor - endCoor)*0x1000000)/pDCPWM->ratio_move);
+#endif
+	if( pDCPWM->ChannelNO == 0)
 	{
-	case PWMTYPE_UNI_POLAR:
-		pDCPWM->PWM_MinValue = 0; 
-		//pDCPWM->PWM_CurValue = (pDCPWM->PWM_CycleTime)/2; //350
-		//pDCPWM->PWM_CurValue = 350; //for 28346/10 Hz;
-		//pDCPWM->PWM_CurValue = pDCPWM->PWM_MaxValue; //350
-		pDCPWM->PWM_CurValue = pDCPWM->PWM_MinValue; //cheney: the start value is too large.
-		break;
-	case PWMTYPE_BI_POLAR:
-		pDCPWM->PWM_MinValue = 50; 
-		pDCPWM->PWM_CurValue = (pDCPWM->PWM_CycleTime - pDCPWM->PWM_DeadTime)/2;
-		break;
-	}
-	
-	//PIDREG3 part
-	pDCPWM->e = 0;
-	pDCPWM->e1 = 0;
-	pDCPWM->e2 = 0;
-	pDCPWM->Kp = pDCPWM->PIDTable[speedID+1][0];
-	pDCPWM->Ki = pDCPWM->PIDTable[speedID+1][1];
-	pDCPWM->Kd = pDCPWM->PIDTable[speedID+1][2];
-	pDCPWM->fixpoint_bit = PID_SHIFT_BIT; 
-	pDCPWM->pid_out_max = pDCPWM->PWM_CycleTime/2;
-	pDCPWM->pid_out_min = -(pDCPWM->PWM_CycleTime/2);
-	pDCPWM->pid_out = 0;
-	pDCPWM->pid_out_frac = 0;
-	memset(pDCPWM->e_history, 0, ERROR_HISTORY_LEN*sizeof(int));
-	pDCPWM->e_i = 0;
-	
-	
-	//AT91C_BASE_PWMC->PWMC_MR = 0;
-#ifndef VM_PRINT
-	pDCPWM->pPWM_channel1->PWMC_CPRDR = pDCPWM->PWM_CycleTime;
-	pDCPWM->pPWM_channel2->PWMC_CPRDR = pDCPWM->PWM_CycleTime;
+#ifdef VM_PRINT
+		//PWM_OFFSET_INDEX =(( (float)(pAccTable->AccDistance)*0x1000000)/pDCPWM->ratio_StepPerCycle);
 #endif
-	switch(pDCPWM->PWM_model)
+		if(pDCPWM->Dir == DIRTYPE_POS)
+			pPD_XHandle = PWMHandler_PosDir_UNI_POLAR;
+		else
+			pPD_XHandle = PWMHandler_NegDir_UNI_POLAR;
+	}
+	else
 	{
-	case PWMTYPE_UNI_POLAR:
-#ifndef VM_PRINT
-		pDCPWM->pPWM_channel1->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-		if(pDCPWM->ChannelValidLevel[0] == 0)
-			pDCPWM->pPWM_channel1->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel2->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-		if(pDCPWM->ChannelValidLevel[1] == 0)
-			pDCPWM->pPWM_channel2->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel1->PWMC_CDTYR = pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-		pDCPWM->pPWM_channel2->PWMC_CDTYR = pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime;
-#endif
-		if( pDCPWM->ChannelNO == 0)
-		{
-#ifdef VM_PRINT
-			PWM_OFFSET_INDEX =(( (float)(pAccTable->AccDistance)*0x1000000)/pDCPWM->ratio_StepPerCycle);
-#endif
-			if(pDCPWM->Dir == DIRTYPE_POS)
-				pPWM1Handle = PWMHandler_PosDir_UNI_POLAR;
-			else
-				pPWM1Handle = PWMHandler_NegDir_UNI_POLAR;
-		}
+		if(pDCPWM->Dir == DIRTYPE_POS)
+			pPD_YHandle = PWMHandler_PosDir_UNI_POLAR;
 		else
-		{
-			if(pDCPWM->Dir == DIRTYPE_POS)
-				pPWM2Handle = PWMHandler_PosDir_UNI_POLAR;
-			else
-				pPWM2Handle = PWMHandler_NegDir_UNI_POLAR;
-		}
-#ifdef VM_PRINT
-		AT91C_BASE_TC5->TC_IER = AT91C_TC_CPCS;
-#else
-		AT91C_BASE_PWMC->PWMC_IER = pDCPWM->Channel_Mask;
-		AT91C_BASE_PWMC->PWMC_ENA = pDCPWM->Channel_Mask;
-#endif
-		break;
-	case PWMTYPE_BI_POLAR:
-#ifndef VM_PRINT
-		pDCPWM->pPWM_channel1->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG;
-		if(pDCPWM->ChannelValidLevel[0] == 0)
-			pDCPWM->pPWM_channel1->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel2->PWMC_CMR = AT91C_PWMC_CPRE_MCK | AT91C_PWMC_CALG | AT91C_PWMC_CPOL;
-		if(pDCPWM->ChannelValidLevel[1] == 0)
-			pDCPWM->pPWM_channel2->PWMC_CMR ^= AT91C_PWMC_CPOL;
-		pDCPWM->pPWM_channel1->PWMC_CDTYR = pDCPWM->pPWM_channel1->PWMC_CUPDR = pDCPWM->PWM_CycleTime - pDCPWM->PWM_CurValue;
-		pDCPWM->pPWM_channel2->PWMC_CDTYR = pDCPWM->pPWM_channel2->PWMC_CUPDR = pDCPWM->PWM_CycleTime - (pDCPWM->PWM_CurValue + pDCPWM->PWM_DeadTime);;
-#endif
-		if( pDCPWM->ChannelNO == 0)
-		{
-#ifdef VM_PRINT
-			PWM_OFFSET_INDEX =(( (float)(pAccTable->AccDistance)*0x1000000)/pDCPWM->ratio_StepPerCycle);
-#endif
-			if(pDCPWM->Dir == DIRTYPE_POS)
-				pPWM1Handle = PWMHandler_PosDir_BI_POLAR;
-			else
-				pPWM1Handle = PWMHandler_NegDir_BI_POLAR;
-		}
-		else
-		{
-			if(pDCPWM->Dir == DIRTYPE_POS)
-				pPWM2Handle = PWMHandler_PosDir_BI_POLAR;
-			else
-				pPWM2Handle = PWMHandler_NegDir_BI_POLAR;
-		}
-#ifdef VM_PRINT
-		AT91C_BASE_TC5->TC_IER = AT91C_TC_CPCS;
-#else
-		AT91C_BASE_PWMC->PWMC_IER = pDCPWM->Channel_Mask;
-		AT91C_BASE_PWMC->PWMC_ENA = pDCPWM->Channel_Mask;
-#endif
-		break;
+			pPD_YHandle = PWMHandler_NegDir_UNI_POLAR;
 	}
+#ifdef VM_PRINT
+	pwm_ch_start(MOTOR_PWM_VM, pDCPWM->Dir);
+#else
+	pwm_ch_start(PWM_CH(pDCPWM->PWM_pulse_chid), pDCPWM->Dir);
+#endif
 	return True;
 }
 
 #define DISTANCE_TOO_SHORT   2
-INT8U PWM_Start_X(struct AxisParam_DC_PWM * pDCPWM, INT8U speedID, INT16U baseDPI, 
+INT8U PWM_Start_X(struct AxisParam_PulseDir_OpenLoop * pDCPWM, INT8U speedID, INT16U baseDPI,
 				  INT16U currDPI, INT32U endCoor, INT8U moveType, INT8U IsPrint)
 {
 	OS_CPU_SR cpu_sr;
 	INT32U currCoor, distance, tmp;
 	INT8U ret;
-	
-	if(!PWM_SafeCheck(pDCPWM))
-		return False;
-	
+
+	//if(!PWM_SafeCheck(pDCPWM))
+	//	return False;
+
 	OS_ENTER_CRITICAL();
 	if(IsPrint)
 	{
 		//another field of FPGA CoorCtrl must be set by caller.
-#ifdef   HEAD_EPSON_GEN5 
-		tmp = ReadSafeEpsonRegInt(EPSON_REGADDR_COOR_CTRL);
-#elif defined(HEAD_RICOH_G4)
-		tmp = (INT32U)(rFPGA_RICOH_COORCTRL_L|( (INT32U)rFPGA_RICOH_COORCTRLSTAT_H << 16));
-#endif
+		tmp = REG_COOR_SYS_CTRL;
 		switch(baseDPI)
 		{
 		case 1440:
@@ -4462,63 +3721,58 @@ INT8U PWM_Start_X(struct AxisParam_DC_PWM * pDCPWM, INT8U speedID, INT16U baseDP
 	}
 	else
 	{
-		//FPGA has a Bug when non-print movement. 
+		//FPGA has a Bug when non-print movement.
 		//FPGA will use the setting VSD min-cycle to check all coor interval time.
 		//but normal movement 's speed can be very fast.
 		// So I set the fast VSD and max divider.
 		//another field of FPGA CoorCtrl must be set by caller.
-		tmp = ER_CoorCtrl_SMOOTH_DIVIDER_720 | ER_CoorCtrl_SMOOTH_MULTI_720 | 
-			ER_CoorCtrl_PRINT_DIVIDER_QUAD | ER_CoorCtrl_PRINT_PHASE_0 | 
+		tmp = ER_CoorCtrl_SMOOTH_DIVIDER_720 | ER_CoorCtrl_SMOOTH_MULTI_720 |
+			ER_CoorCtrl_PRINT_DIVIDER_QUAD | ER_CoorCtrl_PRINT_PHASE_0 |
 				ER_CoorCtrl_EN_DIR_NONE | ER_CoorCtrl_VSDMODEL_VSD3;
 	}
-#ifdef   HEAD_EPSON_GEN5		
-	SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, tmp);
-	currCoor = ReadEpsonRegInt(pDCPWM->CoorRegAddr);
+#if HE_ADD
+#ifdef   HEAD_EPSON_GEN5
+	WriteReg32Data(REG_COOR_SYS_CTRL, tmp);
+	currCoor = ReadReg32Data(pDCPWM->CoorRegAddr);
 #elif defined(HEAD_RICOH_G4)
 	tmp &= ~ER_CoorCtrl_FLASH;
-	rFPGA_RICOH_COORCTRL_L = (INT16U)tmp;
-	rFPGA_RICOH_COORCTRLSTAT_H = (INT16U)(tmp >> 16);
-	if(pDCPWM->CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
-	{
-		currCoor = (INT32U)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
-	}
-	else if(pDCPWM->CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
-	{
-		currCoor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
-	}
+	WriteReg32Data(REG_COOR_SYS_CTRL, tmp);
+	currCoor = ReadReg32Data(pDCPWM->CoorRegAddr);
 #endif
+#endif
+	currCoor = pDCPWM->CurCoor;
 	if(endCoor > currCoor)
 		distance = endCoor - currCoor;
 	else
 		distance = currCoor - endCoor;
-	
-	//the caller must check if it ought to move or not. 
+
+	//the caller must check if it ought to move or not.
 	//  In another word, the distance between endcoor and currCoor must >  Min_Distance.
 	if(endCoor > currCoor)
 		pDCPWM->Dir = DIRTYPE_POS;
 	else
 		pDCPWM->Dir = DIRTYPE_NEG;
-	
+
 	pDCPWM->BaseDPI = baseDPI;
 	pDCPWM->CurrDPI = currDPI;
-	
+#if 0
 	if(IsPrint)
 		pDCPWM->PWM_model = pDCPWM->PWM_modelTable[2];
 	else
 		pDCPWM->PWM_model = pDCPWM->PWM_modelTable[1];
 	if( pDCPWM->PWM_model != PWMTYPE_UNI_POLAR && pDCPWM->PWM_model != PWMTYPE_BI_POLAR)
 		pDCPWM->PWM_model = PWMTYPE_UNI_POLAR;
-	
+#endif
 	if(!PWM_Start_Movement(pDCPWM, speedID, endCoor, moveType, distance, currCoor))
 		ret = DISTANCE_TOO_SHORT;
 	else
 		ret = True;
-	
+
 	OS_EXIT_CRITICAL();
 	return ret;
 }
 
-INT8U PWM_Start_Y(struct AxisParam_DC_PWM * pDCPWM, INT8U speedID, INT8U dir, INT32U endCoor, INT8U moveType, INT8U IsPrint)
+INT8U PWM_Start_Y(struct AxisParam_PulseDir_OpenLoop * pDCPWM, INT8U speedID, INT8U dir, INT32U endCoor, INT8U moveType, INT8U IsPrint)
 {
 	OS_CPU_SR cpu_sr;
 	INT32U currCoor, distance;
@@ -4530,7 +3784,7 @@ INT8U PWM_Start_Y(struct AxisParam_DC_PWM * pDCPWM, INT8U speedID, INT8U dir, IN
 	OS_ENTER_CRITICAL();
 	{//Y coor only has 16bit. must avoid overflow.
 #ifdef HEAD_EPSON_GEN5
-		INT32U curr = (INT32U)ReadEpsonRegShort(pDCPWM->CoorRegAddr);
+		INT32U curr = ReadReg32Data(pDCPWM->CoorRegAddr);
 		if( (INT16U)pDCPWM->lastCoor < 0x4000 && curr > 0xC000)
 			pDCPWM->lastCoor -= 0x10000;
 		else if((INT16U)pDCPWM->lastCoor > 0xC000 && curr < 0x4000)
@@ -4539,8 +3793,9 @@ INT8U PWM_Start_Y(struct AxisParam_DC_PWM * pDCPWM, INT8U speedID, INT8U dir, IN
 		pDCPWM->lastCoor |= curr;
 		currCoor = pDCPWM->lastCoor;
 #elif defined(HEAD_RICOH_G4)
-		INT32U curr = (INT32U)(rFPGA_RICOH_YMOTORCOOR_L | (rFPGA_RICOH_YMOTORCOOR_H &0xFF) << 16);
-		currCoor = YParam.lastCoor = curr;
+		INT32U curr = ReadReg32Data(pDCPWM->CoorRegAddr);
+		//currCoor = YParam.lastCoor = curr;
+		currCoor = pDCPWM->lastCoor = curr;
 #endif
 	}
 	pDCPWM->Dir = dir;
@@ -4563,7 +3818,6 @@ INT8U PWM_Start_Y(struct AxisParam_DC_PWM * pDCPWM, INT8U speedID, INT8U dir, IN
 	
 #ifdef VM_PRINT
 	reportMoveCompleted(pDCPWM->AxisID);
-	PWM_Start_Standy_Y(pDCPWM, pDCPWM->CoorIdeal, True);
 	ret = True;
 #else
 	if(!PWM_Start_Movement(pDCPWM, speedID, endCoor, moveType, distance, currCoor))
@@ -4578,36 +3832,31 @@ INT8U PWM_Start_Y(struct AxisParam_DC_PWM * pDCPWM, INT8U speedID, INT8U dir, IN
 void TCHandler_PosDir_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC) FAST_FUNC_SECTION
 {
 	pStepperTC->CurCoor ++;
-	
+	INT32U period = 0;
 	if(pStepperTC->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
 	{
 		if( (INT32S)pStepperTC->CurCoor >= (INT32S)pStepperTC->speedDownCoor )
 		{
 			pStepperTC->AccSegment = ACCSEGTYPE_SPEED_DOWN;
 			pStepperTC->AccTableIndex = pStepperTC->speedDownIndex;
-			pStepperTC->pTC_channel->TC_RC = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
-			pStepperTC->pTC_channel->TC_RA = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
 		}
+		period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+		pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 	}
-	else if(pStepperTC->AccSegment == ACCSEGTYPE_SPEED_UP)
+	else if (pStepperTC->AccSegment == ACCSEGTYPE_SPEED_UP)
 	{
 		pStepperTC->AccTableIndex ++;
 		if( (INT32S)pStepperTC->CurCoor >= (INT32S)pStepperTC->speedDownCoor)
 		{
 			pStepperTC->AccSegment = ACCSEGTYPE_SPEED_DOWN;
 			pStepperTC->AccTableIndex = pStepperTC->speedDownIndex;
-			pStepperTC->pTC_channel->TC_RC = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
-			pStepperTC->pTC_channel->TC_RA = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
 		}
 		else if(pStepperTC->AccTableIndex == pStepperTC->AccTableLen)
 		{
 			pStepperTC->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
 		}
-		else
-		{
-			pStepperTC->pTC_channel->TC_RC = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
-			pStepperTC->pTC_channel->TC_RA = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
-		}
+		period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+		pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 	}
 	else
 	{
@@ -4619,64 +3868,43 @@ void TCHandler_PosDir_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC) FAST
 		else
 		{
 			pStepperTC->AccTableIndex --;
-			pStepperTC->pTC_channel->TC_RC = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
-			pStepperTC->pTC_channel->TC_RA = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
+			period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+			pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 		}
 	}
+}
+void TCHandler_PosDir_Move_old(struct AxisParam_PulseDir_OpenLoop * pStepperTC) FAST_FUNC_SECTION
+{
 }
 
 void TCHandler_NegDir_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC) FAST_FUNC_SECTION
 {
-	INT16U A;
 	pStepperTC->CurCoor --;
-	
+	INT32U period = 0;
 	if(pStepperTC->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
 	{
 		if( (INT32S)pStepperTC->CurCoor <= (INT32S)pStepperTC->speedDownCoor )
 		{
 			pStepperTC->AccSegment = ACCSEGTYPE_SPEED_DOWN;
 			pStepperTC->AccTableIndex = pStepperTC->speedDownIndex;
-			pStepperTC->pTC_channel->TC_RC = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
-			if(pStepperTC->pTC_channel->TC_RA > (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2)
-				A = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
-			else
-				A = pStepperTC->pTC_channel->TC_RA;
-			A -= 2;
-			if(pStepperTC->pTC_channel->TC_CV < A)
-				pStepperTC->pTC_channel->TC_RA = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
 		}
+		period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+		pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 	}
-	else if(pStepperTC->AccSegment == ACCSEGTYPE_SPEED_UP)
+	else if (pStepperTC->AccSegment == ACCSEGTYPE_SPEED_UP)
 	{
 		pStepperTC->AccTableIndex ++;
 		if( (INT32S)pStepperTC->CurCoor <= (INT32S)pStepperTC->speedDownCoor)
 		{
 			pStepperTC->AccSegment = ACCSEGTYPE_SPEED_DOWN;
 			pStepperTC->AccTableIndex = pStepperTC->speedDownIndex;
-			pStepperTC->pTC_channel->TC_RC = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
-			if(pStepperTC->pTC_channel->TC_RA > (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2)
-				A = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
-			else
-				A = pStepperTC->pTC_channel->TC_RA;
-			A -= 2;
-			if(pStepperTC->pTC_channel->TC_CV < A)
-				pStepperTC->pTC_channel->TC_RA = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
 		}
 		else if(pStepperTC->AccTableIndex == pStepperTC->AccTableLen)
 		{
 			pStepperTC->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
 		}
-		else
-		{
-			pStepperTC->pTC_channel->TC_RC = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
-			if(pStepperTC->pTC_channel->TC_RA > (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2)
-				A = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
-			else
-				A = pStepperTC->pTC_channel->TC_RA;
-			A -= 2;
-			if(pStepperTC->pTC_channel->TC_CV < A)
-				pStepperTC->pTC_channel->TC_RA = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
-		}
+		period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+		pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 	}
 	else
 	{
@@ -4688,14 +3916,8 @@ void TCHandler_NegDir_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC) FAST
 		else
 		{
 			pStepperTC->AccTableIndex --;
-			pStepperTC->pTC_channel->TC_RC = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
-			if(pStepperTC->pTC_channel->TC_RA > (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2)
-				A = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
-			else
-				A = pStepperTC->pTC_channel->TC_RA;
-			A -= 2;
-			if(pStepperTC->pTC_channel->TC_CV < A)
-				pStepperTC->pTC_channel->TC_RA = (pStepperTC->pAccTable[pStepperTC->AccTableIndex])/2;
+			period = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
+			pwm_ch_set_pwm(pStepperTC->PWM_pulse_chid, period, period / 2);
 		}
 	}
 }
@@ -4717,7 +3939,7 @@ INT8U TC_Start_Standy(struct AxisParam_PulseDir_OpenLoop * pStepperTC)
 	pStepperTC->pAccTable = NULL; 
 	pStepperTC->AccTableLen = 0;
 	pStepperTC->AccTableIndex = 0;
-	
+#if NT
 	pStepperTC->pTC_channel->TC_CCR = AT91C_TC_CLKDIS;
 	pStepperTC->pTC_channel->TC_IDR = AT91C_TC_COVFS | AT91C_TC_LOVRS | AT91C_TC_CPAS | AT91C_TC_CPBS |
 		AT91C_TC_CPCS | AT91C_TC_LDRAS | AT91C_TC_LDRBS | AT91C_TC_ETRGS;
@@ -4730,11 +3952,14 @@ INT8U TC_Start_Standy(struct AxisParam_PulseDir_OpenLoop * pStepperTC)
 		pStepperTC->pTC_channel->TC_CMR = TC_TIMER_CLOCK_SRC | AT91C_TC_EEVT_XC0 | 
 			AT91C_TC_ACPA_CLEAR | AT91C_TC_ACPC_SET | AT91C_TC_BCPB_NONE | AT91C_TC_BCPC_NONE |
 				AT91C_TC_WAVESEL_UP_AUTO | AT91C_TC_WAVE;
+#else
+#endif
+#if HE_ADD
 	if(pStepperTC->TC_DirPin.ValidLevel)
 		PIO_Clear(&pStepperTC->TC_DirPin.PinIO);
 	else
 		PIO_Set(&pStepperTC->TC_DirPin.PinIO);
-	
+#endif
 	if(pStepperTC->ChannelNO == 2)
 		pTC1Handle = TCHandler_dimmy;
 	else
@@ -4764,14 +3989,11 @@ INT8U TC_Start_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC, INT8U speed
 		pStepperTC->Dir = DIRTYPE_NEG;
 	}
 	
-	//Dir pin need 200ns setup time before Pulse pin.
-	//I put it at the begin of this function.
-	if((pStepperTC->TC_DirPin.ValidLevel && pStepperTC->Dir == DIRTYPE_POS) ||
-	   (!pStepperTC->TC_DirPin.ValidLevel && pStepperTC->Dir == DIRTYPE_NEG) )
-		PIO_Set(&pStepperTC->TC_DirPin.PinIO); // Positive rotate.
+	if(pStepperTC->Dir == DIRTYPE_POS)
+		pwm_override(PWM_CH(pStepperTC->PWM_dir_chid), DIR_POS_Z);  // Positive rotate.
 	else
-		PIO_Clear(&pStepperTC->TC_DirPin.PinIO);
-	
+		pwm_override(PWM_CH(pStepperTC->PWM_dir_chid), DIR_NEG_Z);
+
 	pStepperTC->MoveType = moveType;
 	
 	pAccTable = pStepperTC->pAllCurveTable[speedID];
@@ -4804,7 +4026,7 @@ INT8U TC_Start_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC, INT8U speed
 			pStepperTC->speedDownCoor = pStepperTC->CoorIdeal + pStepperTC->AccTableLen;
 		pStepperTC->speedDownIndex = pStepperTC->AccTableLen - 1;
 	}
-	
+#if NT
 	if( pStepperTC->ChannelValidLevel[0])
 		pStepperTC->pTC_channel->TC_CMR = TC_TIMER_CLOCK_SRC | AT91C_TC_EEVT_XC0 | 
 			AT91C_TC_ACPA_SET | AT91C_TC_ACPC_CLEAR | AT91C_TC_BCPB_NONE | AT91C_TC_BCPC_NONE |
@@ -4813,7 +4035,8 @@ INT8U TC_Start_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC, INT8U speed
 		pStepperTC->pTC_channel->TC_CMR = TC_TIMER_CLOCK_SRC | AT91C_TC_EEVT_XC0 | 
 			AT91C_TC_ACPA_CLEAR | AT91C_TC_ACPC_SET | AT91C_TC_BCPB_NONE | AT91C_TC_BCPC_NONE |
 				AT91C_TC_WAVESEL_UP_AUTO | AT91C_TC_WAVE;
-	
+#else
+#endif
 	if(pStepperTC->ChannelNO == 2)
 	{
 		if( pStepperTC->Dir == DIRTYPE_POS)
@@ -4828,7 +4051,7 @@ INT8U TC_Start_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC, INT8U speed
 		else
 			pTC2Handle = TCHandler_NegDir_Move; 
 	}
-	
+#if NT
 	pStepperTC->pTC_channel->TC_RA = pStepperTC->pAccTable[pStepperTC->AccTableIndex]/2;
 	pStepperTC->pTC_channel->TC_RC = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
 	pStepperTC->pTC_channel->TC_RB = pStepperTC->pAccTable[pStepperTC->AccTableIndex];
@@ -4838,6 +4061,11 @@ INT8U TC_Start_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC, INT8U speed
 #endif
 	pStepperTC->pTC_channel->TC_SR;
 	pStepperTC->pTC_channel->TC_CCR = AT91C_TC_CLKEN|AT91C_TC_SWTRG;
+#else
+	pwm_enable(PWM_CH(pStepperTC->PWM_pulse_chid), 1);
+	pwm_irq_almost_enable(PWM_CH(pStepperTC->PWM_pulse_chid), 1);
+	pwm_irq_almost_mask(PWM_CH(pStepperTC->PWM_pulse_chid), 0);
+#endif
 	OS_EXIT_CRITICAL();
 	return True;
 }
@@ -4846,8 +4074,30 @@ INT8U TC_Stop_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC)
 {
 	OS_CPU_SR cpu_sr;
 	INT32U isr;
+
+	OS_ENTER_CRITICAL();
+
+	pwm_enable(PWM_CH(pStepperTC->PWM_pulse_chid), 0);
+	pwm_irq_almost_enable(PWM_CH(pStepperTC->PWM_pulse_chid), 0);
+	pwm_irq_almost_mask(PWM_CH(pStepperTC->PWM_pulse_chid), 1);
+
+	if(pStepperTC->ChannelNO == 2)
+		pTC1Handle = TCHandler_dimmy;
+	else
+		pTC2Handle = TCHandler_dimmy;
+
+	pStepperTC->Dir = DIRTYPE_STANDBY;
+
+	OS_EXIT_CRITICAL();
+	return True;
+}
+INT8U TC_Stop_Move_old(struct AxisParam_PulseDir_OpenLoop * pStepperTC)
+{
+	OS_CPU_SR cpu_sr;
+	INT32U isr;
 	
 	OS_ENTER_CRITICAL();
+#if NT
 	isr = pStepperTC->pTC_channel->TC_SR;
 	pStepperTC->pTC_channel->TC_CCR = AT91C_TC_CLKDIS;
 	if((isr & AT91C_TC_CLKSTA) && (isr & AT91C_TC_CPCS))
@@ -4865,6 +4115,8 @@ INT8U TC_Stop_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC)
 		else
 			pStepperTC->CurCoor --;
 	}
+#else
+#endif
 	if(pStepperTC->ChannelNO == 2)
 		pTC1Handle = TCHandler_dimmy;
 	else
@@ -4876,22 +4128,48 @@ INT8U TC_Stop_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC)
 	return True;
 }
 
-void TCHandler(void) FAST_FUNC_SECTION
+void TCHandler(void *arg) FAST_FUNC_SECTION
 {
-	INT32U isr;
-	
+	INT32U isr = (INT32U)arg;
 	if(pTC_Driver1 != NULL)
 	{
-		isr = AT91C_BASE_TC3->TC_SR & AT91C_BASE_TC3->TC_IMR;
+		if(isr & (0x01 << pTC_Driver1->PWM_pulse_chid))
+			(*pTC1Handle)(pTC_Driver1);
+	}
+	if(pTC_Driver2 != NULL)
+	{
+		if(isr & (0x01 << pTC_Driver2->PWM_pulse_chid))
+			(*pTC2Handle)(pTC_Driver2);
+	}
+	if(pPD_DriverX != NULL)
+	{
+		if(isr & (0x01 << pPD_DriverX->PWM_pulse_chid))
+			(*pPD_XHandle)(pPD_DriverX);
+	}
+	if(pPD_DriverY != NULL)
+	{
+		if(isr & (0x01 << pPD_DriverY->PWM_pulse_chid))
+			(*pPD_YHandle)(pPD_DriverY);
+	}
+}
+
+void TCHandler_old(void) FAST_FUNC_SECTION
+{
+	INT32U isr;
+#if 0
+	if(pTC_Driver1 != NULL)
+	{
+		isr = DW_BASE_TC3->TC_SR & DW_BASE_TC3->TC_IMR;
 		if(isr & AT91C_TC_CPCS)
 			(*pTC1Handle)(pTC_Driver1);
 	}
 	if(pTC_Driver2 != NULL)
 	{
-		isr = AT91C_BASE_TC4->TC_SR & AT91C_BASE_TC4->TC_IMR;
+		isr = DW_BASE_TC4->TC_SR & DW_BASE_TC4->TC_IMR;
 		if(isr & AT91C_TC_CPCS)
 			(*pTC2Handle)(pTC_Driver2);
 	}
+#endif
 }
 
 INT8U MapXUserSpeedToXMotorSpeed(INT8U speedID, INT16U currDPI, INT8U bIsPrint)
@@ -4910,6 +4188,133 @@ INT8U MapXUserSpeedToXMotorSpeed(INT8U speedID, INT16U currDPI, INT8U bIsPrint)
 #define INIT_RETURN_SAFE_DISTANCE	(720*5)  //5 inch.
 INT8U IS_XOrigin_Irq = False;
 INT8U User_Start_X(INT8U speedID, INT16U currDPI, INT8U bIsPrint, INT8U moveType, 
+				   INT8U coorType, INT32S endCoorOrDistance, INT8U dir)
+{
+	OS_CPU_SR cpu_sr;
+	INT32S endCoor, max_width, currCoor, distance;
+	INT8U ret, baseDPIid;
+	INT16U baseDPI;
+	float ratio;
+	INT8U isRealPrint;
+#ifdef VM_PRINT
+	IS_PRINT = bIsPrint;
+#endif
+	if(bIsPrint && speedID != 4)
+		isRealPrint = True;
+	else
+		isRealPrint = False;
+
+	speedID = MapXUserSpeedToXMotorSpeed(speedID, currDPI, bIsPrint);
+	baseDPI = GetBaseDPI(currDPI, &baseDPIid);
+
+#ifdef ALLWIN_EPSON_SAME
+#define CARRIAGE_WIDTH 2 //30cm
+#elif defined(MANUFACTURER_MICOLOR_EPSON)
+#define CARRIAGE_WIDTH 2 //30cm
+#else
+	//for default carriage width
+#define CARRIAGE_WIDTH 2 //20cm
+#endif
+	max_width = ((PAPER_MEDIA_WIDTH_MM*10 + CARRIAGE_WIDTH * 2 * 1000)  * currDPI) / 254;
+
+	OS_ENTER_CRITICAL();
+	if(PD_XParam.Dir != DIRTYPE_STANDBY)
+	{
+		OS_EXIT_CRITICAL();
+
+		status_ReportStatus(STATUS_FTA + SciError_MoveAgain, STATUS_SET);
+		return START_ERROR_NOT_STANDBY;
+	}
+
+	if(!bIsPrint)
+		ratio = PD_XParam.ratio_move;
+	else
+		ratio = PD_XParam.ratio_print[baseDPIid];
+
+	if(moveType == MOVETYPE_CONTINUE)
+	{ //currDPI must be 720.
+		if(dir == DIRTYPE_POS)
+			endCoor = PD_XParam.Region_End;
+		else
+			endCoor = PD_XParam.Region_Start;
+	}
+	else if(moveType == MOVETYPE_CONTINUE_CHECKSENSOR)
+	{ //doesn't know the real start and end.
+		//currDPI must be 720.
+		if( PD_XParam.Region_End == (INT32S)(0x7FFFFFFF))
+		{
+			max_width = (INT32S)(max_width * ratio);
+
+			if(dir == DIRTYPE_POS)
+				endCoor = PD_XParam.Origin_Offset + max_width;
+			else
+				endCoor = PD_XParam.Origin_Offset - max_width;
+		}
+		else
+		{
+			if(dir == DIRTYPE_POS)
+				endCoor = PD_XParam.Region_Start + INIT_RETURN_SAFE_DISTANCE *ratio;
+			else
+				endCoor = PD_XParam.Origin_Offset - (PD_XParam.Region_End - PD_XParam.Region_Start);
+		}
+	}
+	else
+	{
+		if(coorType == 2)
+			endCoor = endCoorOrDistance; //raw coor system.
+		else
+		{
+			endCoorOrDistance = (INT32S)(endCoorOrDistance * ratio);
+			if( coorType == 0) //absolute, and support varied printing DPI.
+				endCoor = endCoorOrDistance + PD_XParam.Origin_Offset;
+			else
+			{ //currDPI must be 720.
+				if(dir == DIRTYPE_POS)
+					endCoor = PD_XParam.CoorIdeal + endCoorOrDistance;
+				else
+					endCoor = PD_XParam.CoorIdeal - endCoorOrDistance;
+			}
+			if(endCoor > PD_XParam.Region_End)
+			{
+				endCoor = PD_XParam.Region_End;
+			}
+			else if(endCoor < PD_XParam.Region_Start)
+			{
+				endCoor = PD_XParam.Region_Start;
+			}
+		}
+	}
+
+	currCoor = PD_XParam.CurCoor;
+
+	if(endCoor > currCoor)
+		distance = endCoor - currCoor;
+	else
+		distance = currCoor - endCoor;
+
+	if(distance <= PD_XParam.Min_Distance)
+	{
+		OS_EXIT_CRITICAL();
+		reportMoveCompleted(PD_XParam.AxisID);
+		return START_ERROR_DISTANCE_TOO_SHORT;
+	}
+
+	OS_EXIT_CRITICAL();
+
+	ret = PWM_Start_X(&PD_XParam, speedID, baseDPI, currDPI, endCoor, moveType, isRealPrint);
+
+	if( ret == False)
+		return START_ERROR_CHECK_SAFE;
+	else if(ret == DISTANCE_TOO_SHORT)
+	{
+		reportMoveCompleted(PD_XParam.AxisID);
+		return START_ERROR_DISTANCE_TOO_SHORT;
+	}
+	else
+		return START_ERROR_OK;
+	return True;
+}
+INT8U User_Start_X_old(INT8U speedID, INT16U currDPI, INT8U bIsPrint, INT8U moveType,
 				   INT8U coorType, INT32S endCoorOrDistance, INT8U dir)
 {
 	OS_CPU_SR cpu_sr;
@@ -5026,7 +4431,6 @@ INT8U User_Start_X(INT8U speedID, INT16U currDPI, INT8U bIsPrint, INT8U moveType
 	if(distance <= XParam.Min_Distance)
 	{
 		OS_EXIT_CRITICAL();
-		PWM_Start_Standy_X(&XParam, endCoor, True);
 		reportMoveCompleted(XParam.AxisID);
 		return START_ERROR_DISTANCE_TOO_SHORT;
 	}
@@ -5039,7 +4443,6 @@ INT8U User_Start_X(INT8U speedID, INT16U currDPI, INT8U bIsPrint, INT8U moveType
 		return START_ERROR_CHECK_SAFE;
 	else if(ret == DISTANCE_TOO_SHORT)
 	{
-		PWM_Start_Standy_X(&XParam, endCoor, True);
 		reportMoveCompleted(XParam.AxisID);
 		return START_ERROR_DISTANCE_TOO_SHORT;
 	}
@@ -5184,7 +4587,6 @@ INT8U User_Start_Y(INT8U speedID, INT8U moveType, INT8U coorType, INT32S endCoor
 	if( distance <= YParam.Min_Distance)
 	{
 		OS_EXIT_CRITICAL();
-		PWM_Start_Standy_Y(&YParam, endCoor, True); //???, It can't assure to NO-rollback if PWM_model is BI_Polar.
 		reportMoveCompleted(YParam.AxisID);
 		return START_ERROR_DISTANCE_TOO_SHORT;
 	}
@@ -5199,7 +4601,6 @@ INT8U User_Start_Y(INT8U speedID, INT8U moveType, INT8U coorType, INT32S endCoor
 			if( bUniDir && dir != DIRTYPE_POS)
 			{
 				OS_EXIT_CRITICAL();
-				PWM_Start_Standy_Y(&YParam, currCoor, True);
 				reportMoveCompleted(YParam.AxisID);
 				return START_ERROR_NOT_ROLLBACK;
 			}
@@ -5218,7 +4619,6 @@ INT8U User_Start_Y(INT8U speedID, INT8U moveType, INT8U coorType, INT32S endCoor
 			if( bUniDir && dir != DIRTYPE_NEG)
 			{
 				OS_EXIT_CRITICAL();
-				PWM_Start_Standy_Y(&YParam, currCoor, True);
 				reportMoveCompleted(YParam.AxisID);
 				return START_ERROR_NOT_ROLLBACK;
 			}
@@ -5237,7 +4637,6 @@ INT8U User_Start_Y(INT8U speedID, INT8U moveType, INT8U coorType, INT32S endCoor
 		return START_ERROR_CHECK_SAFE;
 	else if(ret == DISTANCE_TOO_SHORT)
 	{
-		PWM_Start_Standy_Y(&YParam, endCoor, True);
 		reportMoveCompleted(YParam.AxisID);
 		return START_ERROR_DISTANCE_TOO_SHORT;
 	}
@@ -5437,114 +4836,106 @@ INT8U User_Stop_X(INT8U bUrgent, INT8U bBaseOnRealCoor)
 	INT32U current_index;
 	if(bUrgent)
 	{
-		return PWM_Urgent_Stop(&XParam);
+		return PWM_Urgent_Stop(&PD_XParam);
 	}
 	if(slow_down_at_once)
 	{
-		pAccCurve = XParam.pAllCurveTable[MAX_X_SPEED_LEVEL - 1];
-		last_pAccCurve = GET_ACCTBL_HEAD(XParam.pAccTable);
-		current_index = Find_index_for_down_curve(XParam.AccTableIndex,pAccCurve,last_pAccCurve);
+		pAccCurve = PD_XParam.pAllCurveTable[MAX_X_SPEED_LEVEL - 1];
+		last_pAccCurve = GET_ACCTBL_HEAD(PD_XParam.pAccTable);
+		current_index = Find_index_for_down_curve(PD_XParam.AccTableIndex,pAccCurve,last_pAccCurve);
 	}
 	OS_ENTER_CRITICAL();
-	if(XParam.Dir == DIRTYPE_STANDBY)
+	if(PD_XParam.Dir == DIRTYPE_STANDBY)
 	{
 		OS_EXIT_CRITICAL();
 		return False;
 	}
 	if(slow_down_at_once)
 	{
-		XParam.pAccTable = pAccCurve->IncTable;
+		PD_XParam.pAccTable = (INT16U*)pAccCurve->IncTable;
 		XParam.AccTableLen = pAccCurve->AccCurveLen;
 	}
 	else
 	{
-		pAccCurve = GET_ACCTBL_HEAD(XParam.pAccTable);
+		pAccCurve = GET_ACCTBL_HEAD(PD_XParam.pAccTable);
 	}
-	if(XParam.AccSegment == ACCSEGTYPE_SPEED_UP)
+	if(PD_XParam.AccSegment == ACCSEGTYPE_SPEED_UP)
 	{
-		XParam.AccSegment = ACCSEGTYPE_SPEED_DOWN;
+		PD_XParam.AccSegment = ACCSEGTYPE_SPEED_DOWN;
 		if(bBaseOnRealCoor)
 		{
 #ifdef   HEAD_EPSON_GEN5       
-			XParam.speedDownCoor = ReadSafeEpsonRegInt(XParam.CoorRegAddr);
+			PD_XParam.speedDownCoor = ReadSafeEpsonRegInt(PD_XParam.CoorRegAddr);
 #elif defined(HEAD_RICOH_G4)
-			if(XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
+			if(PD_XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
 			{
-				XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
+				PD_XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
 			}
 			else if(XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
 			{
-				XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
+				PD_XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
 			}
 #endif
-			XParam.Coor_NextCycle = XParam.speedDownCoor;
-			XParam.Coor_NextCycle_Frac = 0;
-			XParam.e2 = XParam.e1 = XParam.e = 0;
-			memset(XParam.e_history, 0, ERROR_HISTORY_LEN*sizeof(int));
-			XParam.e_i = 0;
 		}
 		else
-			XParam.speedDownCoor = XParam.Coor_NextCycle;
+			PD_XParam.speedDownCoor = PD_XParam.CurCoor;
 		if(slow_down_at_once)
 		{
-			XParam.AccTableIndex = current_index;
+			PD_XParam.AccTableIndex = current_index;
 		}
-		if(XParam.AccTableIndex > 0)
-			XParam.AccTableIndex --;
-		XParam.speedDownIndex = XParam.AccTableIndex;
-		distance = GET_ACCTBL_DISTBL(pAccCurve)[XParam.AccTableIndex+1];
-		if(XParam.Dir == DIRTYPE_POS)
-			XParam.CoorIdeal = XParam.speedDownCoor + (distance >>ACC_DISTANCE_SHIFT_BIT);
+		if(PD_XParam.AccTableIndex > 0)
+			PD_XParam.AccTableIndex --;
+		PD_XParam.speedDownIndex = PD_XParam.AccTableIndex;
+		distance = GET_ACCTBL_DISTBL(pAccCurve)[PD_XParam.AccTableIndex+1];
+		if(PD_XParam.Dir == DIRTYPE_POS)
+			PD_XParam.CoorIdeal = PD_XParam.speedDownCoor + (distance >>ACC_DISTANCE_SHIFT_BIT);
 		else
-			XParam.CoorIdeal = XParam.speedDownCoor - (distance >>ACC_DISTANCE_SHIFT_BIT);
+			PD_XParam.CoorIdeal = PD_XParam.speedDownCoor - (distance >>ACC_DISTANCE_SHIFT_BIT);
 	}
-	else if(XParam.AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
+	else if(PD_XParam.AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
 	{
-		XParam.AccSegment = ACCSEGTYPE_SPEED_DOWN;
+		PD_XParam.AccSegment = ACCSEGTYPE_SPEED_DOWN;
 		if(bBaseOnRealCoor)
 		{
 #ifdef   HEAD_EPSON_GEN5       
-			XParam.speedDownCoor = ReadSafeEpsonRegInt(XParam.CoorRegAddr);
+			PD_XParam.speedDownCoor = ReadSafeEpsonRegInt(PD_XParam.CoorRegAddr);
 #elif defined(HEAD_RICOH_G4)
 			if(XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
 			{
-				XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
+				PD_XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
 			}
-			else if(XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
+			else if(PD_XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
 			{
-				XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
+				PD_XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
 			}
 #endif
-			XParam.Coor_NextCycle = XParam.speedDownCoor;
-			XParam.Coor_NextCycle_Frac = 0;
-			XParam.e1 = XParam.e = 0;
 		}
 		else
-			XParam.speedDownCoor = XParam.Coor_NextCycle;
-		XParam.AccTableIndex = XParam.AccTableLen - 1;
-		XParam.speedDownIndex = XParam.AccTableIndex;
+			PD_XParam.speedDownCoor = PD_XParam.CurCoor;
+		PD_XParam.AccTableIndex = PD_XParam.AccTableLen - 1;
+		PD_XParam.speedDownIndex = PD_XParam.AccTableIndex;
 		distance = pAccCurve->AccDistance;
-		if( XParam.Dir == DIRTYPE_POS)
-			XParam.CoorIdeal = XParam.speedDownCoor + distance;
+		if( PD_XParam.Dir == DIRTYPE_POS)
+			PD_XParam.CoorIdeal = PD_XParam.speedDownCoor + distance;
 		else
-			XParam.CoorIdeal = XParam.speedDownCoor - distance;
+			PD_XParam.CoorIdeal = PD_XParam.speedDownCoor - distance;
 	}
 	else
 	{
-		XParam.AccSegment = ACCSEGTYPE_SPEED_DOWN;
+		PD_XParam.AccSegment = ACCSEGTYPE_SPEED_DOWN;
 		if(slow_down_at_once)
 		{
-			XParam.speedDownCoor = XParam.Coor_NextCycle;
-			XParam.AccTableIndex = current_index;
-			if(XParam.AccTableIndex > 0)
-				XParam.AccTableIndex --;
+			PD_XParam.speedDownCoor = PD_XParam.CurCoor;
+			PD_XParam.AccTableIndex = current_index;
+			if(PD_XParam.AccTableIndex > 0)
+				PD_XParam.AccTableIndex --;
 			
-			XParam.speedDownIndex = XParam.AccTableIndex;
-			distance = GET_ACCTBL_DISTBL(pAccCurve)[XParam.AccTableIndex+1];
-			if(XParam.Dir == DIRTYPE_POS)
-				XParam.CoorIdeal = XParam.speedDownCoor + (distance >>ACC_DISTANCE_SHIFT_BIT);
+			PD_XParam.speedDownIndex = PD_XParam.AccTableIndex;
+			distance = GET_ACCTBL_DISTBL(pAccCurve)[PD_XParam.AccTableIndex+1];
+			if(PD_XParam.Dir == DIRTYPE_POS)
+				PD_XParam.CoorIdeal = PD_XParam.speedDownCoor + (distance >>ACC_DISTANCE_SHIFT_BIT);
 			else
-				XParam.CoorIdeal = XParam.speedDownCoor - (distance >>ACC_DISTANCE_SHIFT_BIT);
+				PD_XParam.CoorIdeal = PD_XParam.speedDownCoor - (distance >>ACC_DISTANCE_SHIFT_BIT);
 		}
 	}
 	slow_down_at_once = FALSE;
@@ -5710,9 +5101,10 @@ INT8U User_Stop_C(INT8U bUrgent)
 	return True;
 }
 
-INT8U StartAllStandby()
+INT8U StartAllStandby(void)
 {
-	INT8U ret;
+	INT8U ret = True;
+#if HE_ADD
 	ret = PWM_Start_Standy_X(&XParam, XParam.CoorIdeal, False);
 #ifndef MOTION_Y_DSP		
 	ret &= PWM_Start_Standy_Y(&YParam, YParam.CoorIdeal, False);
@@ -5721,6 +5113,7 @@ INT8U StartAllStandby()
 		ret &= TC_Start_Standy(pTC_Driver1);
 	if(pTC_Driver2 != NULL)
 		ret &= TC_Start_Standy(pTC_Driver2);
+#endif
 	return ret;
 }
 
@@ -6128,7 +5521,53 @@ INT8U FirstGoXHome()
 
 static INT8U bHomeWhenPowerOn = True;
 
-INT8U ResetXCoorSystem()
+INT8U ResetXCoorSystem(void)
+{
+	OS_CPU_SR cpu_sr;
+	INT32S X_posi = 0;
+	INT32S X_print_posi = 0;
+
+	OS_ENTER_CRITICAL();
+
+	if(XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
+	{
+		X_posi = (INT32S)(REG_MOTOR_COOR_X);
+	}
+	else if(XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
+	{
+		X_posi = (INT32S)(REG_PRT_COOR_X);
+	}
+	X_print_posi = (INT32S)(REG_PRT_COOR_X) - XORIGIN_OFFSET;
+	REG_COOR_SYS_CTRL = ER_CoorCtrl_RESET_X | REG_COOR_SYS_CTRL;
+	REG_COOR_SYS_CTRL = ~ER_CoorCtrl_RESET_X & REG_COOR_SYS_CTRL;
+
+
+	XParam.CoorIdeal -= X_posi - XParam.Origin_Offset;
+	XParam.Coor_NextCycle -= X_posi - XParam.Origin_Offset;
+	if(pPWMC_Driver1->AxisID == AXIS_ID_X)
+		LAST_COOR[0]  = 0xFFFFFFFF;
+	else if(pPWMC_Driver2->AxisID == AXIS_ID_X)
+		LAST_COOR[1]  = 0xFFFFFFFF;
+#if defined(HEAD_EPSON_GEN5)
+	if((fwInfo.hd_version  & 0xFFFFFFFF) >= 0x03030101 && !Already_Reset_FPGA)
+	{
+		FPGA_RESETAGAIN();
+		Already_Reset_FPGA = True;
+	}
+#endif
+	OS_EXIT_CRITICAL();
+
+#ifdef MICOLOR_AUTOFUCTION
+	if( (- X_print_posi) > cleanparam_EPSON_MICOLOR.factory.Carriage_X_ReleasePos)
+		bHomeWhenPowerOn = False;
+	else
+		bHomeWhenPowerOn = True;
+#endif
+
+	return True;
+}
+
+INT8U ResetXCoorSystem_old()
 {
 	OS_CPU_SR cpu_sr;
 	INT32S X_posi = 0;
@@ -6184,12 +5623,40 @@ INT8U IsHomeWhenPowerOn()
 	return bHomeWhenPowerOn;
 }
 
-INT8U ResetYCoorSystem()
+INT8U ResetYCoorSystem(void)
+{
+
+	OS_CPU_SR cpu_sr;
+	INT32S X_posi = 0;
+
+	OS_ENTER_CRITICAL();
+
+	REG_COOR_SYS_CTRL = ER_CoorCtrl_RESET_Y | REG_COOR_SYS_CTRL;
+	REG_COOR_SYS_CTRL = ~ER_CoorCtrl_RESET_Y & REG_COOR_SYS_CTRL;
+
+	//YParam.Origin_Offset = 0;
+	YParam.CoorIdeal = YParam.Origin_Offset;
+	YParam.Coor_nonRollback = YParam.CoorIdeal;
+	YParam.Coor_NextCycle = YParam.CoorIdeal;
+	YParam.Coor_NextCycle_Frac = 0;
+	YParam.ratio_StepPerCycle = 0;
+	YParam.lastCoor = 0;
+
+	if(pPWMC_Driver1->AxisID == AXIS_ID_Y)
+		LAST_COOR[0]  = 0xFFFFFFFF;
+	else if(pPWMC_Driver2->AxisID == AXIS_ID_Y)
+		LAST_COOR[1]  = 0xFFFFFFFF;
+	OS_EXIT_CRITICAL();
+
+	return True;
+}
+INT8U ResetYCoorSystem_old()
 {
 	OS_CPU_SR cpu_sr;
 	INT32S X_posi = 0;
 	
 	OS_ENTER_CRITICAL();
+#if 0
 #ifdef   HEAD_EPSON_GEN5		
 	SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, 
 				   ER_CoorCtrl_RESET_Y | ReadSafeEpsonRegInt(EPSON_REGADDR_COOR_CTRL));
@@ -6199,6 +5666,7 @@ INT8U ResetYCoorSystem()
 	rFPGA_RICOH_COORCTRL_L = ER_CoorCtrl_RESET_Y | rFPGA_RICOH_COORCTRL_L;
 	rFPGA_RICOH_COORCTRL_L = ~ER_CoorCtrl_RESET_Y & rFPGA_RICOH_COORCTRL_L;
 #endif		
+#endif
 	//YParam.Origin_Offset = 0;
 	YParam.CoorIdeal = YParam.Origin_Offset;
 	YParam.Coor_nonRollback = YParam.CoorIdeal;
@@ -7223,14 +6691,20 @@ void ConfigPrintReg()
 #elif defined(HEAD_RICOH_G4)
 	i = (INT32U)(rFPGA_RICOH_COORCTRL_L |rFPGA_RICOH_COORCTRLSTAT_H << 16);
 #endif
-	i &= (ER_CoorCtrl_SMOOTH_DIVIDER | ER_CoorCtrl_SMOOTH_MULTI | ER_CoorCtrl_FLASH);
+#if NP
+	//i &= (ER_CoorCtrl_SMOOTH_DIVIDER | ER_CoorCtrl_SMOOTH_MULTI | ER_CoorCtrl_FLASH);
+#else
+#endif
 	i |= (reg_ctrl | ER_CoorCtrl_FIRE);
 #ifdef   HEAD_EPSON_GEN5		
 	SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, i);
 	SetEpsonRegInt(EPSON_REGADDR_X_FIRE_START, startFirePoint + XParam.Origin_Offset_Feedback);
 	SetEpsonRegInt(EPSON_REGADDR_X_FIRE_END, endFirePoint + XParam.Origin_Offset_Feedback);
 #elif defined(HEAD_RICOH_G4)
+#if NP
 	i &= ~ER_CoorCtrl_FLASH;
+#else
+#endif
 	rFPGA_RICOH_COORCTRL_L =(INT16U)i;
 	rFPGA_RICOH_COORCTRLSTAT_H =(INT16U)(i >> 16);
 	rFPGA_RICOH_FIRESTART_L = (INT16U)(startFirePoint + XParam.Origin_Offset_Feedback);
@@ -7614,7 +7088,10 @@ INT8U ContinuePrint(INT32U flags)
 #ifdef   HEAD_EPSON_GEN5						
 		SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, ~(ER_CoorCtrl_FIRE | ER_CoorCtrl_FLASH) & ReadEpsonRegInt(EPSON_REGADDR_COOR_CTRL));
 #elif defined(HEAD_RICOH_G4)
+#if NP
 		rFPGA_RICOH_COORCTRL_L = ~(ER_CoorCtrl_FIRE | ER_CoorCtrl_FLASH) & rFPGA_RICOH_COORCTRL_L;
+#else
+#endif
 #endif
 		OS_EXIT_CRITICAL();
 		
@@ -7657,7 +7134,7 @@ void Motion_Task()
 	//  to reset Y coor system, will make Y-standy-process don't roll-back it. 
 	//  Else, if this distance is large, it will cause paper-jap error.
 	ResetYCoorSystem();
-	StartAllStandby();  
+	//StartAllStandby();
 	
 	//    for(ret =0; ret <250; ret++)
 	//        OSTimeDly(65000);
@@ -7676,6 +7153,7 @@ void Motion_Task()
 		UART_MotionReportCMD(UartCMD);
 	else
 		status_ReportStatus(STATUS_FTA + SciError_InternalErr_1, STATUS_SET);
+	//he_add #else
 #else
 	cmdbuf[0] = 6;
 	cmdbuf[1] = UART_INIT_STAGE1_CMD;
@@ -7716,6 +7194,11 @@ case UART_DSP_WRITE_EEPROM:
 				UART_MotionReportCMD(cmdbuf);
 				continue;
 			}
+			else if(flags == 1)
+			{
+				StartFindXHome();
+				//StartInitAction();
+			}
 		}
 		else
 		{
@@ -7732,10 +7215,10 @@ case UART_DSP_WRITE_EEPROM:
 		
 		if(flags & MOTION_URGENT_STOP_CMD)
 		{
-			User_Stop_X(True, True);
-			User_Stop_Y(True);
-			User_Stop_Z(True);
-			User_Stop_C(True);
+			//User_Stop_X(True, True);
+			//User_Stop_Y(True);
+			//User_Stop_Z(True);
+			//User_Stop_C(True);
 			continue;
 		}
 		
@@ -7748,7 +7231,8 @@ case UART_DSP_WRITE_EEPROM:
 				{
 				case IS_IDLE:
 				case IS_Send_INIT_STAGE1:
-					status_ReportStatus(STATUS_FTA + SciError_InternalErr_1, STATUS_SET);//
+					XMoveTo(1, 60000);
+					//status_ReportStatus(STATUS_FTA + SciError_InternalErr_1, STATUS_SET);//
 					break;
 #if ((defined (EPSON_CLEAN_INTEGRATE)||defined (EPSON_CLEAN_INTEGRATE_1)||defined (EPSON_CLEAN_INTEGRATE_2)||defined (EPSON_CLEAN_INTEGRATE_3)) && \
 	!defined(COLORFUL_EPSON))
@@ -8310,6 +7794,7 @@ INT8U InitFPGAExpandIoIT()
 {
 	OS_CPU_SR cpu_sr;	
 	INT8U ret = True;
+#if 0
 	Pin FpgaIoIrqPin_ = PIN_FPGA_EXPAND_IO_IRQ;
 	
 	memcpy(&FpgaIoIrqPin, &FpgaIoIrqPin_, sizeof(FpgaIoIrqPin_));
@@ -8327,6 +7812,7 @@ INT8U InitFPGAExpandIoIT()
 	else
 		ret = False;
 	OS_EXIT_CRITICAL();
+#endif
 	return ret;
 }
 
@@ -8562,7 +8048,11 @@ INT8U InitFPGAPosiIT()
 {
 	OS_CPU_SR cpu_sr;	
 	INT8U ret = True;
+#if CNP
 	Pin FpgaPosiIrqPin_ = PIN_FPGA_POSITION_IRQ;
+#else
+	Pin FpgaPosiIrqPin_ ={};
+#endif
 	
 	memcpy(&FpgaPosiIrqPin, &FpgaPosiIrqPin_ ,sizeof(FpgaPosiIrqPin_));
 	
@@ -8699,7 +8189,16 @@ INT8U EnableFPGAPosiIT(INT8U PosiID)
 
 #endif
 
+void WriteReg32Data(INT32U addr, INT32U data)
+{
 
+}
+
+INT32U ReadReg32Data(INT32U addr)
+{
+
+	return addr;
+}
 #if defined(HEAD_EPSON_GEN5) && ( defined(SUPPORT_MOTOR_CONTROL) || defined(FPGA_MAINTAIN_COOR) || defined(EPSON_BOTTOM_BOARD_V3) ||defined (EPSON_BOTTOM_BOARD_V2_1))
 void SetEpsonRegShort(INT16U addr, INT16U data)
 {
@@ -9182,3 +8681,123 @@ void PutMoveRecord(INT8U dir, INT8U SegType, INT8U MoveType, INT8U IsX, INT8U Is
 }
 
 #endif
+
+
+#if 1	//function port
+
+INT8U PWM_Urgent_Stop_p(struct AxisParam_DC_PWM * pDCPWM)
+{
+	OS_CPU_SR cpu_sr;
+
+	OS_ENTER_CRITICAL();
+	if( pDCPWM->ControlIO.ValidLevel)
+		PIO_Set(&pDCPWM->ControlIO.PinIO);
+	else
+		PIO_Clear(&pDCPWM->ControlIO.PinIO);
+
+	pDCPWM->PWM_CycleTime = PWM_STANDBY_CYCLE/2;
+
+	if( pDCPWM->ChannelNO == 0)
+		pPWM1Handle = PWMHandler_dimmy;
+	else
+		pPWM2Handle = PWMHandler_dimmy;
+#ifdef VM_PRINT
+	VM_PWM_STOP();
+#if CVM
+	DW_BASE_TC5->TC_IDR = AT91C_TC_CPCS;
+#else
+	//TC
+#endif
+#else
+	pwm_irq_almost_enable(pDCPWM->Channel_Mask, 0);
+	pwm_clear_buffer(pDCPWM->Channel_Mask);
+	pwm_enable(pDCPWM->Channel_Mask, 0);
+#endif
+
+#ifdef   HEAD_EPSON_GEN5
+	SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, ER_CoorCtrl_SMOOTH_DIVIDER_720 | ER_CoorCtrl_SMOOTH_MULTI_720);
+#else
+	rFPGA_RICOH_COORCTRL_L = ER_CoorCtrl_SMOOTH_DIVIDER_720 |ER_CoorCtrl_SMOOTH_MULTI_720;
+#endif
+	pDCPWM->BaseDPI = 720;
+	pDCPWM->CurrDPI = 720;
+
+	//pDCPWM->CoorIdeal
+	pDCPWM->Coor_NextCycle = pDCPWM->CoorIdeal;
+	pDCPWM->Coor_NextCycle_Frac = 0;
+	pDCPWM->ratio_StepPerCycle = 0;
+
+	pDCPWM->Dir = DIRTYPE_STANDBY;
+	pDCPWM->MoveType = MOVETYPE_CONTINUE;
+	pDCPWM->AccSegment = ACCSEGTYPE_CONSTANT_SPEED;
+
+	pDCPWM->curPWMTick = 0;
+	pDCPWM->curPWMTickInAccSegment = 0;
+
+	pDCPWM->speedDownCoor = 0;
+	pDCPWM->speedDownIndex = 0;
+
+	pDCPWM->pAccTable = NULL;
+	pDCPWM->AccTableLen = 0;
+	pDCPWM->AccTableIndex = 0;
+
+	pDCPWM->PWM_MaxValue = PWM_STANDBY_CYCLE/2 -50;
+	pDCPWM->PWM_MinValue = 50;
+	pDCPWM->PWM_CurValue = 0;
+	pDCPWM->PWM_OverLoadNum = 0;
+
+	pDCPWM->e = 0;
+	pDCPWM->e1 = 0;
+	pDCPWM->e2 = 0;
+	pDCPWM->Kp = pDCPWM->PIDTable[0][0];
+	pDCPWM->Ki = pDCPWM->PIDTable[0][1];
+	pDCPWM->Kd = pDCPWM->PIDTable[0][2];
+	pDCPWM->fixpoint_bit = PID_SHIFT_BIT;
+	pDCPWM->pid_out_max = pDCPWM->PWM_CycleTime/2;
+	pDCPWM->pid_out_min = -(pDCPWM->PWM_CycleTime/2);
+	pDCPWM->pid_out = 0;
+	pDCPWM->pid_out_frac = 0;
+	pDCPWM->pid_i_out_frac = 0;
+	memset(pDCPWM->e_history, 0, ERROR_HISTORY_LEN*sizeof(int));
+	pDCPWM->e_i = 0;
+
+	OS_EXIT_CRITICAL();
+	return True;
+}
+
+INT8U PWM_Stop_p(struct AxisParam_DC_PWM * pDCPWM)
+{
+	OS_CPU_SR cpu_sr;
+
+	OS_ENTER_CRITICAL();
+
+	pwm_irq_almost_enable(pDCPWM->Channel_Mask, 0);
+#ifdef VM_PRINT
+#if CVM
+	DW_BASE_TC5->TC_IDR = AT91C_TC_CPCS;
+#else
+	//TC
+#endif
+#else
+	pwm_enable(pDCPWM->Channel_Mask, 0);
+#endif
+
+	if(pDCPWM->ChannelNO == 0)
+		pPWM1Handle = PWMHandler_dimmy;
+	else
+		pPWM2Handle = PWMHandler_dimmy;
+
+	OS_EXIT_CRITICAL();
+	return True;
+}
+#endif
+
+
+/*
+ * Q:
+ * 1：PWM_Stop、PWM_Start_Movement等函数PWM极性转换？
+ * 2：PWM中断处理函数中占空比改变
+ * 3：开始时PWM周期与占空比相同
+ * 4:PutMoveRecord函数
+ */
+

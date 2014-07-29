@@ -146,23 +146,23 @@ extern INT8U desKey[];
 INT16U DATA_LEN = 0;
 INT8U TRANSFER_MODE = 0;
 INT8U WAVE_BUF[600] = {0};
-INT8U WAVE_NAME_BUF[4 * 8 * 8] = {0};		//Ò»¹²4¸övsd£¬Ã¿¸övsd°üº¬8¸ö²¨ÐÎ£¬¼´8¸öÃû×Ö£¬Ã¿¸öÃû×Ö×î¶àÕ¼8¸ö×Ö½Ú£¨ÓÐÐ§7¸ö×Ö½Ú + 0Î»£©¹²256¸ö×Ö½Ú
-INT8U WAVE_MAP_TABLE[MAX_HEAD_DRIVE_NUM * 2] = {0};			//³¤¶ÈÎªÍ·°åÍ¨µÀ¸öÊý * 2
+INT8U WAVE_NAME_BUF[4 * 8 * 8] = {0};		//Ò»ï¿½ï¿½4ï¿½ï¿½vsdï¿½ï¿½Ã¿ï¿½ï¿½vsdï¿½ï¿½8ï¿½ï¿½ï¿½ï¿½ï¿½Î£ï¿½ï¿½ï¿½8ï¿½ï¿½ï¿½ï¿½ï¿½Ö£ï¿½Ã¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ¼8ï¿½ï¿½ï¿½Ö½Ú£ï¿½ï¿½ï¿½Ð§7ï¿½ï¿½ï¿½Ö½ï¿½ + 0Î»ï¿½ï¿½ï¿½ï¿½256ï¿½ï¿½ï¿½Ö½ï¿½
+INT8U WAVE_MAP_TABLE[MAX_HEAD_DRIVE_NUM * 2] = {0};			//ï¿½ï¿½ï¿½ï¿½ÎªÍ·ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ * 2
 #endif
 
 #if defined(FUNC_WAVE_MAP)&&!defined(WAVE_SET_FUN)
 INT16U DATA_LEN = 0;
 INT8U TRANSFER_MODE = 0;
-INT8U WAVE_NAME_BUF[4 * 8 * 8] = {0};		//Ò»¹²4¸övsd£¬Ã¿¸övsd°üº¬8¸ö²¨ÐÎ£¬¼´8¸öÃû×Ö£¬Ã¿¸öÃû×Ö×î¶àÕ¼8¸ö×Ö½Ú£¨ÓÐÐ§7¸ö×Ö½Ú + 0Î»£©¹²256¸ö×Ö½Ú
-/*²¨ÐÎÓ³Éä±í½á¹¹£ºWAVE_MAP_TABLE
- *ÊÇÒ»¸ö¶ÌÕûÐÍÊý×é£¬³¤¶ÈÎªÍ·°åÍ¨µÀ¸öÊý£¬°´Ë³Ðò´æ´¢Í¨µÀ¶ÔÓ¦µÄ²¨ÐÎ
- *¶ÌÕûÐÍ¹²16Î»£¬
- *0~3Î»±íÊ¾VSD1¶ÔÓ¦²¨ÐÎÐòºÅ
- *4~7Î»±íÊ¾VSD2¶ÔÓ¦²¨ÐÎÐòºÅ
- *8~11Î»±íÊ¾VSD3¶ÔÓ¦²¨ÐÎÐòºÅ
- *12~15Î»±íÊ¾VSD4¶ÔÓ¦²¨ÐÎÐòºÅ
+INT8U WAVE_NAME_BUF[4 * 8 * 8] = {0};		//Ò»ï¿½ï¿½4ï¿½ï¿½vsdï¿½ï¿½Ã¿ï¿½ï¿½vsdï¿½ï¿½8ï¿½ï¿½ï¿½ï¿½ï¿½Î£ï¿½ï¿½ï¿½8ï¿½ï¿½ï¿½ï¿½ï¿½Ö£ï¿½Ã¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ¼8ï¿½ï¿½ï¿½Ö½Ú£ï¿½ï¿½ï¿½Ð§7ï¿½ï¿½ï¿½Ö½ï¿½ + 0Î»ï¿½ï¿½ï¿½ï¿½256ï¿½ï¿½ï¿½Ö½ï¿½
+/*ï¿½ï¿½ï¿½ï¿½Ó³ï¿½ï¿½ï¿½á¹¹ï¿½ï¿½WAVE_MAP_TABLE
+ *ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½é£¬ï¿½ï¿½ï¿½ï¿½ÎªÍ·ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½æ´¢Í¨ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½Ä²ï¿½ï¿½ï¿½
+ *ï¿½ï¿½ï¿½ï¿½ï¿½Í¹ï¿½16Î»ï¿½ï¿½
+ *0~3Î»ï¿½ï¿½Ê¾VSD1ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ *4~7Î»ï¿½ï¿½Ê¾VSD2ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ *8~11Î»ï¿½ï¿½Ê¾VSD3ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ *12~15Î»ï¿½ï¿½Ê¾VSD4ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
  */
-INT8U WAVE_MAP_TABLE[MAX_HEAD_DRIVE_NUM * 2] = {0};			//³¤¶ÈÎªÍ·°åÍ¨µÀ¸öÊý * 2
+INT8U WAVE_MAP_TABLE[MAX_HEAD_DRIVE_NUM * 2] = {0};			//ï¿½ï¿½ï¿½ï¿½ÎªÍ·ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ * 2
 #endif
 
 extern const Pin LVDSLockPin;
@@ -299,7 +299,8 @@ void TaskStart (void *data)
 
 
 	/*FIXME*/
-	securityChipInit = Init_OneWire();
+	//securityChipInit = Init_OneWire();
+	securityChipInit = True;
 
 #ifdef UV_PRINTER
 	uv_Init();
@@ -312,6 +313,7 @@ void TaskStart (void *data)
 #if defined(MICOLOR_AUTOFUCTION) &&  defined(EPSON_BOTTOM_BOARD_V3)
 	OpenPlateFanAlways();
 #endif
+
 	kb_installed = KB_Init();
 #if defined( IIC_Key_Board_LCD) && (defined( HEAD_EPSON_GEN5) || defined(HEAD_RICOH_G4))
 	LCD_Init();
@@ -402,19 +404,7 @@ void TaskStart (void *data)
 #endif
 
 	retryCnt = 50;
-	while (retryCnt--)
-	{
-		if (PIO_Get(&LVDSLockPin) == 1) //LVDS 124 is OK
-		{
-			UART_Init(True);  //Initial UART 1 and UART2
-			break;
-		}
-		else
-		{
-			UART_Init(False);  //Only init UART2
-			OSTimeDly(1);
-		}
-	}
+	UART_Init(True);  //Initial UART 1 and UART2
 
 	if (retryCnt <= 0)
 		status_ReportStatus(STATUS_FTA_HEADTOMAINROAD, STATUS_SET);
@@ -534,7 +524,7 @@ void TaskStart (void *data)
 	}
 #endif
 
-	//BYHX³õÊ¼»¯¼ì²â
+	//BYHXï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½
 #ifdef CHECK_BYHX_DATA
 	len = EPR_BYHX_AUTHORITY_FLAG_SIZE;
 	OSSemPend(IICSem, 0, &err);
@@ -555,7 +545,7 @@ void TaskStart (void *data)
 	valueFlag_BYHXData_Not_Init = 1;
 #endif
 
-	//FACTORY³õÊ¼»¯¼ì²â
+	//FACTORYï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½
 	len = EPR_FACTORY_AUTHORITY_FLAG_SIZE;
 	OSSemPend(IICSem, 0, &err);
 	if (IIC_ReadEEPRom(EPR_FACTORY_AUTHORITY_FLAG_OFFSET, buf, &len) == False)
@@ -762,7 +752,7 @@ void TaskStart (void *data)
 
 					UartCMD[0] = 4;
 					UartCMD[1] = UART_BEGIN_STAGE2_CMD;
-					UartCMD[2] = printer.xEncoder; //!0 Ê¹ÓÃ¹âÕ¤£¬ 0 Ê¹ÓÃË¾·þ±àÂë
+					UartCMD[2] = printer.xEncoder; //!0 Ê¹ï¿½Ã¹ï¿½Õ¤ï¿½ï¿½ 0 Ê¹ï¿½ï¿½Ë¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 					UartCMD[3] = factoryData.paper_w_type;
 
 					while (!UART_SendCMD(UART_MOTION_CHANNEL, UartCMD))
@@ -1034,7 +1024,7 @@ void TaskStart (void *data)
 					desKey[i] = UartCMD[2+i];
 				break;
 #endif
-			case UART_DSP_RPT_STOP: //Motion stop. Parameters: 4 bytes µ±Ç°Î»ÖÃ X: INT32S ÀàÐÍ: 4 ×Ö½Ú, Little Endian
+			case UART_DSP_RPT_STOP: //Motion stop. Parameters: 4 bytes ï¿½ï¿½Ç°Î»ï¿½ï¿½ X: INT32S ï¿½ï¿½ï¿½ï¿½: 4 ï¿½Ö½ï¿½, Little Endian
 				{
 					curPos.x = *(__packed INT32S *)(&UartCMD[2]);
 					curPos.y = *(__packed INT32S *)(&UartCMD[6]);
@@ -1314,13 +1304,13 @@ void TaskStart (void *data)
 				if(UartCMD[2] != UartCMD[3])
 				{
 					memcpy((void*)&(WAVE_BUF[(UartCMD[3]-1)*WAVE_DATA_MAX_LEN]), (void*)&(UartCMD[4]), WAVE_DATA_MAX_LEN);
-					memcpy((void*)&(WAVE_MAP_TABLE[(UartCMD[3]-1)*WAVE_DATA_MAX_LEN]), (void*)&(UartCMD[4]), WAVE_DATA_MAX_LEN);	//±¸·Ý²¨ÐÎÓ³Éä±í
+					memcpy((void*)&(WAVE_MAP_TABLE[(UartCMD[3]-1)*WAVE_DATA_MAX_LEN]), (void*)&(UartCMD[4]), WAVE_DATA_MAX_LEN);	//ï¿½ï¿½ï¿½Ý²ï¿½ï¿½ï¿½Ó³ï¿½ï¿½ï¿½
 					DATA_LEN += WAVE_DATA_MAX_LEN;
 				}
 				else
 				{
 					memcpy((void*)&(WAVE_BUF[(UartCMD[3]-1)*WAVE_DATA_MAX_LEN]), (void*)&(UartCMD[4]), UartCMD[0] - 4);
-					memcpy((void*)&(WAVE_MAP_TABLE[(UartCMD[3]-1)*WAVE_DATA_MAX_LEN]), (void*)&(UartCMD[4]), UartCMD[0] - 4);	//±¸·Ý²¨ÐÎÓ³Éä±í
+					memcpy((void*)&(WAVE_MAP_TABLE[(UartCMD[3]-1)*WAVE_DATA_MAX_LEN]), (void*)&(UartCMD[4]), UartCMD[0] - 4);	//ï¿½ï¿½ï¿½Ý²ï¿½ï¿½ï¿½Ó³ï¿½ï¿½ï¿½
 					DATA_LEN += (UartCMD[0] - 4);
 					((INT16U*)UartCMD)[0] = EP6_CMD_T_WAVE_CHANNEL_FINISH;
 					PushCommPipeData(COMMPIPE_ARM_CHANNEL_ID, UartCMD, 2, False);
@@ -1878,7 +1868,7 @@ void TaskStart (void *data)
 				UartCMD[1] = UART_HEAD_POINT_SET;
 			else if(TRANSFER_MODE == 4)
 				UartCMD[1] = UART_HEAD_WAVE_NAME_SET;
-			else if(TRANSFER_MODE == 18)  //43-25:²¨ÐÎÓ³Éä±íÏÂ·¢ÐÞ¸Ä
+			else if(TRANSFER_MODE == 18)  //43-25:ï¿½ï¿½ï¿½ï¿½Ó³ï¿½ï¿½ï¿½ï¿½Â·ï¿½ï¿½Þ¸ï¿½
 				UartCMD[1] = UART_HEAD_WAVE_CHANNEL_SET;
 
 			UartCMD[2] = pack_all;
@@ -1898,7 +1888,7 @@ void TaskStart (void *data)
 					((INT16U*)UartCMD)[0] = EP6_CMD_T_WAVE_POINT_FINISH;
 				else if(TRANSFER_MODE == 4)
 					((INT16U*)UartCMD)[0] = EP6_CMD_T_WAVE_NAME_FINISH;
-				if(TRANSFER_MODE != 18)//43-25:²¨ÐÎÓ³Éä±íÏÂ·¢ÐÞ¸Ä
+				if(TRANSFER_MODE != 18)//43-25:ï¿½ï¿½ï¿½ï¿½Ó³ï¿½ï¿½ï¿½ï¿½Â·ï¿½ï¿½Þ¸ï¿½
 					PushCommPipeData(COMMPIPE_ARM_CHANNEL_ID, UartCMD, 2, False);
 
 				DATA_LEN = pack_all = pack_num = TRANSFER_MODE = 0;
@@ -1926,7 +1916,7 @@ void TaskStart (void *data)
 			else
 				UartCMD[0] = WAVE_DATA_MAX_LEN + 4;
 
-			if(TRANSFER_MODE == 18)  //43-25:²¨ÐÎÓ³Éä±íÏÂ·¢ÐÞ¸Ä
+			if(TRANSFER_MODE == 18)  //43-25:ï¿½ï¿½ï¿½ï¿½Ó³ï¿½ï¿½ï¿½ï¿½Â·ï¿½ï¿½Þ¸ï¿½
 				UartCMD[1] = UART_HEAD_WAVE_CHANNEL_SET;
 
 			UartCMD[2] = pack_all;
@@ -2244,14 +2234,14 @@ void TaskStart (void *data)
 			FIND_ORIGIN_Dirty = False;
 		}
 #endif
-		//¿ÕÏÐÇåÏ´
+		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï´
 #ifdef MANUFACTURER_DGEN
 		OS_ENTER_CRITICAL();
 		if(cleanparam_EPSON_ALLWIN.IdleClean_intervalTime <= (IdleClean_Time /1000 / 60 / 60)
 				&&cleanparam_EPSON_ALLWIN.IdleClean_intervalTime > 0)
 		{
 			IdleClean_Time = 0;
-			ActiveCleanConfig = cleanparam_EPSON_ALLWIN.AutoCleanConfig;	//ÉèÖÃÇåÏ´Ç¿¶È
+			ActiveCleanConfig = cleanparam_EPSON_ALLWIN.AutoCleanConfig;	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï´Ç¿ï¿½ï¿½
 			nextband_autoClean = True;
 			status_ReportStatus(CMD_CLEAN_AUTO, STATUS_SET);
 		}
@@ -2424,7 +2414,7 @@ void TaskStart (void *data)
 						while (!UART_SendCMD(UART_HEAD_CHANNEL, buf))
 							OSTimeDly(10);
 					}
-					if(flash_wait_50ms >= 1)//ÊýÖµÔÚ50×óÓÒÆµ·±±¨Í·°æfpga´íÎó£¬ÊýÖµÔ½Ð¡¸ÅÂÊÔ½µÍ
+					if(flash_wait_50ms >= 1)//ï¿½ï¿½Öµï¿½ï¿½50ï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½ï¿½ï¿½Í·ï¿½ï¿½fpgaï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÖµÔ½Ð¡ï¿½ï¿½ï¿½ï¿½Ô½ï¿½ï¿½
 					{
 						FPGA_START_FLASH_ALLWIN(cleanparam_EPSON_ALLWIN.Config[2].FlashFreqInterval, 0xF);
 						flash_idle_on = True;
@@ -2441,7 +2431,7 @@ void TaskStart (void *data)
 			}
 #endif
 
-#if !defined(HEAD_EPSON_GEN5)&&	 !defined(HEAD_RICOH_G4)//RICOHÔÝÊ±²»Ö§³Ö
+#if !defined(HEAD_EPSON_GEN5)&&	 !defined(HEAD_RICOH_G4)//RICOHï¿½ï¿½Ê±ï¿½ï¿½Ö§ï¿½ï¿½
 #error
 		//for ricoh, maybe, it need flash when idle. depend on the cleaning way.
 		//  if it is capped when idle, it need not flash. else, need it.

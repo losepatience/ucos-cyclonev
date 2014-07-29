@@ -169,6 +169,7 @@ static int dw_gpio_direction_output_array(struct gpio_chip *gc,
 	return 0;
 }
 
+/* imode1: level-sensitive */
 static void dw_gpio_set_imode(struct gpio_chip *gc, int en, unsigned mask,
 		unsigned itmask, unsigned imode, unsigned pol)
 {
@@ -182,22 +183,24 @@ static void dw_gpio_set_imode(struct gpio_chip *gc, int en, unsigned mask,
 		return;
 	}
 
+
 	if(mask & itmask) {
 		unsigned long flags = 0;
 
-		spin_lock_irqsave(&pio_lock, flags);
 		if (mask & imode)	/* level */
 			imode = ~imode;
 
 		if (!(mask & pol))	/* active low or falling edge */
 			pol = ~pol;
 
+		spin_lock_irqsave(&pio_lock, flags);
 		writel(imode, gc->priv + GPIO_INT_TYPE_LEVEL_REG_OFFSET);
 		writel(pol, gc->priv + GPIO_INT_POLARITY_REG_OFFSET);
 		spin_unlock_irqrestore(&pio_lock, flags);
+	} else {
+		/* default: edge-sensitive */
+		writel(mask, gc->priv + GPIO_INT_TYPE_LEVEL_REG_OFFSET);
 	}
-
-	writel(mask, gc->priv + GPIO_INT_EN_REG_OFFSET);
 }
 
 int dw_gpio_init(void)
@@ -208,9 +211,9 @@ int dw_gpio_init(void)
 
 		struct gpio_chip *gc = &__gc[i];
 
-		gc->priv = (void *)(SOCFPGA_GPIO0_ADDRESS + i * 0x1000);
-		gc->ngpio = 29;
-		gc->base = i * 29;
+		gc->priv	= (void *)(SOCFPGA_GPIO0_ADDRESS + 0x1000 * i);
+		gc->ngpio	= 29;
+		gc->base	= 29 * i;
 
 		gc->to_irq		= dw_gpio_to_irq;
 		gc->get			= dw_gpio_get;
@@ -288,34 +291,34 @@ char PIO_Get(const Pin *pin)
 
 static void gpio_interrupt(void *arg)
 {
-	int i = 0;
-	static unsigned int status;
-	const Pin *pin = (const Pin *)arg;
-	struct gpio_chip *gc = __get_gpiochip(pin);
+	unsigned int status;
+	struct gpio_chip *gc;
+	int i;
 
-	if (gc->base <= 29 * (DWGPIO_CHIP_NUM - 1))
-		status = readl(gc->priv + GPIO_INT_STATUS_REG_OFFSET);
-	else
-		status = readl(gc->priv + CYCGPIO_IR);
+	for (i = 0; i < numSources; i++) {
+		unsigned int IR, CIR;
+		unsigned int val;
 
+		gc = __get_gpiochip(pSources[i].pin);
 
-	for (; (status != 0) && (i < numSources); i++) {
+		if (gc->base <= 29 * (DWGPIO_CHIP_NUM - 1)) {
+			IR = GPIO_INT_STATUS_REG_OFFSET;
+			CIR = GPIO_INT_EOI_REG_OFFSET;
+		} else {
+			IR = CYCGPIO_IR;
+			CIR = CYCGPIO_CIR;
+		}
 
-		if (pSources[i].pin->id != pin->id)
+		status = readl(gc->priv + IR);
+		if ((status & pSources[i].pin->mask) == 0)
 			continue;
 
-		if ((status & pSources[i].pin->mask) != 0) {
-			void *reg;
-			if (gc->base <= 29 * (DWGPIO_CHIP_NUM - 1))
-				reg = gc->priv + GPIO_INT_EOI_REG_OFFSET;
-			else
-				reg = gc->priv + CYCGPIO_CIR;
+		pSources[i].handler(pSources[i].pin);
+		status &= ~(pSources[i].pin->mask);
 
-			pSources[i].handler(pSources[i].pin);
-			status &= ~(pSources[i].pin->mask);
-
-			writel(readl(reg) | pSources[i].pin->mask, reg);
-		}
+		val = readl(gc->priv + CIR);
+		val |= pSources[i].pin->mask;
+		writel(val, gc->priv + CIR);
 	}
 }
 
