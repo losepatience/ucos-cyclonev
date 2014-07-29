@@ -403,8 +403,9 @@ void USBD_Connect(void)
 		.len = 0,
 		.cmd = USB_CMD_CONNECT,
 	};
+	struct ezusb_port *port = __to_ezusb_port(0);
 
-	ezusb_write(0, &cmd, sizeof(cmd));
+	ezusb_write(port, &cmd, sizeof(cmd));
 }
 
 void USBD_Disconnect(void)
@@ -413,15 +414,17 @@ void USBD_Disconnect(void)
 		.len = 0,
 		.cmd = USB_CMD_DISCONNECT,
 	};
+	struct ezusb_port *port = __to_ezusb_port(0);
 
 	__usb_state = USBD_STATE_DEFAULT;
-	ezusb_write(0, &cmd, sizeof(cmd));
+	ezusb_write(port, &cmd, sizeof(cmd));
 }
 
 u8 USBD_Stall(u8 Endpoint)
 {
 	char buf[sizeof(USB_CMD_t) + 1];
 	USB_CMD_t *cmd = (USB_CMD_t *)buf;
+	struct ezusb_port *port = __to_ezusb_port(0);
 
 	if (!USBD_IsIdle(Endpoint))
 		return USBD_STATUS_LOCKED;
@@ -430,7 +433,7 @@ u8 USBD_Stall(u8 Endpoint)
 	cmd->cmd = USB_CMD_STALL;
 	cmd->data[0] = Endpoint;
 
-	ezusb_write(0, cmd, sizeof(buf));
+	ezusb_write(port, buf, sizeof(buf));
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -438,6 +441,7 @@ u8 USBD_ACK(u8 Endpoint)
 {
 	char buf[sizeof(USB_CMD_t) + 1];
 	USB_CMD_t *cmd = (USB_CMD_t *)buf;
+	struct ezusb_port *port = __to_ezusb_port(0);
 
 	if (!USBD_IsIdle(Endpoint))
 		return USBD_STATUS_LOCKED;
@@ -446,7 +450,7 @@ u8 USBD_ACK(u8 Endpoint)
 	cmd->cmd = USB_CMD_ACK;
 	cmd->data[0] = Endpoint;
 	
-	ezusb_write(0, cmd, sizeof(buf));
+	ezusb_write(port, buf, sizeof(buf));
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -454,12 +458,13 @@ char USBD_AbortDataRead(u8 Endpoint)
 {
 	char buf[sizeof(USB_CMD_t) + 1];
 	USB_CMD_t *cmd = (USB_CMD_t *)buf;
+	struct ezusb_port *port = __to_ezusb_port(0);
 
 	cmd->len = 1;
 	cmd->cmd = USB_CMD_ABORT_READ;
 	cmd->data[0] = Endpoint;
 
-	ezusb_write(0, cmd, sizeof(buf));
+	ezusb_write(port, buf, sizeof(buf));
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -467,12 +472,13 @@ char USBD_AbortDataWrite(u8 Endpoint)
 {
 	char buf[sizeof(USB_CMD_t) + 1];
 	USB_CMD_t *cmd = (USB_CMD_t *)buf;
+	struct ezusb_port *port = __to_ezusb_port(0);
 
 	cmd->len = 1;
 	cmd->cmd = USB_CMD_ABROT_WRITE;
 	cmd->data[0] = Endpoint;
 
-	ezusb_write(0, cmd, sizeof(buf));
+	ezusb_write(port, buf, sizeof(buf));
 	return USBD_STATUS_SUCCESS;
 }
 

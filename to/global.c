@@ -1293,9 +1293,9 @@ void Printer_Init(void)
 	uv_UVMode = (Ripstar_UV_Setting.UV_SETTING >> 24)/10;
 #elif defined(MANUFACTURER_DOCAN_UV)
 	UV_Power_Percent(&Ripstar_UV_Setting.Power[0],100,100);	
-	uv_UVMode = (Ripstar_UV_Setting.UV_SETTING >> 24)
+	uv_UVMode = (Ripstar_UV_Setting.UV_SETTING >> 24);
 #elif defined(MANUFACTURER_FULGENCY_FLAT_UV)
-		UV_Power_Percent(&Ripstar_UV_Setting.Power[0],25,25);
+	UV_Power_Percent(&Ripstar_UV_Setting.Power[0],25,25);
 	uv_UVMode = (Ripstar_UV_Setting.UV_SETTING >> 24);		
 #else
 	UV_Power_Percent(&Ripstar_UV_Setting.Power[0],10,10);

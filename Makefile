@@ -90,9 +90,9 @@ CFLAGS += $(SPECS:%=-D%)
 DIRS := OS lib
 INCS := $(shell find $(DIRS) -name "*.h")
 INCS := $(sort $(dir $(INCS)))
-INCS += include include/Ripstar APP to to/porting
+INCS += include include/Ripstar to to/porting
 
-DIRS := OS lib to APP
+DIRS := OS lib to
 SRCS := $(shell find $(DIRS) -name "*.S" -o -name "*.c")
 OBJS := $(SRCS:.c=.o)
 OBJS := $(OBJS:.S=.o)

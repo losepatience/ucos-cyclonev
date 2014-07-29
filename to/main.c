@@ -274,7 +274,9 @@ void TaskStart (void *data)
 
 
 	INT8U usbInit = False;
-	INT8U FPGAInit = False;
+	/* XXX */
+	//INT8U FPGAInit = False;
+	INT8U FPGAInit = True;
 	INT32U i;
 
 	INT8U securityChipInit = False;
