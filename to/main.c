@@ -419,8 +419,12 @@ void TaskStart (void *data)
 	valueFlag_BYHXData_Not_Init = 1;
 	valueFlag_FactoryData_Not_Init = 1;
 	{
-		INT8U * BPP =  (INT8U *)(AT91C_DDR2 + 0x200000);
-		INT8U * BPP2 = (INT8U *)(AT91C_DDR2 + 0x300000);
+		//INT8U * BPP =  (INT8U *)(AT91C_DDR2 + 0x200000);
+		//INT8U * BPP2 = (INT8U *)(AT91C_DDR2 + 0x300000);
+		/* FIXME */
+		INT8U * BPP =  (INT8U *)malloc(512);
+		INT8U * BPP2 = BPP + 256;
+
 
 		INT8U * PP;
 		INT32U total = 0;
@@ -1640,7 +1644,6 @@ void TaskStart (void *data)
 #endif
 
 #else
-#ifndef EPSON_DX5E
 #ifdef CONVERSION_BOARD
 				if(UartCMD[2] & (1<<EHFB_FPGA_ERROR))
 					status_ReportStatus(STATUS_WAR_EPSON_HEAD_FPGA_ERR|((UartCMD[UartCMD[0]-1]&HEAD_BIT_MASK)<<HEAD_BIT_STATUS), HEAD_ERROR_SET);
@@ -1653,7 +1656,6 @@ void TaskStart (void *data)
 					status_ReportStatus(STATUS_WAR_EPSON_HEAD_FPGA_ERR, STATUS_CLR);
 #endif
 
-#endif
 #endif
 				//if(!(UartCMD[10] & EHFB_FPGA_ENABLE))
 				//    status_ReportStatus(STATUS_SVC_HEADBOARD_INIT_FAIL, STATUS_SET);

@@ -91,7 +91,7 @@ void lowlevel_init(void)
 
 	/* do this before pl310_init */
 	start = bss_end;
-	size = __os_base + (__os_size / 2) - start;
+	size = __OS_BASE + (__OS_SIZE / 2) - start;
 	mem_malloc_init(start, size);
 
 	__enable_cache();		/* enable L1 cache*/

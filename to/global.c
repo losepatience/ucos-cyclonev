@@ -1157,16 +1157,7 @@ void Printer_Init(void)
 	}	
 #endif
 
-#if defined(EPSON_DX5E)
-
-#if defined(HEAD_EPSON_GEN5)
-	factoryDataEx.m_nBitFlagEx |= FACTORYDATA_EX_DX5E;
-#else
-#error
-#endif
-#else
 	factoryDataEx.m_nBitFlagEx &= ~FACTORYDATA_EX_DX5E;
-#endif
 
 #ifdef GZ_KEY_USED
 	factoryDataEx.m_nBitFlagEx |= FACTORYDATA_EX_GZ_KEY;

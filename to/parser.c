@@ -78,8 +78,6 @@ INT32U cur_step_distance;
 extern volatile INT8U USBDMA_manualStop;
 INT8U security_CheckSWUILanguageSetting(INT8U language, INT8U *str, INT8U isEP0);
 
-//#define EPSON_DX5E
-
 //#define DEBUG
 #define UPDATEDSP_WAITTIME 20000 //timeout, 20 seconds
 
@@ -1359,69 +1357,6 @@ void PushVSDCMD(INT8U b_first_pass)
 		else
 			currentFireCount += EPSON_MIN_DATA_UNIT + data_header.Inf.band_inf.band_width/job_info.encoder_div;
 		INT32U cur = currentFireCount ;
-#ifdef EPSON_DX5E	
-		if(1)
-		{	
-			INT32U x,y;
-			INT8U NEW = False;
-			x = (currentFireCount - data_header.Inf.band_inf.band_width/job_info.encoder_div);
-			x += data_header.Inf.band_inf.GapStartPos;
-			GEN5E_Change_Memory(data_header.Inf.band_inf.GapStartPos);
-			//Put_Fpga_Info(NEW,x - data_header.Inf.band_inf.GapStartPos,0);
-			INT32U DATA_SIZE = currentFireCount;
-			while(1)
-			{				 	
-				if(x >= DATA_SIZE)
-					break;
-				if( (DATA_SIZE - x) >= DEN5_FIX_FIRE_INTERVAL)
-					y = x + DEN5_FIX_FIRE_INTERVAL;
-				else
-					y = DATA_SIZE; 
-				if(x >= 0x10000)
-				{
-					x -= 0x10000;y -= 0x10000;
-					Put_Fpga_Info(NEW,0,(x != 0));
-					NEW = True;
-					if(x != 0)
-					{
-						Put_Fpga_Info(NEW,x,1);
-						NEW = False;
-					}
-					Put_Fpga_Info(NEW,y,0);
-					NEW = False;
-					DATA_SIZE -= 0X10000;
-				}
-				else if(y >= 0x10000)
-				{
-					y -= 0x10000;
-					Put_Fpga_Info(NEW,x,1);
-					if(y == 0)
-					{
-						Put_Fpga_Info(NEW,0,0);
-						NEW = True;
-					}
-					else
-					{
-						Put_Fpga_Info(NEW,0,1);
-						NEW = True;
-						Put_Fpga_Info(NEW,y,0);
-						NEW = False;
-					}
-				}
-				else
-				{
-					Put_Fpga_Info(NEW,x,1);
-					NEW = False;
-					Put_Fpga_Info(NEW,y,0);
-				}
-				x += DEN5_FIX_FIRE + DEN5_FIX_FIRE_INTERVAL;
-			}
-			if( y != DATA_SIZE)
-				Put_Fpga_Info(NEW,DATA_SIZE,1);
-		}
-		else
-		{
-#endif			
 			while(cur > 0)//回绕发生后的第一次需要填2个坐标
 			{
 				if(cur > 0x10000)
@@ -1460,11 +1395,6 @@ void PushVSDCMD(INT8U b_first_pass)
 				}
 #endif		
 			}
-#ifdef EPSON_DX5E					 
-		}
-#endif			
-
-
 
 		currentFireCount += 1;
 		FPGA_SET_DATASEG(currentFireCount); //down to 0x1E.

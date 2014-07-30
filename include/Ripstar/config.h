@@ -3,23 +3,25 @@
 #include <asm/regs.h>
 
 /* macro for both os */
-#define __os_base		0x00100000
-#define __os_size		0x00A00000	/* size(os) + size(pt) */
+#define __OS_BASE		0x00200000
+#define __OS_SIZE		0x00A00000	/* size(os) + size(pt) */
 #define PHYS_SDRAM_SIZE		(0x20000000)
 
 /*
- * os0:	0x100000--0x600000(0x4F8000(os) + 0x4000(pt) + 0x4000(stack))
- * os1:	0x600000--0xB00000(0x4F8000(os) + 0x4000(pt) + 0x4000(stack))
+ * os0:	0x200000--0x700000(0x4F8000(os) + 0x4000(pt) + 0x4000(stack))
+ * os1:	0x700000--0xC00000(0x4F8000(os) + 0x4000(pt) + 0x4000(stack))
  */
 #ifndef OS1
-# define __text_base		0x00108000
+# define __text_base		(__OS_BASE + 0x8000)
 #else
-# define __text_base		0x00608000
+# define __text_base		(__OS_BASE + 0x8000 + __OS_SIZE / 2)
 #endif
 
 #define __mmu_table		(__text_base - 0x4000)
 #define __svc_stack		(__mmu_table - 0x2000)
-#define __irq_stack		(__text_base - 0x8000)
+#define __irq_stack		(__svc_stack - 0x2000)
+
+#define RESERVED_MEMSIZE	(__OS_BASE)
 
 /* -------------------------------------------------------------- */
 /* flash layout */
