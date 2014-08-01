@@ -3,8 +3,8 @@
 #include <asm/regs.h>
 
 /* macro for both os */
-#define __OS_BASE		0x00200000
-#define __OS_SIZE		0x00A00000	/* size(os) + size(pt) */
+#define __OS_BASE		(0x00200000)
+#define __OS_SIZE		(0x01400000)	/* size(os) + size(pt) */
 #define PHYS_SDRAM_SIZE		(0x20000000)
 
 /*
@@ -18,8 +18,8 @@
 #endif
 
 #define __mmu_table		(__text_base - 0x4000)
-#define __svc_stack		(__mmu_table - 0x2000)
-#define __irq_stack		(__svc_stack - 0x2000)
+#define __svc_stack		(__mmu_table - 1)
+#define __irq_stack		(__mmu_table - 0x2000)
 
 #define RESERVED_MEMSIZE	(__OS_BASE)
 

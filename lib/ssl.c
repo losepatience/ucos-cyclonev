@@ -189,3 +189,28 @@ void __sha1(u32 sha1[5], const u8 data[64])
 	}
 }
 
+
+/*
+ * iButtons use LSB first, so we have to turn the result around.
+ * a-b-c-d-e should be turn to e-d-c-b-a, where each letter
+ * represents four bytes ofthe result.
+ */
+void w1_sha1(u8 *mac, const u8 data[64])
+{
+	int i;
+	u32 tmp;
+	u32 sha1[5];
+
+	__sha1(sha1, data);
+
+	for (i = 0; i < 5; i++) {
+		tmp = sha1[4 - i];
+		mac[i * 4 + 0] = (u8)tmp;
+		tmp >>= 8;
+		mac[i * 4 + 1] = (u8)tmp;
+		tmp >>= 8;
+		mac[i * 4 + 2] = (u8)tmp;
+		tmp >>= 8;
+		mac[i * 4 + 3] = (u8)tmp;
+	}
+}

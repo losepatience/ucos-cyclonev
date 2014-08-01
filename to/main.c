@@ -301,8 +301,8 @@ void TaskStart (void *data)
 
 
 	/*FIXME*/
-	//securityChipInit = Init_OneWire();
-	securityChipInit = True;
+	securityChipInit = Init_OneWire();
+	//securityChipInit = True;
 
 #ifdef UV_PRINTER
 	uv_Init();
@@ -528,6 +528,7 @@ void TaskStart (void *data)
 		OSSemPost(IICSem);
 		//		CONSOL_Printf("CHECK EEPROM Finished\r\n");
 	}
+	free(BPP2);
 #endif
 
 	//BYHX��ʼ�����

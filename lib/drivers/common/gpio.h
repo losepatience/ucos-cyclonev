@@ -23,7 +23,7 @@
 
 #include <platform.h>
 
-#define ARCH_NR_GPIOS		(2 * 29 + 59)	/* 59 fpga gpio */
+#define ARCH_NR_GPIOS		(2 * 29 + 60)	/* 60 fpga gpio */
 #define ARCH_NR_GPIOCHIPS	(2 + 4)		/* 4 fpga gpiochip */
 
 #define GPIOF_OPEN_DRAIN	(1 << 0)

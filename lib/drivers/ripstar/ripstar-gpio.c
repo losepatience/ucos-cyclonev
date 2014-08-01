@@ -39,8 +39,9 @@
 static spinlock_t gpio_lock;
 
 struct gpio_chip __gc[DWGPIO_CHIP_NUM + 4];
-static int __ngpio[] = { 12, 18, 14, 15 };
+static int __ngpio[] = { 13, 18, 14, 15 };
 
+/* FIXME */
 static int cycgpio_to_irq(struct gpio_chip *gc, unsigned offset)
 {
 	int i;

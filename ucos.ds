@@ -70,6 +70,8 @@ start
 
 #
 # set breakpoint at start of code that relocates uboot
+#thbreak lowlevel_init
 thbreak TaskStart
+#thbreak _start
 cont
 wait 60s

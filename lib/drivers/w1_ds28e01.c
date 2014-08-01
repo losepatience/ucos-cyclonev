@@ -8,161 +8,34 @@
  * or otherwise, without the prior consent of BYHX, Inc.
  */
 
-#include <stdio.h>
-#include <stddef.h>
 #include <string.h>
 #include <malloc.h>
 #include <errno.h>
 #include <delay.h>
-#include <platform.h>
-
-#include <gpio.h>
 #include <ssl.h>
-#include <w1_ds28e01.h>
-#include <old_apis.h>
+#include <w1.h>
+#include <gpio.h>
+#include <stddef.h>
 
-static unsigned char w1_read_bit(struct w1_master *master)
+#define W1_F2F_READ			0xF0
+#define W1_F2F_READ_AUTHPAGE		0xA5
+#define W1_F2F_LOAD_SECRET		0x5A
+
+#define W1_F2F_READ_SCRATCHPAD		0xAA
+#define W1_F2F_WRITE_SCRATCHPAD		0x0F
+#define W1_F2F_COPY_SCRATCHPAD		0x55
+
+static int w1_gpio_pin = 70;
+
+static inline unsigned char w1_gpio_read_bit(void)
 {
-	int val;
-
-	/*
-	 *  \       /``````````````````\
-	 * tF\_tRL_/....................\__
-	 *
-	 * the master generates a start signal by pull the bus down for tRL.
-	 * then release the bus, and sample the bus within tMSR
-	 */
-
-	master->write_bit(master->data, 0);
-	udelay(6);
-	master->write_bit(master->data, 1);
-	udelay(9);
-
-	val = master->read_bit(master->data);
-
-	udelay(55);
-
-	return val & 0x1;
+	int pin = w1_gpio_pin;
+	return gpio_get_value(pin);
 }
 
-static void w1_write_bit(struct w1_master *master, u8 bit)
+static void w1_gpio_write_bit(u8 val)
 {
-	/*
-	 *  \        /``````````````````\
-	 * tF\_tW1L_/                    \__
-	 *  \                      /````\
-	 * tF\________tW0L________/      \__
-	 *
-	 * XXX: the master pulls the bus down for tW1L or tW0L
-	 */
-
-	if (bit) {
-		master->write_bit(master->data, 0);
-		udelay(6);
-		master->write_bit(master->data, 1);
-		udelay(64);
-	} else {
-		master->write_bit(master->data, 0);
-		udelay(60);
-		master->write_bit(master->data, 1);
-		udelay(10);
-	}
-}
-
-int w1_reset_bus(struct w1_master *master)
-{
-	int val;
-
-	/*
-	 *  \               /```\XXXXXXXX/`````\
-	 * tF\____tRSTL____/tPDH \XXXXXX/ tREC  \__
-	 *                         tMSR
-	 */
-	master->write_bit(master->data, 0);
-	udelay(480);
-
-	/*
-	 * after tRSTL, Vpup and slave control the bus.
-	 * slave waits for tPDH and then transmits a Presence
-	 * Pulse by pulling the line low for tPDL.
-	 */
-	master->write_bit(master->data, 1);
-	udelay(70);
-
-	val = master->read_bit(master->data) & 0x1;
-	udelay(410);
-
-	return val;
-}
-
-
-static u8 w1_read_8(struct w1_master *master)
-{
-	int i;
-	u8 res = 0;
-
-	if (master->read_byte)
-		return master->read_byte(master->data);
-
-	for (i = 0; i < 8; ++i)
-		res |= (w1_read_bit(master) << i);
-
-	return res;
-}
-
-static void w1_write_8(struct w1_master *master, u8 val)
-{
-	int i;
-
-	if (master->write_byte)
-		return master->write_byte(master->data, val);
-
-	for (i = 0; i < 8; ++i)
-		w1_write_bit(master, (val >> i) & 0x1);
-}
-
-static ssize_t w1_read_block(struct w1_master *master, u8 *buf, size_t len)
-{
-	int i;
-
-	if (master->read_block)
-		return master->read_block(master, buf, len);
-
-	for (i = 0; i < len; ++i)
-		buf[i] = w1_read_8(master);
-
-	return len;
-}
-
-static ssize_t w1_write_block(struct w1_master *master,
-				const u8 *buf, size_t len)
-{
-	int i;
-
-	if (master->write_block)
-		return master->write_block(master, buf, len);
-
-	for (i = 0; i < len; ++i)
-		w1_write_8(master, buf[i]);
-
-	return len;
-}
-
-static inline int w1_reset_select_slave(struct w1_master *master)
-{
-	if (w1_reset_bus(master))
-		return -EIO;
-
-	w1_write_8(master, 0xcc);
-	return 0;
-}
-
-/* ------------------------------------------------------------ */
-/* gpio w1 adapter */
-/* ------------------------------------------------------------ */
-static inline void w1_gpio_write_bit(void *data, u8 val)
-{
-	unsigned pin = *(unsigned *)data;
+	int pin = w1_gpio_pin;
 
 	if (val)
 		gpio_direction_input(pin);
@@ -170,354 +43,323 @@ static inline void w1_gpio_write_bit(void *data, u8 val)
 		gpio_direction_output(pin, 0);
 }
 
-static inline int w1_gpio_read_bit(void *data)
-{
-	return gpio_get_value(*(unsigned *)data);
-}
-
-int w1_master_init(struct w1_master *master)
-{
-	static unsigned pin = 32;	/* FIXME */
-	master->data = &pin;
-	master->read_bit = w1_gpio_read_bit;
-	master->write_bit = w1_gpio_write_bit;
-	return 0;
-}
+static struct w1_master w1_gpio_master = {
+	.read_bit = w1_gpio_read_bit,
+	.write_bit = w1_gpio_write_bit
+};
 
 /* ---------------------------------------------------------------- */
 /* things about w1 family 2f */
 /* ---------------------------------------------------------------- */
+static struct w1_f2f_pdata {
+	u8	sha1_msg[64];
+} __pdata;
 
-static int w1_f2f_read_romid(struct w1_master *master, u8 *romid)
+static struct w1_slave *__w1_f2f_slave;
+
+static inline struct w1_slave *w1_f2f_get_slave(void)
 {
-	if (w1_reset_bus(master))
-		return -ENODEV;
-
-	w1_write_8(master, W1_F2F_READ_ROMID);
-	w1_read_block(master, romid, 8);
-
-	return w1_crc8(romid, 8) ? -EAGAIN : 0;
+	return __w1_f2f_slave;
 }
 
-static int __w1_f2f_read(struct w1_master *master, u8 *buf, u8 offs, int cnt)
+static int w1_f2f_read(struct w1_slave *sl, u8 *buf, int offs, int len)
 {
-	unsigned next_page;
-	unsigned pad_num = 0;
-	struct w1_ds28e01 *ds28e01 = master->slave;
+	u8 cmd[3];
+	u8 tmp[32];
+	unsigned pad, next_page;
 
-	if (offs / ds28e01->sub_page_size)
-		pad_num = offs - rounddown(offs, ds28e01->sub_page_size);
-
-	offs	-= pad_num;
-	cnt	+= pad_num;
-
-	next_page = roundup(offs + 1, ds28e01->page_size);
-	if (offs + cnt > next_page)
-		cnt = next_page - offs;
-
-	ds28e01->wr_buf[0] = W1_F2F_READ_EEPROM;
-	ds28e01->wr_buf[1] = offs;
-	ds28e01->wr_buf[2] = 0;
-
-	/* read twice to compare the result */
-	if (w1_reset_select_slave(master))
+	if (w1_reset_slave(sl))
 		return -EIO;
 
-	w1_write_block(master, ds28e01->wr_buf, 3);
-	w1_read_block(master, &ds28e01->wr_buf[3], cnt);
+	pad = offs % 8;
+	offs -=  pad;
 
-	/* the second time */
-	if (w1_reset_select_slave(master))
+	next_page = roundup(offs + 1, 32);
+	if (offs + len > next_page)
+		len = next_page - offs;
+
+	cmd[0] = W1_F2F_READ;
+	cmd[1] = offs;
+	cmd[2] = 0;
+
+	w1_write_block(sl, cmd, 3);
+	w1_read_block(sl, buf, len);
+
+	if (w1_reset_slave(sl))
 		return -EIO;
 
-	w1_write_block(master, ds28e01->wr_buf, 3);
-	w1_read_block(master, ds28e01->rd_buf, cnt);
+	w1_write_block(sl, cmd, 3);
+	w1_read_block(sl, tmp, len);
 
-	if (memcmp(ds28e01->rd_buf, &ds28e01->wr_buf[3], cnt))
+	if (memcmp(buf, tmp, len))
 		return -EAGAIN;
 
-	memcpy(buf, ds28e01->rd_buf + pad_num, cnt - pad_num);
-	return cnt - pad_num;
-}
-
-static int w1_f2f_read(struct w1_master *master, u8 *buf, u8 offs, int cnt)
-{
-	int rval = 0;
-
-	while (cnt) {
-		int status = __w1_f2f_read(master, buf, offs, cnt);
-		if (status < 0) {
-			if (!rval)
-				rval = status;
-			break;
-		}
-		cnt -= status;
-		offs += status;
-		buf += status;
-		rval += status;
+	if (pad > 0) {
+		len -= pad;
+		memcpy(buf, tmp + pad, len);
 	}
-	return rval;
+
+	return len;
 }
 
-/* write 8 bytes to scratchpad */
-static int w1_f2f_write_scratchpad(struct w1_master *master,
-				   const u8 *buf, u8 offs)
+/* write must be performed on 8-byte boundaries */
+static int w1_f2f_write_scratchpad(struct w1_slave *sl,
+		const u8 *buf, u8 offs, int check)
 {
-	struct w1_ds28e01 *ds28e01 = master->slave;
-	unsigned cnt = ds28e01->sub_page_size;
+	/* 3-bytes cmd, 8-bytes data and 2-bytes crc16 */
+	u8 cmd[3 + 8 + 2];
 
-	/* write 2bytes addr & 8bytes data, then read back crc16 */
-	if (w1_reset_select_slave(master))
+	/* 3-bytes addr, 8-bytes data and 2-bytes crc16 */
+	u8 tmp[3 + 8 + 2];
+
+	if (w1_reset_slave(sl))
 		return -EIO;
 
-	ds28e01->wr_buf[0] = W1_F2F_WRITE_SCRATCH;
-	ds28e01->wr_buf[1] = offs;
-	ds28e01->wr_buf[2] = 0;
+	cmd[0] = W1_F2F_WRITE_SCRATCHPAD;
+	cmd[1] = offs;
+	cmd[2] = 0;
 
-	memcpy(&ds28e01->wr_buf[3], buf, cnt);
+	memcpy(cmd + 3, buf, 8);
 
-	w1_write_block(master, ds28e01->wr_buf, 3 + cnt);
-	w1_read_block(master, &ds28e01->wr_buf[3 + cnt], 2);
+	w1_write_block(sl, cmd, 3 + 8);
+	w1_read_block(sl, cmd + 3 + 8, 2);
 
-	if ((crc16(0, ds28e01->wr_buf, 3 + cnt + 2) != 0xb001))
+	if ((crc16(0, cmd, 13) != 0xb001))
 		return -EAGAIN;
 
-	/* read back addr E/S and data to compare agaist */
-	if (w1_reset_select_slave(master))
-		return -EIO;
+	if (check) {
+		/* read back addr, E/S and data to compare agaist */
+		if (w1_reset_slave(sl))
+			return -EIO;
 
-	w1_write_8(master, W1_F2F_READ_SCRATCH);
-	w1_read_block(master, ds28e01->rd_buf, 3 + cnt);
+		w1_write_8(sl, W1_F2F_READ_SCRATCHPAD);
+		w1_read_block(sl, tmp, 13);
 
-	if ((ds28e01->rd_buf[0] != ds28e01->wr_buf[1])
-			|| (ds28e01->rd_buf[1] != ds28e01->wr_buf[2])
-			|| (ds28e01->rd_buf[2] != 0x5f)
-			|| (memcmp(buf, &ds28e01->rd_buf[3], cnt) != 0))
-		return -EAGAIN;
+		/* compare addr and data agaist what we have writen */
+		if (memcmp(tmp, cmd + 1, 2) || memcmp(tmp + 3, buf, 8))
+			return -EAGAIN;
+
+		/* check E/S */
+		if (tmp[2] != 0x5F)
+			return -EAGAIN;
+	}
 
 	return 0;
-}
-
-static int w1_f2f_write(struct w1_master *master, const u8 *buf, u8 offs)
-{
-	struct w1_ds28e01 *ds28e01 = master->slave;
-	u8 *src = ds28e01->sha1_src;
-	u32 sha1[5];
-	int rval;
-
-	if (offs < 0x80) {
-		if (w1_f2f_read(master, &src[4], offs, 28) != 28)
-			return -EAGAIN;
-	} else if (offs == 0x88) {
-		memcpy(&src[4], src, 4);	/* first 4 bytes of secret */
-		memcpy(&src[8], &src[48], 4);	/* last 4 bytes of secret */
-		if (w1_f2f_read(master, &src[12], offs, 20) != 20)
-			return -EAGAIN;
-	} else {
-		return -EINVAL;
-	}
-
-	memcpy(&src[32], buf, 8);
-	src[40] = offs >> 5;
-	memset(&src[52], 0xff, 3);
-
-	__sha1(sha1, src);
-
-	if (w1_f2f_write_scratchpad(master, buf, offs))
-		return -EAGAIN;
-
-	if (w1_reset_select_slave(master))
-		return -EIO;
-
-	ds28e01->wr_buf[0] = W1_F2F_COPY_SCRATCH;
-	ds28e01->wr_buf[1] = offs;
-	ds28e01->wr_buf[2] = 0;
-	ds28e01->wr_buf[3] = 0x5f;	/* E/S */
-	w1_write_block(master, ds28e01->wr_buf, 4);
-	mdelay(3);		/* for ds28e01 to generate SHA1 */
-
-	w1_write_block(master, (u8 *)sha1, 20);
-	mdelay(12);		/* for flushing scratchpad */
-
-	rval = w1_read_8(master);
-
-	return (rval ==  0xAA || rval ==  0x55) ? 0 : -EAGAIN;
 }
 
 /* loads the 64bits secret into secret region(offs) */
-static int w1_f2f_load_secret(struct w1_master *master, const u8 *buf, u8 offs)
+static int w1_f2f_load_secret(struct w1_slave *sl, const u8 *secret, u8 offs)
 {
-	struct w1_ds28e01 *ds28e01 = master->slave;
-	int rval;
+	u8 cmd[4];
+	u8 *msg;
 
-	rval = w1_f2f_write_scratchpad(master, buf, offs);
-	if (rval)
-		return rval;
+	if (w1_f2f_write_scratchpad(sl, secret, offs, 1))
+		return -EAGAIN;
 
-	if (w1_reset_select_slave(master))
+	if (w1_reset_slave(sl))
 		return -EIO;
 
-	ds28e01->wr_buf[0] = W1_F2F_LOAD_SECRET;
-	ds28e01->wr_buf[1] = offs;
-	ds28e01->wr_buf[2] = 0;
-	ds28e01->wr_buf[3] = 0x5f;
-	w1_write_block(master, ds28e01->wr_buf, 4);
+	cmd[0] = W1_F2F_LOAD_SECRET;
+	cmd[1] = offs;
+	cmd[2] = 0;
+	cmd[3] = 0x5F;
+	w1_write_block(sl, cmd, 4);
 
-	/* it is unecessary, here for logic */
-	/* w1_write_bit(master, 1); */
-	mdelay(10);	/* delay 10ms for copying scratchpad */
+	mdelay(10);			/* delay 10ms for copying scratchpad */
+	if (w1_read_8(sl) != 0xAA)	/* 0xAA indicates success */
+		return -EAGAIN;
 
-	rval = w1_read_8(master);
-
-	return (rval ==  0xAA || rval ==  0x55) ? 0 : -EAGAIN;
-}
-
-static int w1_f2f_write_challenge(struct w1_master *master, int offs)
-{
-	struct w1_ds28e01 *ds28e01 = master->slave;
-
-	if (w1_reset_select_slave(master))
-		return -EIO;
-
-	ds28e01->wr_buf[0] = W1_F2F_WRITE_CHALLENGE;
-	ds28e01->wr_buf[1] = offs & 0xff;
-	ds28e01->wr_buf[2] = 0;
-	ds28e01->wr_buf[3] = 0xff;
-	ds28e01->wr_buf[4] = 0xff;
-	//memcpy(ds28e01->wr_buf, ds28e01->challenge, 5);	/* 5bytes */
-	ds28e01->wr_buf[10] = 0xff;
-
-	w1_write_block(master, ds28e01->wr_buf, 11);
-	w1_read_block(master, &ds28e01->wr_buf[11], 2);
+	/* update secret */
+	msg = ((struct w1_f2f_pdata *)sl->priv)->sha1_msg;
+	memcpy(&msg[0], secret, 4);
+	memcpy(&msg[48], &secret[4], 4);
 
 	return 0;
 }
 
-static int __authenticate(struct w1_master *master, u8 offs)
+
+/*
+ * register page(0x88-0x9F):
+ *  special functional registers, user data and manufactory data.
+ *  once programmed to 0xaa or 0x55, most of them would be WP
+ */
+static int w1_f2f_write8(struct w1_slave *sl,
+		const u8 *buf, u8 offs, u8 *page)
 {
-	struct w1_ds28e01 *ds28e01 = master->slave;
-	u8 *src = ds28e01->sha1_src;
-	u32 sha1[5];
-	u8 buf[3 + 35];
-	int rval;
+	u8 *msg;
+	u8 cmd[4];
+	u8 sha1[20];
 
-	rval = w1_f2f_write_challenge(master, offs);
-	if (rval)
-		return rval;
+	if (w1_f2f_write_scratchpad(sl, buf, offs, 1))
+		return -EAGAIN;
 
-	if (w1_reset_select_slave(master))
+	if (w1_reset_slave(sl))
 		return -EIO;
 
-	buf[0] = W1_F2F_READ_AUTH_PAGE;
-	buf[1] = offs;
-	buf[2] = 0;
-	w1_write_block(master, buf, 3);
-	w1_read_block(master, &buf[3], 35);
+	cmd[0] = W1_F2F_COPY_SCRATCHPAD;
+	cmd[1] = offs;
+	cmd[2] = 0;
+	cmd[3] = 0x5F;			/* E/S */
+	w1_write_block(sl, cmd, 4);
+	mdelay(2);			/* for ds28e01 to generate SHA1 */
 
-	if (crc16(0, buf, 35 + 3) != 0xb001)
-		return -EAGAIN;
+	msg = ((struct w1_f2f_pdata *)sl->priv)->sha1_msg;
+	memcpy(&msg[4], page, 28);
+	memcpy(&msg[32], buf, 8);
+	msg[40] = (offs >> 5) & 0x7;
+	memset(&msg[52], 0xff, 3);
+	w1_sha1(sha1, msg);
 
-	mdelay(3);      /* for SHA-1 algorithm */
-	w1_read_block(master, buf, 22);
-	if (crc16(0, buf, 22) != 0xb001)
-		return -EAGAIN;
+	w1_write_block(sl, (u8 *)sha1, 20);
+	mdelay(13);			/* for flushing scratchpad */
 
-	memcpy(&src[4], &buf[3], 32);
-	//memcpy(&src[36], Challenge, 2);
-	memset(&src[38], 0xFF, 2);
-	src[40] = offs >> 5 | 0x40;
-	if (memcmp(buf, sha1, 20))
+	gpio_direction_input(70);
+	if (w1_read_8(sl) != 0xAA)	/* 0xAA indicates success */
 		return -EAGAIN;
 
 	return 0;
 }
 
-int w1_f2f_init(void)
+static int w1_f2f_auth(struct w1_slave *sl, u8 *chlge, int page)
 {
-	u8 secret[8] = { 0x55, 0x4C, 0x50, 0x41, 0x58, 0x48, 0x59, 0x42 };
-	struct w1_ds28e01 *ds28e01;
-	struct w1_master *master;
+	u8 offs;
+	u8 *msg;
+	u8 sha1[20];
+	u8 cmd[3 + 35];
+	struct w1_f2f_pdata *pdata;
 
-	ds28e01 = (struct w1_ds28e01 *)calloc(1, sizeof(struct w1_ds28e01));
-	if (!ds28e01)
-		return -ENOMEM;
+	pdata = (struct w1_f2f_pdata *)sl->priv;
+	msg = pdata->sha1_msg;
+	offs = page << 5;
 
-	master = (struct w1_master *)calloc(1, sizeof(struct w1_master));
-	if (!master)
-		return -ENOMEM;
-
-	w1_master_init(master);
-
-	master->slave = ds28e01;
-	ds28e01->master = master;
-
-	ds28e01->page_size = 32;
-	ds28e01->sub_page_size = 8;
-
-	/* fill the sha1 source buffer */
-	memcpy(ds28e01->sha1_src, secret, 4);
-
-	/* the last byte will be over-write soon */
-	if (w1_f2f_read_romid(master, &ds28e01->sha1_src[41]))
+	/* write challenge to scratch-pad */
+	if (w1_f2f_write_scratchpad(sl, chlge, offs, 0))
 		return -EAGAIN;
 
-	memcpy(&ds28e01->sha1_src[48], &secret[4], 4);
-	ds28e01->sha1_src[55] = 0x80;
-	ds28e01->sha1_src[62] = 0x01;
-	ds28e01->sha1_src[63] = 0xB8;
+	if (w1_reset_slave(sl))
+		return -EIO;
+
+	cmd[0] = W1_F2F_READ_AUTHPAGE;
+	cmd[1] = offs;
+	cmd[2] = 0;
+	w1_write_block(sl, cmd, 3);
+
+	/* read back 32-bytes data, 2-bytes CRC and 0xFF */
+	w1_read_block(sl, &cmd[3], 35);
+
+	if (crc16(0, cmd, 3 + 35) != 0xb001)
+		return -EAGAIN;
+
+	/* copy out the page data */
+	memcpy(&msg[4], &cmd[3], 32);
+
+	/* for SHA-1 algorithm */
+	mdelay(3);
+
+	w1_read_block(sl, cmd, 22);
+	if (crc16(0, cmd, 22) != 0xb001)
+		return -EAGAIN;
+
+	/* take a warning */
+	chlge += 2;
+	memcpy(&msg[36], chlge, 2);
+	memset(&msg[38], 0xFF, 2);
+	msg[40] = page | 0x40;
+	memcpy(&msg[52], &chlge[2], 3);
+	w1_sha1(sha1, msg);
+	
+	if (memcmp(cmd, sha1, 20))
+		return -EAGAIN;
 
 	return 0;
+}
+
+struct w1_slave *w1_f2f_alloc(struct w1_master *master, u8 *secret)
+{
+	u8 *msg;
+	struct w1_slave *sl;
+
+	sl = (struct w1_slave *)malloc(sizeof(struct w1_slave));
+	if (!sl)
+		return NULL;
+	memset(sl, 0, sizeof(struct w1_slave));
+	sl->master = master;
+
+	if (w1_read_rom(sl, sl->rom, 8)) {
+		free(sl);
+		return NULL;
+	}
+
+	msg = __pdata.sha1_msg;
+	sl->priv = &__pdata;
+
+	/* TODO */
+	memcpy(&msg[0], secret, 4);
+	memcpy(&msg[41], sl->rom, 7);
+	memcpy(&msg[48], &secret[4], 4);
+	msg[55] = 0x80;
+	memset(&msg[56], 0, 6);
+	msg[62] = 0x01;
+	msg[63] = 0xB8;
+
+	__w1_f2f_slave = sl;
+
+	return sl;
 }
 
 /* --------------------------------------------------------------------------
  * Old APIs
  * -------------------------------------------------------------------------- */
-
-struct w1_master *__ds28e01;
-#ifndef INCOMPATIBLE_WITH_ATMEL
-u32 owBoardID;
-u16 owManufacturerID;
+unsigned int owBoardID;
+unsigned short owManufacturerID;
+static u8 ripstar_secret[8] = {
+	0x55, 0x4C, 0x50, 0x41, 0x58, 0x48, 0x59, 0x42
+};
 
 u8 InitSecurityChip(void)
 {
-	struct w1_master *master = __ds28e01;
-	u8 buf[32];
+	u8 page[32];
+	u8 *p = page + 8;
+	struct w1_slave *sl = w1_f2f_get_slave();
 
-	/* read the whole content of page 1*/
-	if (w1_f2f_read(master, buf, 0x88, 0x18) != 0x18)
+	u8 chlge[8] = {
+		0xFF, 0xFF, 0x12, 0x24, 0x4D, 0x2A, 0x73, 0xFF
+	};
+
+	if (w1_f2f_read(sl, p, 0x88, 24) != 24)
 		return false;
 
-	if (buf[0] != 0x55 && buf[0] != 0xAA) {
+	if (0) {//(p[0] != 0x55 && p[0] != 0xAA) {
 
-		//if (w1_f2f_load_secret(master, ds28e01->secret, 0x80))
+		if (w1_f2f_load_secret(sl, ripstar_secret, 0x80))
 			return false;
 
-		buf[0] = 0x55;
-		if (w1_f2f_write(master, buf, 0x88))
+		p[0] = 0x55;
+		memcpy(page, ripstar_secret, 8);
+		if (w1_f2f_write8(sl, p, 0x88, page))
 			return false;
+	} else if (w1_f2f_auth(sl, chlge, 1)) {
+		return false;
 	}
-
-	if (__authenticate(master, 0))
-		return false;
 
 	return true;
 }
 
-u8 WriteBoardAndManufacturerID(u32 Boardid, u16 Manufacturerid)
+u8 WriteBoardAndManufacturerID(unsigned int bid, unsigned short mid)
 {
-	struct w1_master *master = __ds28e01;
-	u8 wrbuf[8];
-	u8 rdbuf[32] = {0};
+	struct w1_slave *sl = w1_f2f_get_slave();
+	u8 tmp[32];
+	u8 buf[8];
 
-	/* read the whole content of page 1*/
-	if (w1_f2f_read(master, rdbuf, 0x20, 0x20) != 0x20)
+	if (w1_f2f_read(sl, tmp, 0x20, 32) != 32)
 		return false;
 
-	memcpy(wrbuf, rdbuf, 8);
-	*(u32 *)wrbuf = Boardid;
-	*(u16 *)(wrbuf + sizeof(u32)) = Manufacturerid;
+	memcpy(buf, &bid, sizeof(bid));
+	memcpy(buf + sizeof(bid), &mid, sizeof(mid));
+	buf[6] = 0;
+	buf[7] = 0;
 
-	if (w1_f2f_write(master, wrbuf, 0x20))
+	if (w1_f2f_write8(sl, buf, 0x20, tmp))
 		return false;
 
 	return true;
@@ -525,21 +367,22 @@ u8 WriteBoardAndManufacturerID(u32 Boardid, u16 Manufacturerid)
 
 u8 Init_OneWire(void)
 {
-	struct w1_master *master = __ds28e01;
-	u8 buf[32];
+	struct w1_slave *sl;
+	u8 tmp[32];
 
 #ifndef BYHX_WTITE_BOARD_TOOL
-
-	/* read the whole content of page 1 */
-	if (w1_f2f_read(master, buf, 0x20, 0x20) != 0x20)
+	sl = w1_f2f_alloc(&w1_gpio_master, ripstar_secret);
+	if (!sl)
 		return false;
 
-	owBoardID = *(u32 *)buf;
-	owManufacturerID = *(u16 *)(buf + sizeof(u32));
-#endif
+	if (w1_f2f_read(sl, tmp, 0x20, 32) != 32)
+		return false;
 
+	owBoardID = *((unsigned int *)tmp);
+	owManufacturerID = *((unsigned short *)(tmp + sizeof(int)));
+#endif
+	InitSecurityChip();
+	WriteBoardAndManufacturerID(0x11223344, 0xaabb);
 	return true;
 }
-
-#endif /* INCOMPATIBLE_WITH_ATMEL */
 
