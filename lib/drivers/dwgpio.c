@@ -66,28 +66,29 @@ static int dw_gpio_get(struct gpio_chip *gc, unsigned offset)
 
 static void dw_gpio_set(struct gpio_chip *gc, unsigned offset, int val)
 {
-	unsigned int data_reg;
+	unsigned int reg;
 	unsigned long flags = 0;
 
-	val &= 1;
-
 	spin_lock_irqsave(&pio_lock, flags);
-	data_reg = readl(gc->priv + DW_GPIO_DR);
-	data_reg = (data_reg & ~(1 << offset)) | (val << offset);
-	writel(data_reg, gc->priv + DW_GPIO_DR);
+	reg = readl(gc->priv + DW_GPIO_DR);
+	if (val)
+		reg |= 1 << offset;
+	else
+		reg &= ~(1 << offset);
+	writel(reg, gc->priv + DW_GPIO_DR);
 	spin_unlock_irqrestore(&pio_lock, flags);
 }
 
 static int dw_gpio_direction_input(struct gpio_chip *gc, unsigned offset)
 {
-	unsigned int gpio_ddr;
+	unsigned int ddr;
 	unsigned long flags = 0;
 
 	spin_lock_irqsave(&pio_lock, flags);
 	/* Set pin as input, assumes software controlled IP */
-	gpio_ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
-	gpio_ddr &= ~(1 << offset);
-	writel(gpio_ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
+	ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
+	ddr &= ~(1 << offset);
+	writel(ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
 	spin_unlock_irqrestore(&pio_lock, flags);
 
 	return 0;
@@ -96,16 +97,16 @@ static int dw_gpio_direction_input(struct gpio_chip *gc, unsigned offset)
 static int dw_gpio_direction_output(struct gpio_chip *gc,
 				unsigned int offset, int val)
 {
-	unsigned int gpio_ddr;
+	unsigned int ddr;
 	unsigned long flags = 0;
 
 	dw_gpio_set(gc, offset, val);
 
 	spin_lock_irqsave(&pio_lock, flags);
 	/* Set pin as output, assumes software controlled IP */
-	gpio_ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
-	gpio_ddr |= (1 << offset);
-	writel(gpio_ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
+	ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
+	ddr |= (1 << offset);
+	writel(ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
 	spin_unlock_irqrestore(&pio_lock, flags);
 	return 0;
 }
@@ -120,33 +121,31 @@ static int dw_gpio_get_array(struct gpio_chip *gc, unsigned mask)
 
 static void dw_gpio_set_array(struct gpio_chip *gc, unsigned mask, int val)
 {
-	unsigned int data_reg;
+	unsigned int reg;
 	unsigned long flags = 0;
-
-	val &= 1;
 
 	spin_lock_irqsave(&pio_lock, flags);
 
-	data_reg = readl(gc->priv + DW_GPIO_DR);
+	reg = readl(gc->priv + DW_GPIO_DR);
 	if (val)
-		data_reg |= mask;
+		reg |= mask;
 	else
-		data_reg &= ~mask;
+		reg &= ~mask;
 
-	writel(data_reg, gc->priv + DW_GPIO_DR);
+	writel(reg, gc->priv + DW_GPIO_DR);
 	spin_unlock_irqrestore(&pio_lock, flags);
 }
 
 static int dw_gpio_direction_input_array(struct gpio_chip *gc, unsigned mask)
 {
-	unsigned int gpio_ddr;
+	unsigned int ddr;
 	unsigned long flags = 0;
 
 	spin_lock_irqsave(&pio_lock, flags);
 	/* Set pin as input, assumes software controlled IP */
-	gpio_ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
-	gpio_ddr &= ~mask;
-	writel(gpio_ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
+	ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
+	ddr &= ~mask;
+	writel(ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
 	spin_unlock_irqrestore(&pio_lock, flags);
 
 	return 0;
@@ -155,16 +154,16 @@ static int dw_gpio_direction_input_array(struct gpio_chip *gc, unsigned mask)
 static int dw_gpio_direction_output_array(struct gpio_chip *gc,
 				unsigned int mask, int val)
 {
-	unsigned int gpio_ddr;
+	unsigned int ddr;
 	unsigned long flags = 0;
 
 	dw_gpio_set_array(gc, mask, val);
 
 	spin_lock_irqsave(&pio_lock, flags);
 	/* Set pin as output, assumes software controlled IP */
-	gpio_ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
-	gpio_ddr |= mask;
-	writel(gpio_ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
+	ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
+	ddr |= mask;
+	writel(ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
 	spin_unlock_irqrestore(&pio_lock, flags);
 	return 0;
 }
@@ -286,7 +285,10 @@ char PIO_Get(const Pin *pin)
 	if (gc == 0)
 		return -1;
 
-	return gc->get_array(gc, pin->mask);
+	if (gc->get_array(gc, pin->mask))
+		return 1;
+
+	return 0;
 }
 
 static void gpio_interrupt(void *arg)

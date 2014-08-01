@@ -1,3 +1,4 @@
+
 #include "os_includes.h"
 #include "global.h"
 #include "consol.h"
@@ -18,25 +19,98 @@
 #include "CommPipe.h"
 #include "usb.h"
 #include "fpga_pwm.h"
-#define MOTOR_PWM_X PWM_CH(0)
-#define MOTOR_DIR_X PWM_CH(1)
-#define MOTOR_PWM_Y PWM_CH(2)
-#define MOTOR_DIR_Y PWM_CH(3)
-#define MOTOR_PWM_Z PWM_CH(4)
-#define MOTOR_DIR_Z PWM_CH(5)
-#define MOTOR_PWM_XX PWM_CH(6)
-#define MOTOR_DIR_XX PWM_CH(7)
-#define MOTOR_PWM_YY PWM_CH(8)
-#define MOTOR_DIR_YY PWM_CH(9)
-#define MOTOR_PWM_ZZ PWM_CH(10)
-#define MOTOR_DIR_ZZ PWM_CH(11)
-#define MOTOR_PWM_VM PWM_CH(12)		//Ðé´òPWMÊä³ö
-#define MOTOR_DIR_VM PWM_CH(13)
+#include <malloc.h>
+#if 1
+/*
+ * MOTOR_PWM_X/MOTOR_DIR_X/MOTOR_PWM_VM
+ */
+#define MOTOR_MAX_NUM 7
+#define M_P_X PWM_IDX(0)
+#define M_D_X PWM_IDX(1)
+#define M_P_Y PWM_IDX(2)
+#define M_D_Y PWM_IDX(3)
+#define M_P_Z PWM_IDX(4)
+#define M_D_Z PWM_IDX(5)
+#define M_P_XX PWM_IDX(6)
+#define M_D_XX PWM_IDX(7)
+#define M_P_YY PWM_IDX(8)
+#define M_D_YY PWM_IDX(9)
+#define M_P_ZZ PWM_IDX(10)
+#define M_D_ZZ PWM_IDX(11)
+#if 0
+#define M_P_V PWM_IDX(8)		//ï¿½ï¿½ï¿½ï¿½PWMï¿½ï¿½ï¿½ï¿½
+#define M_D_V PWM_IDX(9)
+#else
+#define M_P1_V PWM_IDX(8)
+#define M_P2_V PWM_IDX(9)
+#endif
+#define M_I_P(n) (2 * n)			//MOTOR INDEX PWM
+#define M_I_D(n) PWM_CH(2 * n + 1)	//MOTOR INDEX DIR
+#endif
 
-#define MOTOR_PWM(n) PWM_CH(2 * n)
-#define MOTOR_DIR(n) PWM_CH(2 * n + 1)
+#if 1	//fpga gpio
+static int const ngpio[] = {29, 29, 12, 18, 14, 15 };
+#define GPIO_GET_ID(grp, index)\
+do\
+{\
+	INT8U id = 0;\
+	while(grp != 0)\
+	{\
+		grp--;\
+		id += ngpio[grp];\
+	}\
+	id += index;\
+\
+	return id;\
+}while(0)
+static INT8U gpio_get_id(INT8U grp, INT8U index)
+{
+	INT8U id = 0;
+	while(grp != 0)
+	{
+		grp--;
+		id += ngpio[grp];
+	}
+	id += index;
 
-//ÉèÖÃMOTORµÄ·½ÏòIO
+	return id;
+}
+
+static INT8U gpio_get_grp(INT8U id)
+{
+	INT8U grp = 0;
+	while(id >ngpio[grp])
+	{
+		id -= ngpio[grp];
+		grp ++;
+	}
+	return grp;
+}
+
+static INT8U gpio_get_index(INT8U id)		//gpioï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+{
+	INT8U grp = 0;
+	while(id >ngpio[grp])
+	{
+		id -= ngpio[grp];
+		grp ++;
+	}
+	return id;
+}
+
+static INT16U gpio_get_grp_index(INT8U id)	//ï¿½ï¿½ï¿½ï¿½Öµ ï¿½ï¿½8Î»Îªï¿½ï¿½ï¿½ï¿½ï¿½Å£ï¿½ï¿½ï¿½8Î»Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+{
+	INT8U grp = 0;
+	while(id >ngpio[grp])
+	{
+		id -= ngpio[grp];
+		grp ++;
+	}
+	return grp << 8 | id;
+}
+
+#endif
+//ï¿½ï¿½ï¿½ï¿½MOTORï¿½Ä·ï¿½ï¿½ï¿½IO
 #define DIR_POS_X 1
 #define DIR_NEG_X 0
 #define DIR_POS_Y 1
@@ -54,16 +128,30 @@
 //#define VM_PRINT
 #define CVM 0
 #define PIO_LISTSIZE(pPins)    (sizeof(pPins) / sizeof(Pin))
-//#define RECORD_MOTION_MOVEMENT
-//#define VM_PRINT
+#define VM_PRINT
 #define X_PRINT_ACC_SAFE_DISTANCE   (180)
 #define FPGA_MAINTAIN_COOR
-#define RECORD_MOTION_MOVEMENT
+//#define RECORD_MOTION_MOVEMENT
 #define SUPPORT_MOTOR_CONTROL
 #define EPSON_BOTTOM_BOARD_V3
 #if defined(FPGA_MAINTAIN_COOR) || defined(SUPPORT_MOTOR_CONTROL)
 #define FPGA_POSI_COUNT   1
+
+struct AxisParam_PulseDir_OpenLoop;
+typedef void (*pTCChannelHandle)(struct AxisParam_PulseDir_OpenLoop * pDCPWM);
+
 INT8U bInited_FPGAPosiIT = False;
+#ifdef VM_PRINT
+INT32U CURCOOR = 0x200000;
+INT32U PWM_NUM = 0;
+INT8U BEGIN_PWM =False;
+INT8U IS_PRINT =False;
+#endif
+pTCChannelHandle pTC1Handle, pTC2Handle;
+pTCChannelHandle pPD_XHandle, pPD_YHandle;
+extern void TCHandler_dimmy(struct AxisParam_PulseDir_OpenLoop * pDCPWM);
+extern INT8U reportMoveCompleted(INT8U ChannelNO);
+
 struct sFpgaPosiITInfo
 {
 	FPGAPosi_IntHandler Handler;
@@ -77,18 +165,6 @@ struct sFpgaPosiITInfo
 }FpgaPosiITInfos[FPGA_POSI_COUNT] = {0};
 
 struct sFpgaPosiITInfo FpgaPosiITInfos_pending[FPGA_POSI_COUNT] = {0};
-#endif
-#ifdef RECORD_MOTION_MOVEMENT
-void PutMoveRecord(INT8U dir, INT8U SegType, INT8U MoveType, INT8U IsX, INT8U IsFeedBack, 
-				   INT16S out, INT32S target_coor, INT32S real_coor);
-static INT8U bAllowRecord = 0; //1, record X; 2 record Y; 3 record ALL
-static INT8U bAllowRecord_Last = 0;
-static INT8U bRecordType = 0; //0, auto loop; 1, lastest movement.
-#define BEGIN_RECORD    StartMotionRecord(0, 3)
-//#define BEGIN_RECORD
-#else
-#define PutMoveRecord(dir, SegType, MoveType, IsX, IsFeedBack, out, target_coor, real_coor)
-#define BEGIN_RECORD
 #endif
 
 #ifdef STEPPER_8MICROSTEP
@@ -124,9 +200,13 @@ static INT8U bRecordType = 0; //0, auto loop; 1, lastest movement.
 //#define BEMAJET_2H
 //#define ALLWIN_E180
 #if defined(W1615EX) ||  defined(W1815EX)
-#define OLD_Y_SPEED_SELECT_WAY //ÎªÁË¼æÈÝÀÏµÄËã·¨¡£µó²âÊÔW1615EXÊ±ÓÃµÄÊÇÀÏ³ÌÐò¡£
+#define OLD_Y_SPEED_SELECT_WAY //Îªï¿½Ë¼ï¿½ï¿½ï¿½ï¿½Ïµï¿½ï¿½ã·¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½W1615EXÊ±ï¿½Ãµï¿½ï¿½ï¿½ï¿½Ï³ï¿½ï¿½ï¿½ï¿½ï¿½
 #endif
 
+/*FIXME@motionParam_defaultï¿½ï¿½Ê¼ï¿½ï¿½ï¿½Þ¸ï¿½
+ * ï¿½á¹¹ï¿½ï¿½ï¿½ï¿½Ô±ï¿½ï¿½SensorIOIdï¿½ï¿½Ê¼ï¿½ï¿½Öµï¿½ï¿½Òªï¿½Þ¸ï¿½
+ * ï¿½á¹¹ï¿½ï¿½ï¿½ï¿½Ô±ï¿½ï¿½driveTypeï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í³ï¿½Ê¼ï¿½ï¿½ÖµÒªï¿½Þ¸ï¿½,motorType/controlTypeÍ¬ï¿½ï¿½ï¿½ï¿½Òªï¿½Þ¸ï¿½
+ */
 struct EPR_MOTION_PARAM motionParam SLOW_DATA_SECTION;
 static struct EPR_MOTION_PARAM motionParam_default = 
 #if defined (EPSON_BOTTOM_BOARD_V3)|| defined (EPSON_BOTTOM_BOARD_V2_1) || defined (EPSON_BOTTOM_BOARD_V2)
@@ -155,7 +235,7 @@ static struct EPR_MOTION_PARAM motionParam_default =
 #elif defined(COLORFUL_EPSON)
 7.051f,
 #else//for T1828EX/W1615EX/SJ1645/S1828EX
-5.0827, //for micolor new machine with Æ¤´øÂÖ.
+5.0827, //for micolor new machine with Æ¤ï¿½ï¿½ï¿½ï¿½.
 #endif
 //2.0089f, //for roland machine.
 {1.0f, (540.0f/720.0f), 2.0f}, 
@@ -403,7 +483,7 @@ static struct EPR_MOTION_PARAM motionParam_default =
 0, {PWMTYPE_BI_POLAR, PWMTYPE_BI_POLAR, PWMTYPE_UNI_POLAR}, 
 //0, {PWMTYPE_BI_POLAR, PWMTYPE_BI_POLAR}, 
 #ifdef A1802
-0xE1, 0xFF9B, //·´×ªXÖáÔ­µãÐÅºÅ
+0xE1, 0xFF9B, //ï¿½ï¿½×ªXï¿½ï¿½Ô­ï¿½ï¿½ï¿½Åºï¿½
 #else
 	#if defined(INKWIN_SMALL_FLAT_MACHINE)
 		0xE1, 0xFF9F, 
@@ -1068,21 +1148,21 @@ struct PrintInfo
 	
 } printInfo = {0};
 
-//memory alloc
-// from HUGEBUF_END_ADDR
-// the last 128KB is the buffer of sCurve point.
-// the second last 64KB is the buffer of sCurve point.
-// The first is all Curve, to DDR2 end, total (2M-192KB)
+/*memory alloc
+ * Motion buffer ï¿½ï¿½ï¿½ï¿½
+ *|                   ACCTABLE                      |STEP POOL |   POINT_POOL   |
+ *|---------(2M - 64K - 128K) -----.....------------|----64K---|------128K------|
+ */
+INT8U *MotionBufAddr = 0;
+INT32U MotionBufSize = 2 * 1024 * 1024;		//2M
 #define MAX_POINT_NUM   (16*1024+1)
-#define POINT_POOL_SIZE     (MAX_POINT_NUM * sizeof(struct Point))
-#define POINT_POOL   ((struct Point*)(AT91C_DDR2 + BOARD_DDRAM_SIZE - POINT_POOL_SIZE))
-#define STEP_POOL_SIZE      (MAX_POINT_NUM * sizeof(float))
-#define STEP_POOL   ((float*)(AT91C_DDR2 + BOARD_DDRAM_SIZE - POINT_POOL_SIZE - STEP_POOL_SIZE))
-#ifdef RECORD_MOTION_MOVEMENT
-#define ACCTABLE_ADDR   (AT91C_DDR2 + BOARD_DDRAM_SIZE - RESERVED_MEMSIZE)
-#else
-#define ACCTABLE_ADDR   HUGEBUF_END_ADDR
-#endif
+#define STEP_POOL_SIZE	(MAX_POINT_NUM * sizeof(float))
+#define POINT_POOL_SIZE	(MAX_POINT_NUM * sizeof(struct Point))
+#define ACCTABLE_SIZE 	(MotionBufSize - STEP_POOL_SIZE - POINT_POOL_SIZE)
+
+#define ACCTABLE_ADDR	(MotionBufAddr)
+#define STEP_POOL_ADDR 	((float*)(MotionBufAddr + ACCTABLE_SIZE))
+#define POINT_POOL_ADDR ((struct Point*)(MotionBufAddr + ACCTABLE_SIZE + STEP_POOL_SIZE))
 
 #define ACCTYPE_DISTANCE            0
 #define ACCTYPE_CYCLETIME           1
@@ -1154,9 +1234,9 @@ struct BezierCurve
 #define TC_TIMER_CLOCK_SRC  AT91C_TC_CLKS_TIMER_DIV4_CLOCK
 
 //only for (not use until now) 
-//  1. ´øÇý¶¯Æ÷ºÍ¹âÕ¤µÄXÏò¡£
-//  2. ´øÇý¶¯Æ÷ºÍ±àÂëÆ÷µÄYÏò¡£
-//  3. ²úÉúÐé´òÐÅºÅ¡£
+//  1. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¹ï¿½Õ¤ï¿½ï¿½Xï¿½ï¿½ï¿½ï¿½
+//  2. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Yï¿½ï¿½ï¿½ï¿½
+//  3. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÅºÅ¡ï¿½
 struct AxisParam_PulseDir_Feedback
 {
 	INT8U  AxisID;
@@ -1215,15 +1295,13 @@ struct AxisParam_PulseDir_Feedback
 };
 
 //only for 
-//  1. ´øÇý¶¯Æ÷ºÍÃ»ÓÐ±àÂëÆ÷µÄYÏò (not use until now) ¡£
-//  2. ÓÃÓÚZºÍÇåÏ´µÄStepperµç»ú¡£
+//  1. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Yï¿½ï¿½ (not use until now) ï¿½ï¿½
+//  2. ï¿½ï¿½ï¿½ï¿½Zï¿½ï¿½ï¿½ï¿½Ï´ï¿½ï¿½Stepperï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 struct AxisParam_PulseDir_OpenLoop
 {
 	INT8U  AxisID;
 	INT8U  ChannelNO;
-#if NEW_ADD
 	INT16U CoorRegAddr;
-#endif
 
 	struct SensorInfo Origin;
 	INT32S OriginSensorOffset;
@@ -1235,13 +1313,9 @@ struct AxisParam_PulseDir_OpenLoop
 	INT32S Region_End; //-1 means Unkown and NO-limitation.
 	
 	//channel info.
-#if NT
-	AT91PS_TC pTC_channel;
-	struct ControlIOInfo TC_DirPin;
-#else
 	INT8U PWM_pulse_chid;
 	INT8U PWM_dir_chid;
-#endif
+
 	INT8U ChannelValidLevel[2];
 	struct ControlIOInfo ControlIO;
 #if NEW_ADD
@@ -1252,7 +1326,7 @@ struct AxisParam_PulseDir_OpenLoop
 #endif
 	//usually, be 1.
 	//Fix point number which frac bit is 24. 
-	INT32U ratio_User2Control; 		//Ã»ÓÃµ½£¿£¿
+	INT32U ratio_User2Control; 		//Ã»ï¿½Ãµï¿½ï¿½ï¿½ï¿½ï¿½
 	float ratio_move; 
 #if NEW_ADD
 	float ratio_print[3];
@@ -1283,16 +1357,16 @@ struct AxisParam_PulseDir_OpenLoop
 	struct EPR_MOTION_AXIS_PARAM * pAxisParam;
 };
 #if NEW_ADD
-static struct AxisParam_PulseDir_OpenLoop PD_XParam FAST_DATA_SECTION;
-static struct AxisParam_PulseDir_OpenLoop PD_YParam FAST_DATA_SECTION;
-static struct AxisParam_PulseDir_OpenLoop PD_ZParam FAST_DATA_SECTION;
-static struct AxisParam_PulseDir_OpenLoop PD_CParam FAST_DATA_SECTION;
-static struct AxisParam_PulseDir_OpenLoop ZParam FAST_DATA_SECTION;
-static struct AxisParam_PulseDir_OpenLoop CParam FAST_DATA_SECTION;
-static struct AxisParam_PulseDir_OpenLoop *pTC_Driver1 FAST_DATA_SECTION=NULL;
-static struct AxisParam_PulseDir_OpenLoop *pTC_Driver2 FAST_DATA_SECTION=NULL;
-static struct AxisParam_PulseDir_OpenLoop *pPD_DriverX FAST_DATA_SECTION=NULL;
-static struct AxisParam_PulseDir_OpenLoop *pPD_DriverY FAST_DATA_SECTION=NULL;
+static struct AxisParam_PulseDir_OpenLoop PD_XParam;
+static struct AxisParam_PulseDir_OpenLoop PD_YParam;
+static struct AxisParam_PulseDir_OpenLoop PD_ZParam;
+static struct AxisParam_PulseDir_OpenLoop PD_CParam;
+static struct AxisParam_PulseDir_OpenLoop ZParam;
+static struct AxisParam_PulseDir_OpenLoop CParam;
+static struct AxisParam_PulseDir_OpenLoop *pTC_Driver1 = NULL;
+static struct AxisParam_PulseDir_OpenLoop *pTC_Driver2 = NULL;
+static struct AxisParam_PulseDir_OpenLoop *pPD_DriverX = NULL;
+static struct AxisParam_PulseDir_OpenLoop *pPD_DriverY = NULL;
 #else
 static struct AxisParam_PulseDir_OpenLoop ZParam FAST_DATA_SECTION;
 static struct AxisParam_PulseDir_OpenLoop CParam FAST_DATA_SECTION;
@@ -1301,8 +1375,8 @@ static struct AxisParam_PulseDir_OpenLoop *pTC_Driver2 FAST_DATA_SECTION=NULL;
 #endif
 #define ERROR_HISTORY_LEN   100
 //only for 
-//  1. ²»´øÇý¶¯Æ÷ºÍ´ø¹âÕ¤µÄDCÇý¶¯µÄXÏò¡£
-//  2. ²»´øÇý¶¯Æ÷µÄDCÇý¶¯µÄYÏò¡£°üÀ¨Ã»ÓÐ±àÂëÆ÷ºÍÓÐ±àÂëÆ÷Á½ÖÖÇé¿ö¡£
+//  1. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í´ï¿½ï¿½ï¿½Õ¤ï¿½ï¿½DCï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Xï¿½ï¿½ï¿½ï¿½
+//  2. ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½DCï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Yï¿½ò¡£°ï¿½ï¿½ï¿½Ã»ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 struct AxisParam_DC_PWM
 {
 	INT8U  AxisID;
@@ -1392,13 +1466,12 @@ struct AxisParam_DC_PWM
 	INT32U Coor_nonRollback;
 	
 	struct EPR_MOTION_AXIS_PARAM * pAxisParam;
-}   XParam FAST_DATA_SECTION = {0}, YParam FAST_DATA_SECTION = {0}, 
+}   /*XParam FAST_DATA_SECTION = {0},*/ YParam FAST_DATA_SECTION = {0},
 *pPWMC_Driver1 FAST_DATA_SECTION=NULL, *pPWMC_Driver2 FAST_DATA_SECTION=NULL;
 
 #if NEW_ADD
-INT32U pwm_ch_start(INT32U ch, INT8U dir)
+INT32U pwm_ch_start(INT32U ch)
 {
-	pwm_override(ch, dir);
 	pwm_irq_almost_enable(ch, 1);
 	pwm_irq_almost_mask(ch, 0);
 	pwm_enable(ch, 1);
@@ -1406,15 +1479,63 @@ INT32U pwm_ch_start(INT32U ch, INT8U dir)
 	return ch;
 }
 
-INT32U pwm_ch_stop(INT32U ch)
+/*
+ * isclear:ï¿½ï¿½ï¿½ï¿½FPGAï¿½ï¿½PWM bufferï¿½ï¿½ï¿½ï¿½Î´Ö´ï¿½Ðµï¿½pwm,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ */
+INT32U pwm_ch_stop(INT32U ch, INT8U isclear)
 {
 	pwm_enable(ch, 0);
 	pwm_irq_almost_enable(ch, 0);
 	pwm_irq_almost_mask(ch, 1);
 	pwm_override(ch, 0);
 
+	if(isclear)
+		pwm_clear_buffer(ch);
+
 	return ch;
 }
+
+void VM_PWM_START(struct AxisParam_PulseDir_OpenLoop * pDPPWM)
+{
+	INT32U period = 4000;
+	INT32U duty = 2000;
+	INT8U pwm_init_num = 10;		//ï¿½ï¿½Ê¼Ð´ï¿½ï¿½ï¿½ï¿½pwmï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	int i = 0;
+	/* PWM1:|__|--|__|--|__
+	 * PWM2:|___|--|__|--|__
+	 */
+	pwm_ch_set_pwm(M_P1_V, period, duty);
+	pwm_ch_set_pwm(M_P2_V, period + period / 4, duty);
+
+	if(PWM_NUM >= pwm_init_num)
+		PWM_NUM -= pwm_init_num;
+	else if(PWM_NUM > 0)
+	{
+		pwm_init_num = PWM_NUM;
+	}
+
+	for(i = 0; i < pwm_init_num - 1; i++)
+	{
+		pwm_ch_set_pwm(M_P1_V, period, duty);
+		pwm_ch_set_pwm(M_P2_V, period + period / 4, duty);
+	}
+
+	if(IS_PRINT == True)
+		PWM_NUM = 0;
+
+	pwm_ch_start(PWM_MSK(M_P1_V) | PWM_MSK(M_P2_V));
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½PWMï¿½ï¿½ï¿½ï¿½ÎªÒ»ï¿½é£¬ï¿½ï¿½ï¿½ï¿½Ö»Òªï¿½ï¿½Ò»ï¿½ï¿½ï¿½Ð¶Ï¾Í¿ï¿½ï¿½ï¿½ï¿½Ë£ï¿½ï¿½ï¿½Ò»ï¿½ï¿½PWMï¿½Ð¶ï¿½ï¿½ï¿½ï¿½Îµï¿½
+	pwm_irq_almost_mask(PWM_MSK(M_P2_V), 1);
+
+
+}
+
+void VM_PWM_STOP(struct AxisParam_PulseDir_OpenLoop * pDPPWM)
+{
+	if(pwm_buffer_isempty(PWM_MSK(M_P1_V)))
+		pwm_ch_stop(PWM_MSK(M_P1_V) | PWM_MSK(M_P2_V), 1);
+}
+
 void WriteReg32Data(INT32U addr, INT32U data);
 INT32U ReadReg32Data(INT32U addr);
 
@@ -1425,19 +1546,61 @@ INT8U TC_Stop_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC);
 #ifdef VM_PRINT
 INT32U PWM_OFFSET_INDEX = 0;
 INT8U CUR_SPEED_ID = 0;;
-void VM_PWM_START(struct AxisParam_PulseDir_OpenLoop * pPD_PWM)
+void VM_PD_Print(struct AxisParam_PulseDir_OpenLoop * pPD_PWM)
 {
-	//¿ªÆôºóÃ»ÓÐÁ¬ÐøÂö³å£¬ÒòÎªÔÚÐÂÏµÍ³ÖÐÒªÏëÒ»Ö±ÓÐÂö³åÒªÒ»Ö±Ð´buffer
-	INT16U duty = 0;
+	INT32U cur_print_coor;
+	static INT16U duty = 2000;
 
-	duty = (INT16U)(( (float)BOARD_MCK/(pPD_PWM->pAxisParam->accParam[CUR_SPEED_ID].EndFreq*16))+0.5f);
-	pwm_ch_set_pwm(MOTOR_PWM_VM,  duty*2, duty);
-	pwm_override(MOTOR_DIR_VM, pPD_PWM->Dir == DIRTYPE_POS);
-}
+	if(PWM_NUM > 0)
+	{
+		pwm_ch_set_pwm(M_P1_V,  duty*2, duty);
+		pwm_ch_set_pwm(M_P2_V,  duty*2, duty);
 
-void VM_PWM_STOP(void)
-{
-	pwm_ch_stop(MOTOR_PWM_VM);
+		if(IS_PRINT == True)
+			PWM_NUM = 0;
+		else
+			PWM_NUM--;
+	}
+	else
+	{
+		if(IS_PRINT == True)
+		{
+			pwm_ch_set_pwm(M_P1_V,  duty*2, duty);
+			pwm_ch_set_pwm(M_P2_V,  duty*2, duty);
+
+			cur_print_coor = REG_PRT_COOR_X;
+
+			if(pPD_PWM->Dir == DIRTYPE_POS)
+			{
+				if((cur_print_coor - 0x40000)>= (printInfo.PrintMove_Start>printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
+				{
+					pwm_ch_stop(PWM_MSK(M_P1_V) | PWM_MSK(M_P2_V), 1);
+					BEGIN_PWM = False;
+				}
+			}
+			else
+			{
+				if((cur_print_coor - 0x40000)<= (printInfo.PrintMove_Start<printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
+				{
+					pwm_ch_stop(PWM_MSK(M_P1_V) | PWM_MSK(M_P2_V), 1);
+					BEGIN_PWM = False;
+				}
+			}
+		}
+		else
+		{
+			//ï¿½ï¿½Í£Ö¹Ê±ï¿½ï¿½FPGAï¿½Ä»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü»ï¿½ï¿½ï¿½Î´Ö´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½å£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½STOPï¿½ï¿½ï¿½ï¿½TCHandler_dimmyï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+			if(pPD_PWM->ChannelNO == 0)
+				pPD_XHandle = TCHandler_dimmy;
+			else
+				pPD_YHandle = TCHandler_dimmy;
+
+			CURCOOR = pPD_PWM->CoorIdeal;
+			pPD_PWM->Dir = DIRTYPE_STANDBY;
+			/*XXXï¿½ï¿½PWMï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î´Ö´ï¿½Ðµï¿½ï¿½ï¿½ï¿½å£¬ï¿½ï¿½Ê±ï¿½Ï±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É¿ï¿½ï¿½Ü¹ï¿½ï¿½ï¿½*/
+			reportMoveCompleted(pPD_PWM->AxisID);
+		}
+	}
 }
 #endif
 INT8U BuildDefaultMotionParam(struct EPR_MOTION_PARAM * pMotionParam)
@@ -1557,23 +1720,23 @@ INT8U ConfigSensorPin(struct SensorInfo * pSensor, struct EPR_MOTION_AXIS_PARAM 
 		{
 		case 0:
 			pSensor->PinIO.pio = DW_BASE_PIOA;
-			pSensor->PinIO.id = DW_ID_PIOA;
+			pSensor->PinIO.id = AT91C_ID_PIOA;
 			break;
 		case 1:
 			pSensor->PinIO.pio = DW_BASE_PIOB;
-			pSensor->PinIO.id = DW_ID_PIOB;
+			pSensor->PinIO.id = AT91C_ID_PIOB;
 			break;
 		case 2:
 			pSensor->PinIO.pio = DW_BASE_PIOC;
-			pSensor->PinIO.id = DW_ID_PIOC;
+			pSensor->PinIO.id = AT91C_ID_PIOC;
 			break;
 		case 3:
 			pSensor->PinIO.pio = DW_BASE_PIOD;
-			pSensor->PinIO.id = DW_ID_PIOD_E;
+			pSensor->PinIO.id = AT91C_ID_PIOD;
 			break;
 		case 4:
 			pSensor->PinIO.pio = DW_BASE_PIOE;
-			pSensor->PinIO.id = DW_ID_PIOD_E;
+			pSensor->PinIO.id = AT91C_ID_PIOE;
 			break;
 		case 5:
 			pSensor->IsFPGAExpandIO = True;
@@ -1661,61 +1824,61 @@ INT8U UnConfigureSensorIt(struct SensorInfo * pSensor)
 #elif defined(HEAD_RICOH_G4)
 INT8U ConfigSensorPin(struct SensorInfo * pSensor, struct EPR_MOTION_AXIS_PARAM * pAxis_param, INT8U SensorIndex)
 {
-	if(pAxis_param->SensorExistMask & (1<<SensorIndex))
-	{
-		INT8U PortId, IoId;
-		
-		PortId = pAxis_param->SensorIOId[SensorIndex]/32;
-		IoId = pAxis_param->SensorIOId[SensorIndex]%32;
-		
-		pSensor->IsFPGAExpandIO = False;
-		pSensor->PinIO.type = PIO_INPUT;
-		pSensor->PinIO.attribute = PIO_DEFAULT;
-		pSensor->PinIO.mask = 1<<IoId;
-		switch(PortId)
-		{
-		case 0:
-			pSensor->PinIO.pio = DW_BASE_PIOA;
-			pSensor->PinIO.id = DW_ID_PIOA;
-			break;
-		case 1:
-			pSensor->PinIO.pio = DW_BASE_PIOB;
-			pSensor->PinIO.id = DW_ID_PIOB;
-			break;
-		case 2:
-			pSensor->PinIO.pio = DW_BASE_PIOC;
-			pSensor->PinIO.id = DW_ID_PIOC;
-			break;
-		case 3:
-			pSensor->PinIO.pio = DW_BASE_PIOD;
-			pSensor->PinIO.id = DW_ID_PIOD;
-			break;
-		case 4:
-			pSensor->PinIO.pio = DW_BASE_PIOE;
-			pSensor->PinIO.id = DW_ID_PIOE;
-			break;
-		case 5:
-			pSensor->IsFPGAExpandIO = True;
-			pSensor->FPGABit = IoId;
-			break;
-		default:
-			pSensor->IsValid = False;
-			return False;
-		}
-		
-		pSensor->IsValid = True;
-		if(pAxis_param->SensorPolarityMask & (1<<SensorIndex))
-			pSensor->ValidLevel = True;
-		else
-			pSensor->ValidLevel = False;
-		
-		return True;
-	}
-	else
+	INT8U PortId, IoId;
+	INT16U ret = 0;
+
+	if(pAxis_param->SensorExistMask & (1<<SensorIndex) == 0)
 	{
 		pSensor->IsValid = False;
 		return False;
 	}
+
+	ret = gpio_get_grp_index(pAxis_param->SensorIOId[SensorIndex]);
+	PortId = ret >> 8;
+	IoId = ret & 0xFF;
+
+	pSensor->PinIO.type = PIO_INPUT;
+	pSensor->PinIO.attribute = PIO_DEFAULT;
+	pSensor->PinIO.mask = 1<<IoId;
+	pSensor->IsValid = True;
+
+	switch(PortId)
+	{
+	case 0:
+		pSensor->PinIO.pio = DW_BASE_PIOA;
+		pSensor->PinIO.id = DW_ID_PIOA;
+		break;
+	case 1:
+		pSensor->PinIO.pio = DW_BASE_PIOB;
+		pSensor->PinIO.id = DW_ID_PIOB;
+		break;
+	case 2:
+		pSensor->PinIO.pio = DW_BASE_PIOC;
+		pSensor->PinIO.id = DW_ID_PIOC;
+		break;
+	case 3:
+		pSensor->PinIO.pio = DW_BASE_PIOD;
+		pSensor->PinIO.id = DW_ID_PIOD;
+		break;
+	case 4:
+		pSensor->PinIO.pio = DW_BASE_PIOE;
+		pSensor->PinIO.id = DW_ID_PIOE;
+		break;
+	case 5:
+		pSensor->PinIO.pio = DW_BASE_PIOF;
+		pSensor->PinIO.id = DW_ID_PIOF;
+		break;
+	default:
+		pSensor->IsValid = False;
+		return False;
+	}
+
+	if(pAxis_param->SensorPolarityMask & (1<<SensorIndex))
+		pSensor->ValidLevel = True;
+	else
+		pSensor->ValidLevel = False;
+	PIO_Configure(&pSensor->PinIO, 1);
+	return True;
 }
 
 //return logic high
@@ -1792,23 +1955,23 @@ INT8U ConfigCtrlPin(struct ControlIOInfo * pCtrlIO, struct EPR_MOTION_AXIS_PARAM
 	{
 	case 0:
 		pCtrlIO->PinIO.pio = DW_BASE_PIOA;
-		pCtrlIO->PinIO.id = DW_ID_PIOA;
+		pCtrlIO->PinIO.id = AT91C_ID_PIOA;
 		break;
 	case 1:
 		pCtrlIO->PinIO.pio = DW_BASE_PIOB;
-		pCtrlIO->PinIO.id = DW_ID_PIOB;
+		pCtrlIO->PinIO.id = AT91C_ID_PIOB;
 		break;
 	case 2:
 		pCtrlIO->PinIO.pio = DW_BASE_PIOC;
-		pCtrlIO->PinIO.id = DW_ID_PIOC;
+		pCtrlIO->PinIO.id = AT91C_ID_PIOC;
 		break;
 	case 3:
 		pCtrlIO->PinIO.pio = DW_BASE_PIOD;
-		pCtrlIO->PinIO.id = DW_ID_PIOD;
+		pCtrlIO->PinIO.id = AT91C_ID_PIOD;
 		break;
 	case 4:
 		pCtrlIO->PinIO.pio = DW_BASE_PIOE;
-		pCtrlIO->PinIO.id = DW_ID_PIOE;
+		pCtrlIO->PinIO.id = AT91C_ID_PIOE;
 		break;
 	default:
 		return False;
@@ -1997,7 +2160,7 @@ INT8U BuildPWMCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_DC
 		pCurveTable->AccDisTblOffset = (stepCount + sizeof(INT32U) -1)/sizeof(INT32U)*sizeof(INT32U);
 		pDis = (INT32U*)(pCurveTable->IncTable + pCurveTable->AccDisTblOffset);
 		
-		if((INT32U)pDis + (pCurveTable->AccCurveLen+1) * sizeof(INT32U) >= (INT32U)STEP_POOL)
+		if((INT32U)pDis + (pCurveTable->AccCurveLen+1) * sizeof(INT32U) >= (INT32U)STEP_POOL_ADDR)
 			return False;
 		
 		S0_int = 0;
@@ -2020,10 +2183,10 @@ INT8U BuildPWMCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_DC
 		INT32U ACC_StepCount = (INT32U)((float)pSCurve->AccCurveTime*BOARD_MCK/PWMCycleTick/1000000+0.5);
 		struct BezierCurve start;
 		INT32U ACC_StepCount_align2power, tmp;
-		struct Point *pPool = POINT_POOL;
+		struct Point *pPool = POINT_POOL_ADDR;
 		float accEndVec = (float)(pSCurve->AccCurveEndFreq - pSCurve->startFreq);
 		float K, K_x, endVec = (float)(pSCurve->EndFreq - pSCurve->startFreq);
-		float * pStepTool = STEP_POOL;
+		float * pStepTool = STEP_POOL_ADDR;
 		float startVec = (float)pSCurve->startFreq;
 		float V0, V1, S0;
 		
@@ -2031,7 +2194,7 @@ INT8U BuildPWMCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_DC
 		pCurveTable->AccCurveLen = stepCount;
 		pCurveTable->AccDisTblOffset = (stepCount + sizeof(INT32U) -1)/sizeof(INT32U)*sizeof(INT32U);
 		pDis = (INT32U*)(pCurveTable->IncTable + pCurveTable->AccDisTblOffset);
-		if((INT32U)pDis + (pCurveTable->AccCurveLen+1) * sizeof(INT32U) >= (INT32U)STEP_POOL)
+		if((INT32U)pDis + (pCurveTable->AccCurveLen+1) * sizeof(INT32U) >= (INT32U)STEP_POOL_ADDR)
 			return False;
 		
 		if(ACC_StepCount >= pCurveTable->AccCurveLen/2)
@@ -2219,7 +2382,7 @@ INT8U BuildPulseCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_
 			*pCycle = (INT16U)tick;
 			i+=*pCycle;
 			pCycle ++;
-			if((INT32U)pCycle >= (INT32U)STEP_POOL)
+			if((INT32U)pCycle >= (INT32U)STEP_POOL_ADDR)
 				return False;
 			PulseCount ++;
 		}
@@ -2240,7 +2403,7 @@ INT8U BuildPulseCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_
 		struct BezierCurve start;
 		INT32U ACC_SplitCount_align2power=(1<<10);
 		INT32S tmp;
-		struct Point *pPool = POINT_POOL;
+		struct Point *pPool = POINT_POOL_ADDR;
 		float accEndFreq = (float)((pSCurve->AccCurveEndFreq - pSCurve->startFreq) * ratio); 
 		float K_x;
 		
@@ -2290,7 +2453,7 @@ INT8U BuildPulseCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_
 			*pCycle = (INT16U)tick;
 			i+=*pCycle;
 			pCycle ++;
-			if((INT32U)pCycle >= (INT32U)STEP_POOL)
+			if((INT32U)pCycle >= (INT32U)STEP_POOL_ADDR)
 				return False;
 			PulseCount ++;
 		}
@@ -2306,7 +2469,7 @@ INT8U BuildPulseCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_
 			*pCycle = (INT16U)tick;
 			i+=*pCycle;
 			pCycle ++;
-			if( (INT32U)pCycle >= (INT32U)STEP_POOL)
+			if( (INT32U)pCycle >= (INT32U)STEP_POOL_ADDR)
 				return False;
 			PulseCount ++;
 		}
@@ -2332,7 +2495,7 @@ INT8U BuildPulseCurve(struct ACCCurveInfo * pCurveTable, const struct AxisParam_
 			*pCycle = (INT16U)tick;
 			i += *pCycle;
 			pCycle ++;
-			if( (INT32U)pCycle >= (INT32U)STEP_POOL)
+			if( (INT32U)pCycle >= (INT32U)STEP_POOL_ADDR)
 				return False;
 			PulseCount ++;
 		}
@@ -2435,41 +2598,58 @@ INT8U ConfigControlIO(struct ControlIOInfo *pControlIO, INT8U IsValid)
 	return True;
 }
 
-typedef void (*pPWMChannelHandle)(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoor);
-void PWMHandler_dimmy(struct AxisParam_DC_PWM * pDCPWM, INT32U curCoor)
+void TCHandler_dimmy(struct AxisParam_PulseDir_OpenLoop * pDCPWM)
 {
-}
-pPWMChannelHandle pPWM1Handle, pPWM2Handle; 
+#ifndef VM_PRINT
+	if(pwm_buffer_isempty(PWM_MSK(pDCPWM->PWM_pulse_chid)))
+		pwm_ch_stop(PWM_MSK(pDCPWM->PWM_pulse_chid));
+	else
+	{
+		//wait for the pwm buffer empty
+	}
+#else
+	VM_PWM_STOP(pDCPWM);
+#endif
 
-typedef void (*pPD_PWMChannel_handle)(struct AxisParam_PulseDir_OpenLoop *, INT32U curCoor);
-void PD_PWMHandle_dimmy(struct AxisParam_PulseDir_OpenLoop *pPDPWM, INT32U curCoor)
-{
 }
-pPD_PWMChannel_handle pPD_PWMHandleX, pPD_PWMHandleY;
+
 
 INT8U InitPWMChannel(void)
 {
-	INT8U ret = True;
-	int i = 0;
-
 	pwm_init();
 
-	// PWM_DIR:µç»ú¿ØÖÆµÄÂö³åÍ¨µÀÓë·½ÏòÍ¨µÀ
-	// ÆäÖÐPWM_CH(12)ÓëPWM_CH(13)ÓÃ×÷Ðé´òPWMµÄÍ¨µÀ
-	INT32U pwm_pulseCh = PWM_CH(0) | PWM_CH(2) | PWM_CH(4) | PWM_CH(6) | PWM_CH(8) | PWM_CH(10) | PWM_CH(12);
-	INT32U pwm_dirCh = PWM_CH(1) | PWM_CH(3) | PWM_CH(5) | PWM_CH(7) | PWM_CH(9) | PWM_CH(11) | PWM_CH(13);
+	// PWM_DIR:ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ë·½ï¿½ï¿½Í¨ï¿½ï¿½
+	// ï¿½ï¿½ï¿½ï¿½PWM_CH(12)ï¿½ï¿½PWM_CH(13)ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½PWMï¿½ï¿½Í¨ï¿½ï¿½
+	INT32U pwm_pulseCh =
+			PWM_MSK(M_P_X) | PWM_MSK(M_P_Y) | PWM_MSK(M_P_Z) |
+			PWM_MSK(M_P_XX) | PWM_MSK(M_P_YY) | PWM_MSK(M_P_ZZ) |
+			PWM_MSK(M_P1_V) | PWM_MSK(M_P2_V);
+	INT32U pwm_dirCh =
+			PWM_MSK(M_D_X) | PWM_MSK(M_D_Y) | PWM_MSK(M_D_Z) |
+			PWM_MSK(M_D_XX) | PWM_MSK(M_D_YY) | PWM_MSK(M_D_ZZ) ;
 
-	pwm_mode_pwm(pwm_pulseCh, 1);		//ÉèÖÃÎªPWMÄ£Ê½£¬Êä³öPWMÂö³å
-	pwm_mode_pwm(pwm_dirCh, 0);			//ÉèÖÃÎªIOÄ£Ê½£¬Êä³ö¸ßµÍµçÆ½
-	pwm_override(pwm_dirCh, 0);			//·½ÏòIOÄ¬ÈÏÉèÖÃÎªµÍµçÆ½
+#ifdef VM_PRINT
+	pwm_dirCh &= ~(PWM_MSK(M_P1_V) | PWM_MSK(M_P2_V));
+#endif
+
+	pwm_mode_pwm(pwm_dirCh, 0);			//ï¿½ï¿½ï¿½ï¿½ÎªIOÄ£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ßµÍµï¿½Æ½
+	pwm_override(pwm_dirCh, 0);			//ï¿½ï¿½ï¿½ï¿½IOÄ¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Îªï¿½Íµï¿½Æ½
+	pwm_mode_pwm(pwm_pulseCh, 1);		//ï¿½ï¿½ï¿½ï¿½ÎªPWMÄ£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½PWMï¿½ï¿½ï¿½ï¿½
+	pwm_override(pwm_pulseCh, 0);		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÎªFPGAï¿½ï¿½ï¿½ï¿½
+
+	if(pTC_Driver2 == NULL && pTC_Driver1 == NULL)
+		return False;
+
+	pTC1Handle = TCHandler_dimmy;
+	pTC2Handle = TCHandler_dimmy;
 
 	if(pTC_Driver1 != NULL)
 	{
-		pTC_Driver1->PWM_pulse_chid = PWM_CHID(2 * pTC_Driver1->ChannelNO);
-		pTC_Driver1->PWM_dir_chid = PWM_CHID(2 * pTC_Driver1->ChannelNO + 1);
-		//¼«ÐÔÉèÖÃ
-		pwm_polar_pos(PWM_CH(pTC_Driver1->PWM_pulse_chid), pPWMC_Driver1->ChannelValidLevel[0]);
-		pwm_polar_pos(PWM_CH(pTC_Driver1->PWM_dir_chid), pPWMC_Driver1->ChannelValidLevel[1]);
+		pTC_Driver1->PWM_pulse_chid = PWM_IDX(2 * pTC_Driver1->ChannelNO);
+		pTC_Driver1->PWM_dir_chid = PWM_IDX(2 * pTC_Driver1->ChannelNO + 1);
+		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+		pwm_polar_pos(PWM_MSK(pTC_Driver1->PWM_pulse_chid), pPWMC_Driver1->ChannelValidLevel[0]);
+		pwm_polar_pos(PWM_MSK(pTC_Driver1->PWM_dir_chid), pPWMC_Driver1->ChannelValidLevel[1]);
 	}
 
 #if defined (EPSON_BOTTOM_BOARD_V3)&&(defined (EPSON_CLEAN_INTEGRATE)||defined (EPSON_CLEAN_INTEGRATE_1)||defined (EPSON_CLEAN_INTEGRATE_2)||defined (EPSON_CLEAN_INTEGRATE_3))
@@ -2478,24 +2658,24 @@ INT8U InitPWMChannel(void)
 	if(pTC_Driver2 != NULL)
 #endif
 	{
-		pTC_Driver2->PWM_pulse_chid = PWM_CHID(2 * pTC_Driver2->ChannelNO);
-		pTC_Driver2->PWM_dir_chid = PWM_CHID(2 * pTC_Driver2->ChannelNO + 1);
-		//¼«ÐÔÉèÖÃ
-		pwm_polar_pos(PWM_CH(pTC_Driver2->PWM_pulse_chid), pTC_Driver2->ChannelValidLevel[0]);
-		pwm_polar_pos(PWM_CH(pTC_Driver2->PWM_dir_chid), pTC_Driver2->ChannelValidLevel[1]);
+		pTC_Driver2->PWM_pulse_chid = PWM_IDX(2 * pTC_Driver2->ChannelNO);
+		pTC_Driver2->PWM_dir_chid = PWM_IDX(2 * pTC_Driver2->ChannelNO + 1);
+		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+		pwm_polar_pos(PWM_MSK(pTC_Driver2->PWM_pulse_chid), pTC_Driver2->ChannelValidLevel[0]);
+		pwm_polar_pos(PWM_MSK(pTC_Driver2->PWM_dir_chid), pTC_Driver2->ChannelValidLevel[1]);
 	}
 
-	pPWM1Handle = PWMHandler_dimmy;
-	pPWM2Handle = PWMHandler_dimmy;
+	pPD_XHandle = TCHandler_dimmy;
+	pPD_YHandle = TCHandler_dimmy;
 
 	if(pPD_DriverX == NULL || pPD_DriverY == NULL)
 		return False;
 
-	//¼«ÐÔÉèÖÃ
-	pwm_polar_pos(PWM_CH(pPD_DriverX->PWM_pulse_chid), pPD_DriverX->ChannelValidLevel[0]);
-	pwm_polar_pos(PWM_CH(pPD_DriverX->PWM_dir_chid), pPD_DriverX->ChannelValidLevel[1]);
-	pwm_polar_pos(PWM_CH(pPD_DriverY->PWM_pulse_chid), pPD_DriverY->ChannelValidLevel[0]);
-	pwm_polar_pos(PWM_CH(pPD_DriverY->PWM_dir_chid), pPD_DriverY->ChannelValidLevel[1]);
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	pwm_polar_pos(PWM_MSK(pPD_DriverX->PWM_pulse_chid), pPD_DriverX->ChannelValidLevel[0]);
+	pwm_polar_pos(PWM_MSK(pPD_DriverX->PWM_dir_chid), pPD_DriverX->ChannelValidLevel[1]);
+	pwm_polar_pos(PWM_MSK(pPD_DriverY->PWM_pulse_chid), pPD_DriverY->ChannelValidLevel[0]);
+	pwm_polar_pos(PWM_MSK(pPD_DriverY->PWM_dir_chid), pPD_DriverY->ChannelValidLevel[1]);
 
 	ConfigSensor(&pPD_DriverX->Origin);
 	ConfigSensor(&pPD_DriverX->Limit);
@@ -2505,25 +2685,13 @@ INT8U InitPWMChannel(void)
 	ConfigSensor(&pPD_DriverY->Limit);
 	ConfigControlIO(&pPD_DriverY->ControlIO, True);
 
-	pwm_handler_ae = TCHandler;				//ÖÐ¶Ï´¦Àíº¯Êý
-	pwm_ch_stop(pwm_pulseCh);				//
+	pwm_handler_ae = TCHandler;				//ï¿½Ð¶Ï´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	pwm_ch_stop(pwm_pulseCh, 1);				//
 
-	if(pTC_Driver2 == NULL && pTC_Driver1 == NULL)
-		return False;
-	else
-		return True;
-
-	return ret;
+	return True;
 }
 
-typedef void (*pTCChannelHandle)(struct AxisParam_PulseDir_OpenLoop * pDCPWM);
-void TCHandler_dimmy(struct AxisParam_PulseDir_OpenLoop * pDCPWM)
-{
-	if(pwm_buffer_isempty(PWM_CH(pDCPWM->PWM_pulse_chid)))
-		pwm_ch_stop(PWM_CH(pDCPWM->PWM_pulse_chid));
-}
-pTCChannelHandle pTC1Handle, pTC2Handle; 
-pTCChannelHandle pPD_XHandle, pPD_YHandle;
+
 INT8U InitTCChannel(void)
 {
 	return True;
@@ -2534,8 +2702,13 @@ INT8U Motion_Init(void)
 
 	INT32U i;
 	INT8U ret = True;
-#if 1
-	currCurveBuf = ACCTABLE_ADDR;
+
+	MotionBufAddr = (INT8U *)malloc(MotionBufSize);
+	if (MotionBufAddr == NULL) {
+		pr_err("%s(line%d): no memory\n", __func__, __LINE__);
+		return False;
+	}
+	currCurveBuf = (INT32U)ACCTABLE_ADDR;
 	
 	//read e2prom.
 	if(!ReadMotionEPRConfig())
@@ -2612,7 +2785,19 @@ INT8U Motion_Init(void)
 			pAxisParam->motorType = MT_Stepper;
 			pAxisParam->controlType = CT_OPEN_LOOP;
 			pAxisParam->driveType = DT_PulseAndDir;
-			
+
+			//HE_TEST
+			if(pAxisParam->AxisID == AXIS_ID_X)
+			{
+				pAxisParam->SensorIOId[0] = gpio_get_id(4, 9);
+			}//end HE_TEST
+
+			if(pAxisParam->AxisID == AXIS_ID_X)
+				pStepperTC->CoorRegAddr = EPSON_REGADDR_X_MOTOR_COOR;
+			else
+				pStepperTC->CoorRegAddr = EPSON_REGADDR_Y_MOTOR_COOR;
+
+			//FIXME:ConfigSensorPinï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç°ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½Òªï¿½Þ¸ï¿½ConfigSensorPinï¿½ï¿½ï¿½ï¿½
 			if(!ConfigSensorPin(&(pStepperTC->Origin), pAxisParam, MSID_ORIGIN))
 			{
 				if(pAxisParam->AxisID == AXIS_ID_X)
@@ -2659,8 +2844,6 @@ INT8U Motion_Init(void)
 					pStepperTC->Region_Start = (INT32S)(0x80000001);
 			}
 			
-			pStepperTC->PWM_pulse_chid = 2 * pStepperTC->ChannelNO;
-			pStepperTC->PWM_dir_chid = 2 * pStepperTC->ChannelNO + 1;
 			if( pStepperTC->ChannelNO == 0)
 				pPD_DriverX = pStepperTC;
 			else
@@ -2680,6 +2863,7 @@ INT8U Motion_Init(void)
 				pStepperTC->ControlIO.ValidLevel = False;
 			if(!ConfigCtrlPin(&pStepperTC->ControlIO, pAxisParam, MCID_Ctrl0))
 				return False;
+			//todo:MSID_FAULTï¿½ï¿½MSID_OVERTEMPï¿½ï¿½ï¿½ï¿½
 			//ConfigSensorPin(&(pStepperTC->Fault), pAxisParam, MSID_FAULT);
 			//ConfigSensorPin(&(pStepperTC->OverTemp), pAxisParam, MSID_OVERTEMP);
 			
@@ -2717,7 +2901,7 @@ INT8U Motion_Init(void)
 				status_ReportStatus(STATUS_FTA + SciError_Parameter, STATUS_SET);
 			pStepperTC->pAxisParam = pAxisParam;
 		}
-		else
+		else if (pAxisParam->PWM_ChannelID >= 2 && pAxisParam->PWM_ChannelID <= 3)
 		{   //open_loop, pulse_dir
 			memset(pStepperTC, 0, sizeof(struct AxisParam_PulseDir_OpenLoop));
 			pStepperTC->AxisID = pAxisParam->AxisID;
@@ -2763,32 +2947,10 @@ INT8U Motion_Init(void)
 				pStepperTC->Region_Start = (INT32S)(0x80000001);
 			
 			//channel info.
-			if(pStepperTC->ChannelNO == 0)
-			{
-				pPD_DriverX = pStepperTC;
-			}
-			else if(pStepperTC->ChannelNO == 1)
-			{
-				pPD_DriverY = pStepperTC;
-			}
-			else if(pStepperTC->ChannelNO == 2)
-			{
+			if(pStepperTC->ChannelNO == 2)
 				pTC_Driver1 = pStepperTC;
-
-			}
 			else if (pStepperTC->ChannelNO == 3)
-			{
 				pTC_Driver2 = pStepperTC;
-
-			}
-			else
-			{}
-
-			if(pStepperTC->ChannelNO >= 0 && pStepperTC->ChannelNO <= 3)
-			{
-				pStepperTC->PWM_pulse_chid = 2 * pStepperTC->ChannelNO;
-				pStepperTC->PWM_dir_chid = 2 * pStepperTC->ChannelNO + 1;
-			}
 
 			if( pAxisParam->ControlIOPolarityMask & (1<<MCID_PWM1))
 				pStepperTC->ChannelValidLevel[0] = True;
@@ -2827,6 +2989,9 @@ INT8U Motion_Init(void)
 			pStepperTC->Min_Distance = 0;
 			pStepperTC->pAxisParam = pAxisParam;
 		}
+
+		pStepperTC->PWM_pulse_chid = 2 * pStepperTC->ChannelNO;
+		pStepperTC->PWM_dir_chid = 2 * pStepperTC->ChannelNO + 1;
 	}
 	
 	ret &= InitPWMChannel();
@@ -2838,7 +3003,7 @@ INT8U Motion_Init(void)
 	if(ret)
 	{
 		INT32S max_accSpace = 0;
-		printer.platSpace = XParam.pAxisParam->Fixed_Position[MPID_FLATSTART];
+		printer.platSpace = PD_XParam.pAxisParam->Fixed_Position[MPID_FLATSTART];
 		for(i = 0; i < MAX_X_SPEED_LEVEL - 3; i++) //only consider the acc distance of X print.
 		{
 			if( i%5 == 4)
@@ -2846,14 +3011,13 @@ INT8U Motion_Init(void)
 			if( max_accSpace < AccCurveIndexTbl.pAllCurveX[i]->AccDistance)
 				max_accSpace = AccCurveIndexTbl.pAllCurveX[i]->AccDistance;
 		}
-		printer.accSpace = max_accSpace/XParam.ratio_move + X_PRINT_ACC_SAFE_DISTANCE;
+		printer.accSpace = max_accSpace/PD_XParam.ratio_move + X_PRINT_ACC_SAFE_DISTANCE;
 		if(printer.accSpace > printer.platSpace)
 			printer.accSpace = printer.platSpace;
-		printer.orgLimit = XParam.pAxisParam->Fixed_Position[MPID_START];
-		printer.org_oppLimit = XParam.pAxisParam->Fixed_Position[MPID_MOVEEND];
+		printer.orgLimit = PD_XParam.pAxisParam->Fixed_Position[MPID_START];
+		printer.org_oppLimit = PD_XParam.pAxisParam->Fixed_Position[MPID_MOVEEND];
 	}
 	
-#endif
 	return ret;
 }
 
@@ -3044,114 +3208,12 @@ inline void PWMHandler_GetCoor_old(INT32U * curCh1Coor, INT32U * curCh2Coor) FAS
 //for not record case,  it will spend 0x500~0x600 clock for standby adjustment. 1/4 loading of CPU time.
 //for record case. it will spend 0x800~0x900 clock for standby adjustment. 1/3 loading of CPU time .
 // NOTE: if PWM freq is 20Khz, the PWM cycle is 6666 clock, about 0x1A0A.
-#if HE_ADD
+#if !HE_ADD
 INT32U LAST_COOR[2] = {0xFFFFFFFF, 0xFFFFFFFF};
-void PWMHandler(void) FAST_FUNC_SECTION
+void PWMHandler(void *arg) FAST_FUNC_SECTION
 { 
 }
-#else
-INT32U LAST_COOR[2] = {0xFFFFFFFF, 0xFFFFFFFF};
-void PWMHandler_old(void *arg) FAST_FUNC_SECTION
-{
-#if 0
-	int i = 0;
-	uint32_t chId = (uint32_t)arg;
-	static uint32_t cnt = 0;
-	int chIndex = 0;
 
-	static uint8_t level = 0;
-		static uint32_t periodNum = 100;
-		static uint32_t period1 = 5000;
-		static uint32_t period2 = 3000;
-		static uint32_t period3 = 3000;
-		static uint32_t duty1 = 1500;
-		static uint32_t duty2 = 0;
-		static uint32_t duty3 = 1500;
-		static uint32_t period_s = 5000;
-		static uint32_t period_e = 1000;
-		static uint32_t duty_acc = 500;
-		static uint8_t acc_time = 1;	//Ãë
-		static uint32_t per_tatal_num = 0;
-
-		static uint32_t cur_per = 3000;
-		uint32_t per = acc_time * 1000 * 10 / ((period_s * 10 / 1000) * (period_s * 10 / 1000 - 1) / 2
-				- (period_e * 10 / 1000) * (period_e * 10 / 1000 - 1) / 2);
-
-
-		if(per_tatal_num++ < 10 * 1000 * 60)	//¼Ó
-		{
-
-			if(cur_per >= period_e)
-			{
-				if(cnt++ < per)
-				{
-					pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
-				}
-				else if(cnt >= per)
-				{
-					pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
-					cur_per--;
-					cnt = 0;
-				}
-			}
-			else
-			{
-				pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
-			}
-		}
-		else if(per_tatal_num++ < 10 * 1000 * 110)	// ÔÈ
-		{
-			pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
-		}
-		else if(per_tatal_num++ < 10 * 1000 * 180)	//¼õ
-		{
-			if(cur_per < period_s)
-			{
-				if(cnt++ < per)
-				{
-					pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
-				}
-				else if(cnt >= per)
-				{
-					pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
-					cur_per++;
-					cnt = 0;
-				}
-			}
-			else
-			{
-				pwm_ch_set_pwm(chIndex, cur_per, 0);
-			}
-		}
-		else
-		{
-			per_tatal_num = 0;
-		}
-		pwm_irq_almost_enable(PWM_GRP0, 1);
-		pwm_enable(PWM_GRP0, 1);
-#else
-
-	INT32U curCh1Coor, curCh2Coor;
-	INT32U isr = 0;
-
-	//PWMHandler_GetCoor(&curCh1Coor, &curCh2Coor);
-
-	if(LAST_COOR[0]!=0xFFFFFFFF && (absv(LAST_COOR[0] - curCh1Coor) > 1000))
-		curCh1Coor = pPWMC_Driver1->Coor_NextCycle - pPWMC_Driver1->e;
-	else
-		LAST_COOR[0] = curCh1Coor;
-
-	if(LAST_COOR[1]!=0xFFFFFFFF && (absv(LAST_COOR[1] - curCh2Coor) > 1000))
-		curCh2Coor = pPWMC_Driver2->Coor_NextCycle - pPWMC_Driver2->e;
-	else
-		LAST_COOR[1] = curCh2Coor;
-	(*pPD_PWMHandleX)(pPD_DriverX, curCh1Coor);
-	if(isr & (PWM_CH(0)|PWM_CH(1)))
-		(*pPD_PWMHandleX)(pPD_DriverX, curCh1Coor);
-	if(isr & (PWM_CH(2)|PWM_CH(3)))
-		(*pPD_PWMHandleX)(pPD_DriverY, curCh2Coor);
-#endif
-}
 #endif
 
 INT8U ExitResetStatus(void)
@@ -3197,16 +3259,16 @@ INT8U PWM_Urgent_Stop(struct AxisParam_PulseDir_OpenLoop * pDCPWM)
 	else
 		PIO_Clear(&pDCPWM->ControlIO.PinIO);
 	
-#ifndef VM_PRINT
-	pwm_ch_stop(PWM_CH(pDCPWM->PWM_pulse_chid));
+#ifdef VM_PRINT
+	pwm_ch_stop(PWM_MSK(M_P1_V) | PWM_MSK(M_P2_V), 1);
+#else
+	pwm_ch_stop(PWM_MSK(pDCPWM->PWM_pulse_chid), 1);
 #endif
 	if( pDCPWM->ChannelNO == 0)
 		pPD_XHandle = TCHandler_dimmy;
 	else
 		pPD_YHandle = TCHandler_dimmy;
-#ifdef VM_PRINT
-	VM_PWM_STOP();
-#endif
+
 
 	WriteReg32Data(REG_COOR_SYS_CTRL, ER_CoorCtrl_SMOOTH_DIVIDER_720 | ER_CoorCtrl_SMOOTH_MULTI_720);
 	pDCPWM->BaseDPI = 720;
@@ -3306,7 +3368,7 @@ INT8U calcPID(struct AxisParam_DC_PWM * pDCPWM) FAST_FUNC_SECTION
 INT8U PWM_Stop(struct AxisParam_PulseDir_OpenLoop * pPD_PWM)
 {
 
-	//ÔÚÍ£Ö¹Ê±£¬FPGAµÄ»º³åÀï¿ÉÄÜ»¹ÓÐÎ´Ö´ÐÐÍêµÄÂö³å£¬Òò´Ë¸Ãstopº¯ÊýÒªÐÞ¸Ä
+	//ï¿½ï¿½Í£Ö¹Ê±ï¿½ï¿½FPGAï¿½Ä»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü»ï¿½ï¿½ï¿½Î´Ö´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½å£¬ï¿½ï¿½ï¿½Ë¹Ø±ï¿½PWMï¿½ï¿½ï¿½Ü·ï¿½ï¿½ï¿½TCHandler_dimmyï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if(pPD_PWM->ChannelNO == 0)
 		pPD_XHandle = TCHandler_dimmy;
 	else
@@ -3317,80 +3379,10 @@ INT8U PWM_Stop(struct AxisParam_PulseDir_OpenLoop * pPD_PWM)
 	return True;
 }
 
-#ifdef VM_PRINT
-INT32U CURCOOR = 0x200000;
-INT32U PWM_NUM = 0;
-INT8U BEGIN_PWM =False;
-INT8U IS_PRINT =False;
-#endif
-
 void PWMHandler_PosDir_UNI_POLAR(struct AxisParam_PulseDir_OpenLoop * pStepperTC) FAST_FUNC_SECTION
 {
 	pStepperTC->CurCoor ++;
 	INT32U period = 0;
-
-#ifdef VM_PRINT
-	static INT8U first1 =True, first2 =True;
-	INT32U cur_print_coor;
-	if(BEGIN_PWM == True)
-	{
-		if(PWM_NUM > 0)
-		{
-			if(IS_PRINT == True)
-				PWM_NUM = 0;
-			else
-				PWM_NUM--;
-			if(first1 == True)
-			{
-				pwm_ch_start(MOTOR_PWM_VM, pStepperTC->Dir);
-				VM_PWM_START(pStepperTC);
-				first1 = False;
-			}
-			else
-				VM_PWM_START(pStepperTC);
-
-		}
-		else
-		{
-			if(IS_PRINT == True)
-			{
-				VM_PWM_START(pStepperTC);
-
-				cur_print_coor = REG_PRT_COOR_X;
-
-				if(pStepperTC->Dir == DIRTYPE_POS)
-				{
-					if((cur_print_coor - 0x40000)>= (printInfo.PrintMove_Start>printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
-					{
-						VM_PWM_STOP();
-						BEGIN_PWM = False;
-						first1 = False;
-					}
-				}
-				else
-				{
-					if((cur_print_coor - 0x40000)<= (printInfo.PrintMove_Start<printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
-					{
-						VM_PWM_STOP();
-						BEGIN_PWM = False;
-						first1 = False;
-					}
-				}
-			}
-			else
-			{
-				VM_PWM_STOP();
-				BEGIN_PWM = False;
-				first1 = False;
-			}
-		}
-	}
-#else
-	//calcPID
-	//set duty and period
-	//PutMoveRecord
-
-#endif
 
 	if(pStepperTC->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
 	{
@@ -3404,14 +3396,6 @@ void PWMHandler_PosDir_UNI_POLAR(struct AxisParam_PulseDir_OpenLoop * pStepperTC
 	}
 	else if (pStepperTC->AccSegment == ACCSEGTYPE_SPEED_UP)
 	{
-#ifdef VM_PRINT
-		if((PWM_OFFSET_INDEX > pStepperTC->AccTableLen - pStepperTC->AccTableIndex)&&
-				(pStepperTC->ChannelNO == 0)&&(first1 == True))
-		{
-			first1 = False;
-			BEGIN_PWM = True;
-		}
-#endif
 		pStepperTC->AccTableIndex ++;
 		if( (INT32S)pStepperTC->CurCoor >= (INT32S)pStepperTC->speedDownCoor)
 		{
@@ -3436,10 +3420,6 @@ void PWMHandler_PosDir_UNI_POLAR(struct AxisParam_PulseDir_OpenLoop * pStepperTC
 				if(pStepperTC->AxisID == AXIS_ID_X)
 				{
 					PWM_Stop_X(pStepperTC);
-#ifdef VM_PRINT
-					first1 = True;first2= True;
-					CURCOOR=pStepperTC->CoorIdeal;
-#endif
 				}
 				else
 				{
@@ -3462,68 +3442,6 @@ void PWMHandler_NegDir_UNI_POLAR(struct AxisParam_PulseDir_OpenLoop * pStepperTC
 	pStepperTC->CurCoor --;
 	INT32U period = 0;
 
-#ifdef VM_PRINT
-	static INT8U first1 =True, first2 =True;
-	INT32U cur_print_coor;
-	if(BEGIN_PWM == True)
-	{
-		if(PWM_NUM > 0)
-		{
-			if(IS_PRINT == True)
-				PWM_NUM = 0;
-			else
-				PWM_NUM--;
-			if(first1 == True)
-			{
-				pwm_ch_start(MOTOR_PWM_VM, pStepperTC->Dir);
-				VM_PWM_START(pStepperTC);
-				first1 = False;
-			}
-			else
-				VM_PWM_START(pStepperTC);
-
-		}
-		else
-		{
-			if(IS_PRINT == True)
-			{
-				VM_PWM_START(pStepperTC);
-
-				cur_print_coor = REG_PRT_COOR_X;
-
-				if(pStepperTC->Dir == DIRTYPE_POS)
-				{
-					if((cur_print_coor - 0x40000)>= (printInfo.PrintMove_Start>printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
-					{
-						VM_PWM_STOP();
-						BEGIN_PWM = False;
-						first1 = False;
-					}
-				}
-				else
-				{
-					if((cur_print_coor - 0x40000)<= (printInfo.PrintMove_Start<printInfo.PrintMove_End?printInfo.PrintMove_Start:printInfo.PrintMove_End))
-					{
-						VM_PWM_STOP();
-						BEGIN_PWM = False;
-						first1 = False;
-					}
-				}
-			}
-			else
-			{
-				VM_PWM_STOP();
-				BEGIN_PWM = False;
-				first1 = False;
-			}
-		}
-	}
-#else
-	//calcPID
-	//set duty and period
-	//PutMoveRecord
-
-#endif
 	if(pStepperTC->AccSegment == ACCSEGTYPE_CONSTANT_SPEED)
 	{
 		if( (INT32S)pStepperTC->CurCoor <= (INT32S)pStepperTC->speedDownCoor )
@@ -3559,10 +3477,6 @@ void PWMHandler_NegDir_UNI_POLAR(struct AxisParam_PulseDir_OpenLoop * pStepperTC
 				if(pStepperTC->AxisID == AXIS_ID_X)
 				{
 					PWM_Stop_X(pStepperTC);
-#ifdef VM_PRINT
-					first1 =True;first2=True;
-					CURCOOR=pStepperTC->CoorIdeal;
-#endif
 				}
 				else
 				{
@@ -3584,7 +3498,6 @@ INT8U PWM_Start_Movement(struct AxisParam_PulseDir_OpenLoop * pDCPWM, INT8U spee
 						 INT32U endCoor, INT8U moveType, INT32U distance, INT32U currCoor)
 {
 	struct ACCCurveInfo * pAccTable = pDCPWM->pAllCurveTable[speedID];
-	INT32U i;
 
 	pDCPWM->CoorIdeal = endCoor;
 	pDCPWM->MoveType = moveType;
@@ -3599,13 +3512,13 @@ INT8U PWM_Start_Movement(struct AxisParam_PulseDir_OpenLoop * pDCPWM, INT8U spee
 	{
 		distance = pDCPWM->CoorIdeal - pDCPWM-> CurCoor;
 		pDCPWM->Dir = DIRTYPE_POS;
-		pwm_override(PWM_CH(pDCPWM->PWM_dir_chid), 1);
+		pwm_override(PWM_MSK(pDCPWM->PWM_dir_chid), 1);
 	}
 	else
 	{
 		distance = pDCPWM->CoorIdeal - pDCPWM-> CurCoor;
 		pDCPWM->Dir = DIRTYPE_NEG;
-		pwm_override(PWM_CH(pDCPWM->PWM_dir_chid), 0);
+		pwm_override(PWM_MSK(pDCPWM->PWM_dir_chid), 0);
 	}
 
 	pAccTable = pDCPWM->pAllCurveTable[speedID];
@@ -3640,23 +3553,24 @@ INT8U PWM_Start_Movement(struct AxisParam_PulseDir_OpenLoop * pDCPWM, INT8U spee
 	}
 
 #ifdef VM_PRINT
-		BEGIN_PWM = True;
-#endif
-#ifdef VM_PRINT
+	CUR_SPEED_ID = speedID;
+
 	if(pDCPWM->Dir == DIRTYPE_POS)
-		PWM_NUM = ( ((float)(endCoor - currCoor)*0x1000000)/pDCPWM->ratio_move);
+		PWM_NUM = ( ((float)(endCoor - currCoor))/pDCPWM->ratio_move);
 	else
-		PWM_NUM = ( ((float)(currCoor - endCoor)*0x1000000)/pDCPWM->ratio_move);
+		PWM_NUM = ( ((float)(currCoor - endCoor))/pDCPWM->ratio_move);
 #endif
+
 	if( pDCPWM->ChannelNO == 0)
 	{
 #ifdef VM_PRINT
-		//PWM_OFFSET_INDEX =(( (float)(pAccTable->AccDistance)*0x1000000)/pDCPWM->ratio_StepPerCycle);
-#endif
+		pPD_XHandle = VM_PD_Print;
+#else
 		if(pDCPWM->Dir == DIRTYPE_POS)
 			pPD_XHandle = PWMHandler_PosDir_UNI_POLAR;
 		else
 			pPD_XHandle = PWMHandler_NegDir_UNI_POLAR;
+#endif
 	}
 	else
 	{
@@ -3666,9 +3580,10 @@ INT8U PWM_Start_Movement(struct AxisParam_PulseDir_OpenLoop * pDCPWM, INT8U spee
 			pPD_YHandle = PWMHandler_NegDir_UNI_POLAR;
 	}
 #ifdef VM_PRINT
-	pwm_ch_start(MOTOR_PWM_VM, pDCPWM->Dir);
+	VM_PWM_START(pDCPWM);
 #else
-	pwm_ch_start(PWM_CH(pDCPWM->PWM_pulse_chid), pDCPWM->Dir);
+	pwm_ch_start(PWM_MSK(pDCPWM->PWM_pulse_chid));
+	pwm_override(PWM_MSK(pDCPWM->PWM_dir_chdi), pDCPWM->Dir);
 #endif
 	return True;
 }
@@ -3688,7 +3603,7 @@ INT8U PWM_Start_X(struct AxisParam_PulseDir_OpenLoop * pDCPWM, INT8U speedID, IN
 	if(IsPrint)
 	{
 		//another field of FPGA CoorCtrl must be set by caller.
-		tmp = REG_COOR_SYS_CTRL;
+		tmp = ReadReg32Data(REG_COOR_SYS_CTRL);
 		switch(baseDPI)
 		{
 		case 1440:
@@ -3990,9 +3905,9 @@ INT8U TC_Start_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC, INT8U speed
 	}
 	
 	if(pStepperTC->Dir == DIRTYPE_POS)
-		pwm_override(PWM_CH(pStepperTC->PWM_dir_chid), DIR_POS_Z);  // Positive rotate.
+		pwm_override(PWM_MSK(pStepperTC->PWM_dir_chid), DIR_POS_Z);  // Positive rotate.
 	else
-		pwm_override(PWM_CH(pStepperTC->PWM_dir_chid), DIR_NEG_Z);
+		pwm_override(PWM_MSK(pStepperTC->PWM_dir_chid), DIR_NEG_Z);
 
 	pStepperTC->MoveType = moveType;
 	
@@ -4062,9 +3977,9 @@ INT8U TC_Start_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC, INT8U speed
 	pStepperTC->pTC_channel->TC_SR;
 	pStepperTC->pTC_channel->TC_CCR = AT91C_TC_CLKEN|AT91C_TC_SWTRG;
 #else
-	pwm_enable(PWM_CH(pStepperTC->PWM_pulse_chid), 1);
-	pwm_irq_almost_enable(PWM_CH(pStepperTC->PWM_pulse_chid), 1);
-	pwm_irq_almost_mask(PWM_CH(pStepperTC->PWM_pulse_chid), 0);
+	pwm_enable(PWM_MSK(pStepperTC->PWM_pulse_chid), 1);
+	pwm_irq_almost_enable(PWM_MSK(pStepperTC->PWM_pulse_chid), 1);
+	pwm_irq_almost_mask(PWM_MSK(pStepperTC->PWM_pulse_chid), 0);
 #endif
 	OS_EXIT_CRITICAL();
 	return True;
@@ -4077,9 +3992,9 @@ INT8U TC_Stop_Move(struct AxisParam_PulseDir_OpenLoop * pStepperTC)
 
 	OS_ENTER_CRITICAL();
 
-	pwm_enable(PWM_CH(pStepperTC->PWM_pulse_chid), 0);
-	pwm_irq_almost_enable(PWM_CH(pStepperTC->PWM_pulse_chid), 0);
-	pwm_irq_almost_mask(PWM_CH(pStepperTC->PWM_pulse_chid), 1);
+	pwm_enable(PWM_MSK(pStepperTC->PWM_pulse_chid), 0);
+	pwm_irq_almost_enable(PWM_MSK(pStepperTC->PWM_pulse_chid), 0);
+	pwm_irq_almost_mask(PWM_MSK(pStepperTC->PWM_pulse_chid), 1);
 
 	if(pStepperTC->ChannelNO == 2)
 		pTC1Handle = TCHandler_dimmy;
@@ -4143,33 +4058,20 @@ void TCHandler(void *arg) FAST_FUNC_SECTION
 	}
 	if(pPD_DriverX != NULL)
 	{
+#ifdef VM_PRINT
+		if(isr & PWM_MSK(M_P1_V))
+			(*pPD_XHandle)(pPD_DriverX);
+#else
 		if(isr & (0x01 << pPD_DriverX->PWM_pulse_chid))
 			(*pPD_XHandle)(pPD_DriverX);
+#endif
+
 	}
 	if(pPD_DriverY != NULL)
 	{
 		if(isr & (0x01 << pPD_DriverY->PWM_pulse_chid))
 			(*pPD_YHandle)(pPD_DriverY);
 	}
-}
-
-void TCHandler_old(void) FAST_FUNC_SECTION
-{
-	INT32U isr;
-#if 0
-	if(pTC_Driver1 != NULL)
-	{
-		isr = DW_BASE_TC3->TC_SR & DW_BASE_TC3->TC_IMR;
-		if(isr & AT91C_TC_CPCS)
-			(*pTC1Handle)(pTC_Driver1);
-	}
-	if(pTC_Driver2 != NULL)
-	{
-		isr = DW_BASE_TC4->TC_SR & DW_BASE_TC4->TC_IMR;
-		if(isr & AT91C_TC_CPCS)
-			(*pTC2Handle)(pTC_Driver2);
-	}
-#endif
 }
 
 INT8U MapXUserSpeedToXMotorSpeed(INT8U speedID, INT16U currDPI, INT8U bIsPrint)
@@ -4180,6 +4082,10 @@ INT8U MapXUserSpeedToXMotorSpeed(INT8U speedID, INT16U currDPI, INT8U bIsPrint)
 		return XMoveSpeedMap(speedID);
 }
 
+/*FIXME:User_start_X/Y/Z/Cï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½
+ * User_stop_X/Y/ZÍ¬ï¿½ï¿½
+ * X/Y/Zï¿½È²ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½
+ */
 #define START_ERROR_NOT_STANDBY         ((INT8U)-1)
 #define START_ERROR_CHECK_SAFE          ((INT8U)0)
 #define START_ERROR_OK                  ((INT8U)True)
@@ -4285,7 +4191,16 @@ INT8U User_Start_X(INT8U speedID, INT16U currDPI, INT8U bIsPrint, INT8U moveType
 		}
 	}
 
-	currCoor = PD_XParam.CurCoor;
+	//FIXME:HEAD_EPSON_GEN5 VS HEAD_RICOH_G4 ï¿½ï¿½Í¬
+	if(PD_XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
+	{
+		currCoor = ReadReg32Data(REG_MOTOR_COOR_X);
+	}
+	else if(PD_XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
+	{
+		currCoor = ReadReg32Data(REG_PRT_COOR_X);
+	}
+	//end fixme
 
 	if(endCoor > currCoor)
 		distance = endCoor - currCoor;
@@ -4313,141 +4228,6 @@ INT8U User_Start_X(INT8U speedID, INT16U currDPI, INT8U bIsPrint, INT8U moveType
 	else
 		return START_ERROR_OK;
 	return True;
-}
-INT8U User_Start_X_old(INT8U speedID, INT16U currDPI, INT8U bIsPrint, INT8U moveType,
-				   INT8U coorType, INT32S endCoorOrDistance, INT8U dir)
-{
-	OS_CPU_SR cpu_sr;
-	INT32S endCoor, max_width, currCoor, distance;
-	INT8U ret, baseDPIid;
-	INT16U baseDPI;
-	float ratio;
-	INT8U isRealPrint;
-#ifdef VM_PRINT
-	IS_PRINT = bIsPrint;
-#endif
-	if(bIsPrint && speedID != 4)
-		isRealPrint = True;
-	else
-		isRealPrint = False;
-	
-	speedID = MapXUserSpeedToXMotorSpeed(speedID, currDPI, bIsPrint);
-	baseDPI = GetBaseDPI(currDPI, &baseDPIid);
-	
-#ifdef ALLWIN_EPSON_SAME
-#define CARRIAGE_WIDTH 2 //30cm
-#elif defined(MANUFACTURER_MICOLOR_EPSON)
-#define CARRIAGE_WIDTH 2 //30cm
-#else
-	//for default carriage width
-#define CARRIAGE_WIDTH 2 //20cm
-#endif
-	max_width = ((PAPER_MEDIA_WIDTH_MM*10 + CARRIAGE_WIDTH * 2 * 1000)  * currDPI) / 254;
-	
-	OS_ENTER_CRITICAL();
-	if(XParam.Dir != DIRTYPE_STANDBY)
-	{
-		OS_EXIT_CRITICAL();
-		
-		status_ReportStatus(STATUS_FTA + SciError_MoveAgain, STATUS_SET);
-		return START_ERROR_NOT_STANDBY;
-	}
-	
-	if(!bIsPrint)
-		ratio = XParam.ratio_move;
-	else
-		ratio = XParam.ratio_print[baseDPIid];
-	
-	if(moveType == MOVETYPE_CONTINUE)
-	{ //currDPI must be 720.
-		if(dir == DIRTYPE_POS)
-			endCoor = XParam.Region_End;
-		else
-			endCoor = XParam.Region_Start;
-	}
-	else if(moveType == MOVETYPE_CONTINUE_CHECKSENSOR)
-	{ //doesn't know the real start and end.
-		//currDPI must be 720.
-		if( XParam.Region_End == (INT32S)(0x7FFFFFFF))
-		{
-			max_width = (INT32S)(max_width * ratio);
-			
-			if(dir == DIRTYPE_POS)
-				endCoor = XParam.Origin_Offset + max_width;
-			else
-				endCoor = XParam.Origin_Offset - max_width;
-		}
-		else
-		{
-			if(dir == DIRTYPE_POS)
-				endCoor = XParam.Region_Start + INIT_RETURN_SAFE_DISTANCE *ratio;
-			else
-				endCoor = XParam.Origin_Offset - (XParam.Region_End - XParam.Region_Start);
-		}
-	}
-	else
-	{
-		if(coorType == 2)
-			endCoor = endCoorOrDistance; //raw coor system.
-		else
-		{
-			endCoorOrDistance = (INT32S)(endCoorOrDistance * ratio);
-			if( coorType == 0) //absolute, and support varied printing DPI.
-				endCoor = endCoorOrDistance + XParam.Origin_Offset;
-			else
-			{ //currDPI must be 720.
-				if(dir == DIRTYPE_POS) 
-					endCoor = XParam.CoorIdeal + endCoorOrDistance;
-				else
-					endCoor = XParam.CoorIdeal - endCoorOrDistance;
-			}
-			if(endCoor > XParam.Region_End)
-			{
-				endCoor = XParam.Region_End;
-			}
-			else if(endCoor < XParam.Region_Start)
-			{
-				endCoor = XParam.Region_Start;
-			}
-		}
-	}
-#ifdef   HEAD_EPSON_GEN5
-	currCoor = ReadSafeEpsonRegInt(XParam.CoorRegAddr);
-#elif defined(HEAD_RICOH_G4)
-	if(XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
-	{
-		currCoor = (INT32S)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
-	}
-	else if(XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
-	{
-		currCoor = (INT32S)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
-	}
-#endif
-	if(endCoor > currCoor)
-		distance = endCoor - currCoor;
-	else
-		distance = currCoor - endCoor;
-	
-	if(distance <= XParam.Min_Distance)
-	{
-		OS_EXIT_CRITICAL();
-		reportMoveCompleted(XParam.AxisID);
-		return START_ERROR_DISTANCE_TOO_SHORT;
-	}
-	
-	OS_EXIT_CRITICAL();
-	
-	ret = PWM_Start_X(&XParam, speedID, baseDPI, currDPI, endCoor, moveType, isRealPrint);
-	
-	if( ret == False)
-		return START_ERROR_CHECK_SAFE;
-	else if(ret == DISTANCE_TOO_SHORT)
-	{
-		reportMoveCompleted(XParam.AxisID);
-		return START_ERROR_DISTANCE_TOO_SHORT;
-	}
-	else 
-		return START_ERROR_OK;
 }
 
 INT8U User_Start_Y(INT8U speedID, INT8U moveType, INT8U coorType, INT32S endCoorOrDistance, INT8U dir, INT8U bUniDir, INT8U bIsPrint)
@@ -4853,7 +4633,7 @@ INT8U User_Stop_X(INT8U bUrgent, INT8U bBaseOnRealCoor)
 	if(slow_down_at_once)
 	{
 		PD_XParam.pAccTable = (INT16U*)pAccCurve->IncTable;
-		XParam.AccTableLen = pAccCurve->AccCurveLen;
+		PD_XParam.AccTableLen = pAccCurve->AccCurveLen;
 	}
 	else
 	{
@@ -4871,7 +4651,7 @@ INT8U User_Stop_X(INT8U bUrgent, INT8U bBaseOnRealCoor)
 			{
 				PD_XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
 			}
-			else if(XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
+			else if(PD_XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
 			{
 				PD_XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
 			}
@@ -4900,7 +4680,7 @@ INT8U User_Stop_X(INT8U bUrgent, INT8U bBaseOnRealCoor)
 #ifdef   HEAD_EPSON_GEN5       
 			PD_XParam.speedDownCoor = ReadSafeEpsonRegInt(PD_XParam.CoorRegAddr);
 #elif defined(HEAD_RICOH_G4)
-			if(XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
+			if(PD_XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
 			{
 				PD_XParam.speedDownCoor = (INT32U)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
 			}
@@ -5262,8 +5042,12 @@ void XOrigin_IO_Irq_Interrupt(const Pin *pPin) FAST_FUNC_SECTION
 {
 	if(mainStatus == MS_INIT)
 	{
+		IS_XOrigin_Irq = True;
+
+		/*todo@Xparam
 		if(InitStatus == IS_X_GoOriginSensor)
 		{
+
 			if( GetSensor(&XParam.Origin) == True)
 			{
 #ifdef   HEAD_EPSON_GEN5       
@@ -5280,6 +5064,7 @@ void XOrigin_IO_Irq_Interrupt(const Pin *pPin) FAST_FUNC_SECTION
 #endif
 				User_Stop_X(False, True);
 			}
+
 		}
 		else if(InitStatus == IS_X_LeaveOriginSensor)
 		{
@@ -5289,6 +5074,7 @@ void XOrigin_IO_Irq_Interrupt(const Pin *pPin) FAST_FUNC_SECTION
 				User_Stop_X(False, True);
 			}
 		}
+		*/
 	}
 }
 
@@ -5298,6 +5084,7 @@ void XOrigin_FPGA_Irq_Interrupt(void * data, INT8U IsHigh) FAST_FUNC_SECTION
 	{
 		if(InitStatus == IS_X_GoOriginSensor)
 		{
+			/*todo XParam
 			if( IsHigh)
 			{
 #ifdef   HEAD_EPSON_GEN5       
@@ -5314,6 +5101,7 @@ void XOrigin_FPGA_Irq_Interrupt(void * data, INT8U IsHigh) FAST_FUNC_SECTION
 #endif
 				User_Stop_X(False, True);
 			}
+			*/
 		}
 		else if(InitStatus == IS_X_LeaveOriginSensor)
 		{
@@ -5446,16 +5234,16 @@ INT8U ResetYRegion()
 
 INT8U StartFindXHome()
 {
-	if(GetSensor(&XParam.Origin) == False)
+	if(GetSensor(&PD_XParam.Origin) == False)
 	{
 		InitStatus = IS_X_GoOriginSensor;
-		ConfigureSensorIt(&XParam.Origin, XOrigin_FPGA_Irq_Interrupt, NULL, XOrigin_IO_Irq_Interrupt); 
+		ConfigureSensorIt(&PD_XParam.Origin, XOrigin_FPGA_Irq_Interrupt, NULL, XOrigin_IO_Irq_Interrupt);
 		return User_Start_X(0, 720, False, MOVETYPE_CONTINUE_CHECKSENSOR, 0, 0, DIRTYPE_NEG);
 	}
 	else
 	{
 		InitStatus = IS_X_LeaveOriginSensor;
-		ConfigureSensorIt(&XParam.Origin, XOrigin_FPGA_Irq_Interrupt, NULL, XOrigin_IO_Irq_Interrupt); 
+		ConfigureSensorIt(&PD_XParam.Origin, XOrigin_FPGA_Irq_Interrupt, NULL, XOrigin_IO_Irq_Interrupt);
 		return User_Start_X(0, 720, False, MOVETYPE_CONTINUE_CHECKSENSOR, 0, 0, DIRTYPE_POS);
 	}
 }
@@ -5514,9 +5302,12 @@ INT8U FirstGoYHome()
 
 INT8U FirstGoXHome()
 {
-	UnConfigureSensorIt(&XParam.Origin);
+	UnConfigureSensorIt(&PD_XParam.Origin);
 	InitStatus = IS_X_GoHome;
-	return User_Start_X(0, 720, False, MOVETYPE_SEGMENT, 2, OriginSensorPosi_X - XParam.OriginSensorOffset, DIRTYPE_POS);
+	/*todo OriginSensorPosi_Xï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½Î»ï¿½Ð¶ï¿½ï¿½ÐµÃ³ï¿½ï¿½ï¿½ï¿½ï¿½ÒªÊµï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½Ã´ï¿½Öµ
+	 * ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÖµÎª0ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½Ô­ï¿½ï¿½Î»ï¿½Ã²ï¿½ï¿½ï¿½
+	 */
+	return User_Start_X(0, 720, False, MOVETYPE_SEGMENT, 2, OriginSensorPosi_X - PD_XParam.OriginSensorOffset, DIRTYPE_POS);
 }
 
 static INT8U bHomeWhenPowerOn = True;
@@ -5528,12 +5319,13 @@ INT8U ResetXCoorSystem(void)
 	INT32S X_print_posi = 0;
 
 	OS_ENTER_CRITICAL();
-
-	if(XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
+	//todo
+#if 0
+	if(PD_XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
 	{
 		X_posi = (INT32S)(REG_MOTOR_COOR_X);
 	}
-	else if(XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
+	else if(PD_XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
 	{
 		X_posi = (INT32S)(REG_PRT_COOR_X);
 	}
@@ -5542,8 +5334,8 @@ INT8U ResetXCoorSystem(void)
 	REG_COOR_SYS_CTRL = ~ER_CoorCtrl_RESET_X & REG_COOR_SYS_CTRL;
 
 
-	XParam.CoorIdeal -= X_posi - XParam.Origin_Offset;
-	XParam.Coor_NextCycle -= X_posi - XParam.Origin_Offset;
+	PD_XParam.CoorIdeal -= X_posi - PD_XParam.Origin_Offset;
+	PD_XParam.Coor_NextCycle -= X_posi - PD_XParam.Origin_Offset;
 	if(pPWMC_Driver1->AxisID == AXIS_ID_X)
 		LAST_COOR[0]  = 0xFFFFFFFF;
 	else if(pPWMC_Driver2->AxisID == AXIS_ID_X)
@@ -5563,57 +5355,6 @@ INT8U ResetXCoorSystem(void)
 	else
 		bHomeWhenPowerOn = True;
 #endif
-
-	return True;
-}
-
-INT8U ResetXCoorSystem_old()
-{
-	OS_CPU_SR cpu_sr;
-	INT32S X_posi = 0;
-	INT32S X_print_posi = 0;
-	
-	OS_ENTER_CRITICAL();
-#ifdef   HEAD_EPSON_GEN5		
-	X_posi = ReadSafeEpsonRegInt(XParam.CoorRegAddr);
-	X_print_posi = ReadSafeEpsonRegInt(EPSON_REGADDR_X_PRT_COOR) - XORIGIN_OFFSET;
-	SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, 
-				   ER_CoorCtrl_RESET_X | ReadSafeEpsonRegInt(EPSON_REGADDR_COOR_CTRL));
-	SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, 
-				   ~ER_CoorCtrl_RESET_X & ReadSafeEpsonRegInt(EPSON_REGADDR_COOR_CTRL));
-#elif defined(HEAD_RICOH_G4)
-	if(XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
-	{
-		X_posi = (INT32S)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
-	}
-	else if(XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
-	{
-		X_posi = (INT32S)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
-	}
-	X_print_posi = (INT32S)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16) - XORIGIN_OFFSET;
-	rFPGA_RICOH_COORCTRL_L = ER_CoorCtrl_RESET_X | rFPGA_RICOH_COORCTRL_L;
-	rFPGA_RICOH_COORCTRL_L = ~ER_CoorCtrl_RESET_X & rFPGA_RICOH_COORCTRL_L;
-#endif
-	XParam.CoorIdeal -= X_posi - XParam.Origin_Offset; 
-	XParam.Coor_NextCycle -= X_posi - XParam.Origin_Offset;
-	if(pPWMC_Driver1->AxisID == AXIS_ID_X)
-		LAST_COOR[0]  = 0xFFFFFFFF;
-	else if(pPWMC_Driver2->AxisID == AXIS_ID_X)
-		LAST_COOR[1]  = 0xFFFFFFFF;
-#if defined(HEAD_EPSON_GEN5)
-	if((fwInfo.hd_version  & 0xFFFFFFFF) >= 0x03030101 && !Already_Reset_FPGA)
-	{
-		FPGA_RESETAGAIN();
-		Already_Reset_FPGA = True;
-	}
-#endif	 
-	OS_EXIT_CRITICAL();
-	
-#ifdef MICOLOR_AUTOFUCTION
-	if( (- X_print_posi) > cleanparam_EPSON_MICOLOR.factory.Carriage_X_ReleasePos)
-		bHomeWhenPowerOn = False;
-	else
-		bHomeWhenPowerOn = True;
 #endif
 	return True;
 }
@@ -5686,17 +5427,22 @@ INT8U ResetYCoorSystem_old()
 
 INT8U EndInitAction()
 {
+	//todo
 	InitStatus = IS_Send_INIT_STAGE2;
 	INT8U cmdbuf[32];
 	
 	cmdbuf[0] = 6;
 	cmdbuf[1] = UART_INIT_STAGE2_CMD;
+#if 0
 	*((__packed INT32U *)&cmdbuf[2]) = (INT32U)((XParam.Region_End - XParam.Origin_Offset)/XParam.ratio_move); // the end position of X move region.
+#endif
 	UART_MotionReportCMD(cmdbuf);
 	
 	cmdbuf[0] = 2 + 4 * sizeof(INT32U);
 	cmdbuf[1] = UART_DSP_RPT_PHYSICAL_SIZE;
+#if 0
 	*((__packed INT32U *)&cmdbuf[2]) = (INT32U)((XParam.Region_End - XParam.Origin_Offset)/XParam.ratio_move); 
+#endif
 	*((__packed INT32U *)&cmdbuf[6]) = (INT32U)((YParam.Region_End - YParam.Origin_Offset)/YParam.ratio_move); 
 	*((__packed INT32U *)&cmdbuf[10]) = (INT32U)((ZParam.Region_End - ZParam.Origin_Offset)/ZParam.ratio_move); 
 	*((__packed INT32U *)&cmdbuf[14]) = (INT32U)((CParam.Region_End - CParam.Origin_Offset)/CParam.ratio_move); 
@@ -5987,7 +5733,8 @@ INT8U ContinueGoHome()
 		
 		cmdbuf[0] = 2 + 4 * sizeof(INT32S);
 		cmdbuf[1] = UART_DSP_RPT_STOP;
-		*((__packed INT32S *)&cmdbuf[2]) = (INT32S)((XParam.CoorIdeal - XParam.Origin_Offset)/XParam.ratio_move); 
+		//todo ContinueGoHome
+		//*((__packed INT32S *)&cmdbuf[2]) = (INT32S)((XParam.CoorIdeal - XParam.Origin_Offset)/XParam.ratio_move);
 		*((__packed INT32S *)&cmdbuf[6]) = (INT32S)((YParam.CoorIdeal - YParam.Origin_Offset)/YParam.ratio_move); 
 		*((__packed INT32S *)&cmdbuf[10]) = (INT32S)((ZParam.CoorIdeal - ZParam.Origin_Offset)/ZParam.ratio_move); 
 		*((__packed INT32S *)&cmdbuf[14]) = (INT32S)((CParam.CoorIdeal - CParam.Origin_Offset)/CParam.ratio_move); 
@@ -5998,6 +5745,8 @@ INT8U ContinueGoHome()
 
 void InitMeasureInfo()
 {
+#if 0
+	//todo XParam
 	memset(&MediaMeasureInfo, 0, sizeof(struct sMediaMeasureInfo));
 	
 	if( XParam.pAxisParam->Fixed_Position[MPID_MEASURE_END] != 0x80000000 &&
@@ -6018,10 +5767,13 @@ void InitMeasureInfo()
 	MediaMeasureInfo.status = MMS_Init;
 	ConfigSensorPin(&MediaMeasureInfo.media_sensor, XParam.pAxisParam, MSID_MEASURE);
 	ConfigSensor(&MediaMeasureInfo.media_sensor);
+#endif
 }
 #define MIN_MEDIA_WIDTH 720 //1 inch.
 void Measure_IO_Irq_Interrupt(const Pin *pPin) FAST_FUNC_SECTION
 {
+#if 0
+	//todo
 	if(mainStatus == MS_MEASURE && MediaMeasureInfo.status == MMS_Measure && 
 	   MediaMeasureInfo.region_count < MAX_MEASURE_POINT)
 	{
@@ -6072,10 +5824,13 @@ void Measure_IO_Irq_Interrupt(const Pin *pPin) FAST_FUNC_SECTION
 			}
 		}
 	}
+#endif
 }
 
 void Measure_FPGA_Irq_Interrupt(void * data, INT8U IsHigh) FAST_FUNC_SECTION
 {
+#if 0
+	//todo
 	if(mainStatus == MS_MEASURE && MediaMeasureInfo.status == MMS_Measure && 
 	   MediaMeasureInfo.region_count < MAX_MEASURE_POINT)
 	{
@@ -6127,6 +5882,7 @@ void Measure_FPGA_Irq_Interrupt(void * data, INT8U IsHigh) FAST_FUNC_SECTION
 			}
 		}
 	}
+#endif
 }
 
 INT8U StartMeasure(INT8U method)
@@ -6171,7 +5927,8 @@ INT8U ContinueMeasure()
 			
 			cmdbuf[0] = 2 + 4 * sizeof(INT32S);
 			cmdbuf[1] = UART_DSP_RPT_STOP;
-			*((__packed INT32S *)&cmdbuf[2]) = (INT32S)((XParam.CoorIdeal - XParam.Origin_Offset)/XParam.ratio_move);  
+			//todo
+			//*((__packed INT32S *)&cmdbuf[2]) = (INT32S)((XParam.CoorIdeal - XParam.Origin_Offset)/XParam.ratio_move);
 			*((__packed INT32S *)&cmdbuf[6]) = (INT32S)((YParam.CoorIdeal - YParam.Origin_Offset)/YParam.ratio_move); 
 			*((__packed INT32S *)&cmdbuf[10]) = (INT32S)((ZParam.CoorIdeal - ZParam.Origin_Offset)/ZParam.ratio_move); 
 			*((__packed INT32S *)&cmdbuf[14]) = (INT32S)((CParam.CoorIdeal - CParam.Origin_Offset)/CParam.ratio_move); 
@@ -6193,9 +5950,10 @@ INT8U ContinueMeasure()
 			{
 				cmdbuf[2] = 1; //volume number
 				cmdbuf[3] = 0; //volume index.
-				*((__packed INT32S *)&cmdbuf[4]) = (INT32S)((MediaMeasureInfo.RegionPoint[index*2] - XParam.Origin_Offset)/XParam.ratio_move) + 
+				//todo
+				//*((__packed INT32S *)&cmdbuf[4]) = (INT32S)((MediaMeasureInfo.RegionPoint[index*2] - XParam.Origin_Offset)/XParam.ratio_move) +
 					MediaMeasureInfo.sensor_offset - MEASURE_ERROR_OFFSET;
-				*((__packed INT32S *)&cmdbuf[8]) = (INT32S)((MediaMeasureInfo.RegionPoint[index * 2 + 1] - XParam.Origin_Offset)/XParam.ratio_move) + 
+				//*((__packed INT32S *)&cmdbuf[8]) = (INT32S)((MediaMeasureInfo.RegionPoint[index * 2 + 1] - XParam.Origin_Offset)/XParam.ratio_move) +
 					MediaMeasureInfo.sensor_offset + MEASURE_ERROR_OFFSET;
 				*((__packed INT32S *)&cmdbuf[12]) = 0;
 				*((__packed INT32S *)&cmdbuf[16]) = 0;
@@ -6272,6 +6030,8 @@ void FPGAPosi_OutOfPrintRegion(void * data) FAST_FUNC_SECTION
 
 void CalcYStepSpeed(INT32S Y_Step)
 {
+#if 0
+	//todo
 	INT32S i;
 	INT8U speedID = MapXUserSpeedToXMotorSpeed(printInfo.VSDModel, printInfo.baseDPI/printInfo.encoder_div, True);
 	INT32S xAccTick = XParam.pAllCurveTable[speedID]->AccCurveLen;
@@ -6338,6 +6098,7 @@ void CalcYStepSpeed(INT32S Y_Step)
 	}    
 	//printInfo.WaitCompletedFlag = MOTION_MOVE_COMPLETED_X | MOTION_MOVE_COMPLETED_Y;
 	printInfo.YSpeed = i - 1;
+#endif
 }
 
 
@@ -6548,7 +6309,7 @@ void FPGAPosi_BeginFPGABand(void * data) FAST_FUNC_SECTION
 void ConfigPrintReg()
 {
 	OS_CPU_SR cpu_sr;
-	
+
 	INT32S startFirePoint, endFirePoint, startPoint, endPoint;
 	INT32U reg_ctrl, i;
 	INT8U cmdbuf[32];
@@ -6560,7 +6321,8 @@ void ConfigPrintReg()
 	
 	printInfo.PrintMoveStat = 1;
 	endFirePoint -= printInfo.encoder_div;
-	
+#if 0
+				//todo
 #if defined (EPSON_CLEAN_INTEGRATE)||defined (EPSON_CLEAN_INTEGRATE_1) ||defined(EPSON_CLEAN_INTEGRATE_2)||defined(EPSON_CLEAN_INTEGRATE_3)
 	if(printInfo.autoSpray)
 	{
@@ -6594,6 +6356,7 @@ void ConfigPrintReg()
 		{
 			if(endPoint > startPoint)
 			{
+
 				if(endFirePoint + XParam.Origin_Offset_Feedback < FpgaPosiITInfos[0].Position)
 				{
 					FpgaPosiITInfos[0].bPending == True;
@@ -6606,6 +6369,7 @@ void ConfigPrintReg()
 				{
 					RegPendingConfig(0, endFirePoint + XParam.Origin_Offset_Feedback, 5, FPGAPosi_OutOfPrintRegion, 0);
 				}
+
 			}
 			else
 			{
@@ -6721,14 +6485,18 @@ void ConfigPrintReg()
 	cmdbuf[5] = (INT8U)(FireCountEx>>8);
 	UART_SendCMD(UART_HEAD_CHANNEL, cmdbuf);
 #endif
+#endif//end if0
 }
 
 //When print width is too short, the movement is NOT smooth, specially if print speed is 360 DPI.
 // So I add a min print distance to avoid this case.
 #define MIN_PRINT_DISTANCE  (12*720) 
 
+
 INT8U StartPrePrint(INT32S startFirePoint, INT32S endFirePoint, INT32S next_startFirePoint, INT32S next_endFirePoint)
 {
+#if 0
+//todo XPARAM
 	OS_CPU_SR cpu_sr;
 	INT8U bEmptyPass[2] = {False,False};
 	INT32S startPoint, next_startPoint;
@@ -6790,8 +6558,11 @@ INT8U StartPrePrint(INT32S startFirePoint, INT32S endFirePoint, INT32S next_star
 	{
 		cmdbuf[0] = 2 + 4 * sizeof(INT32S);
 		cmdbuf[1] = UART_DSP_RPT_STOP;
+#if 0
+		//todo
 		*((__packed INT32S *)&cmdbuf[2]) = (INT32S)((XParam.CoorIdeal - XParam.Origin_Offset)/XParam.ratio_move);  
 		*((__packed INT32S *)&cmdbuf[6]) = (INT32S)((YParam.CoorIdeal - YParam.Origin_Offset)/YParam.ratio_move); 
+#endif
 		*((__packed INT32S *)&cmdbuf[10]) = (INT32S)((ZParam.CoorIdeal - ZParam.Origin_Offset)/ZParam.ratio_move); 
 		*((__packed INT32S *)&cmdbuf[14]) = (INT32S)((CParam.CoorIdeal - CParam.Origin_Offset)/CParam.ratio_move); 
 		return UART_MotionReportCMD(cmdbuf);
@@ -7013,7 +6784,9 @@ INT8U StartPrePrint(INT32S startFirePoint, INT32S endFirePoint, INT32S next_star
 		*((__packed INT32S *)&cmdbuf[14]) = (INT32S)((CParam.CoorIdeal - CParam.Origin_Offset)/CParam.ratio_move); 
 		return UART_MotionReportCMD(cmdbuf);
 	}
+#endif
 }
+
 
 INT8U IsDelaySendData()
 {
@@ -7100,8 +6873,11 @@ INT8U ContinuePrint(INT32U flags)
 		
 		cmdbuf[0] = 2 + 4 * sizeof(INT32S);
 		cmdbuf[1] = UART_DSP_RPT_STOP;
+#if 0
+		//todo
 		*((__packed INT32S *)&cmdbuf[2]) = (INT32S)((XParam.CoorIdeal - XParam.Origin_Offset)/XParam.ratio_move);  
 		*((__packed INT32S *)&cmdbuf[6]) = (INT32S)((YParam.CoorIdeal - YParam.Origin_Offset)/YParam.ratio_move); 
+#endif
 		*((__packed INT32S *)&cmdbuf[10]) = (INT32S)((ZParam.CoorIdeal - ZParam.Origin_Offset)/ZParam.ratio_move); 
 		*((__packed INT32S *)&cmdbuf[14]) = (INT32S)((CParam.CoorIdeal - CParam.Origin_Offset)/CParam.ratio_move); 
 		return UART_MotionReportCMD(cmdbuf);
@@ -7368,7 +7144,6 @@ case UART_DSP_WRITE_EEPROM:
 #if defined (EPSON_CLEAN_INTEGRATE) ||defined (EPSON_CLEAN_INTEGRATE_1)||defined (EPSON_CLEAN_INTEGRATE_2)|| defined(EPSON_CLEAN_UPDOWN)|| defined(RICOH_CLEAN_PRESS)
 					EndInitAction();
 #endif
-					BEGIN_RECORD;
 					break;
 #endif
 #if defined(EPSON_CLEAN_UPDOWN)
@@ -7386,8 +7161,11 @@ case UART_DSP_WRITE_EEPROM:
 				}
 				cmdbuf[0] = 2 + 4 * sizeof(INT32S);
 				cmdbuf[1] = UART_DSP_RPT_STOP;
+#if 0
+				//todo
 				*((__packed INT32S *)&cmdbuf[2]) = (INT32S)((XParam.CoorIdeal - XParam.Origin_Offset)/XParam.ratio_move);  
 				*((__packed INT32S *)&cmdbuf[6]) = (INT32S)((YParam.CoorIdeal - YParam.Origin_Offset)/YParam.ratio_move); 
+#endif
 				*((__packed INT32S *)&cmdbuf[10]) = (INT32S)((ZParam.CoorIdeal - ZParam.Origin_Offset)/ZParam.ratio_move); 
 				*((__packed INT32S *)&cmdbuf[14]) = (INT32S)((CParam.CoorIdeal - CParam.Origin_Offset)/CParam.ratio_move); 
 				UART_MotionReportCMD(cmdbuf);
@@ -7585,7 +7363,8 @@ case UART_DSP_WRITE_EEPROM:
 			case UART_DSP_GET_POS_CMD:
 				cmdbuf[0] = 2 + sizeof(INT32S);
 				cmdbuf[1] = UART_DSP_RPT_POSITION;
-				*((__packed INT32U *)&cmdbuf[2]) = (INT32U)((XParam.CoorIdeal - XParam.Origin_Offset)/XParam.ratio_move);
+				//todo XParam
+				//*((__packed INT32U *)&cmdbuf[2]) = (INT32U)((XParam.CoorIdeal - XParam.Origin_Offset)/XParam.ratio_move);
 				UART_MotionReportCMD(cmdbuf);
 				break;
 			}
@@ -7606,7 +7385,7 @@ case UART_DSP_WRITE_EEPROM:
 				UART_MotionReportCMD(UartCMD);
 				break;
 #endif						
-			case UART_DSP_RPT_STOP: //Motion stop. Parameters: 4 bytes µ±Ç°Î»ÖÃ X: INT32S ÀàÐÍ: 4 ×Ö½Ú, Little Endian
+			case UART_DSP_RPT_STOP: //Motion stop. Parameters: 4 bytes ï¿½ï¿½Ç°Î»ï¿½ï¿½ X: INT32S ï¿½ï¿½ï¿½ï¿½: 4 ï¿½Ö½ï¿½, Little Endian
 				OSFlagPost(mix_FLAG_GRP, MOTION_MOVE_COMPLETED_Y, OS_FLAG_SET, &err); 
 				YParam.CoorIdeal = *(__packed INT32S *)(&UartCMD[6]);            
 				break;
@@ -7733,12 +7512,12 @@ case UART_DSP_WRITE_EEPROM:
 
 INT32S GetCutStartPos()
 {
-	return XParam.pAxisParam->Fixed_Position[MPID_CUT_START];
+	return PD_XParam.pAxisParam->Fixed_Position[MPID_CUT_START];
 }
 
 INT32S GetCutEndPos()
 {
-	return XParam.pAxisParam->Fixed_Position[MPID_CUT_END];
+	return PD_XParam.pAxisParam->Fixed_Position[MPID_CUT_END];
 }
 
 #endif
@@ -8342,348 +8121,7 @@ void SetSafeCmd(INT16U data)
 	while(True);
 }
 
-#ifdef RECORD_MOTION_MOVEMENT
-struct MOVE_STAT_RECORD
-{
-	INT8U stat; //bit0-1, dir; bit2-3, segment type; bit4, x/y; bit 5, coor type(motor/feedback); bit6-7, move type;  
-	INT8U speedid;
-	//    INT16S out_delta_frac;
-	//    INT16S out_delta;
-	INT16S out;
-	INT32S target_coor;
-	INT32S real_coor;
-	INT32S real_prt_coor;
-};
-
-static struct MOVE_STAT_RECORD * curRecord[2] = {NULL,NULL};
-static struct MOVE_STAT_RECORD * lastRecord[2] = {NULL,NULL};
-static INT8U curSpeed[2] = {0,0};
-static INT32U count[2] = {0,0};
-INT32U cur_real_coor[2] = {0,0};
-struct MOVE_STAT_RECORD * Record_beginAcc[2] = {NULL,NULL};
-struct MOVE_STAT_RECORD * Record_EndAcc[2] = {NULL,NULL};
-struct MOVE_STAT_RECORD * Record_beginConst[2] = {NULL,NULL};
-struct MOVE_STAT_RECORD * Record_EndConst[2] = {NULL,NULL};
-struct MOVE_STAT_RECORD * Record_beginDec[2] = {NULL,NULL};
-struct MOVE_STAT_RECORD * Record_EndDec[2] = {NULL,NULL};
-INT32S target_coor_cur = 0, real_coor_cur = 0;
-
-void StartMotionRecord(INT8U recordType, INT8U IsXorY)
-{
-	OS_CPU_SR cpu_sr;
-	
-	OS_ENTER_CRITICAL();
-	bRecordType = recordType;
-	bAllowRecord = IsXorY;
-	bAllowRecord_Last = 0;
-	curRecord[0] = (struct MOVE_STAT_RECORD *)(HUGEBUF_END_ADDR);
-	curRecord[1] = (struct MOVE_STAT_RECORD *)(HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4));
-	Record_beginAcc[1] = Record_beginAcc[0] = 0;
-	Record_EndAcc[1] = Record_EndAcc[0] = 0;
-	Record_beginConst[1] = Record_beginConst[0] = 0;
-	Record_EndConst[1] = Record_EndConst[0] = 0;
-	Record_beginDec[1] = Record_beginDec[0] = 0;
-	Record_EndDec[1] = Record_EndDec[0] = 0;
-	OS_EXIT_CRITICAL();
-}
-
-void EndMotionRecord()
-{
-	OS_CPU_SR cpu_sr;
-	
-	OS_ENTER_CRITICAL();
-	bAllowRecord = 0;
-	OS_EXIT_CRITICAL();
-}
-
-
-static INT8U CacheBuf[0x200];
-void StartUploadRecord(INT32U recordCount, INT8U IsXorY)
-{
-	INT32U record_start, record_end, totallen, len, curlen;
-	OS_CPU_SR cpu_sr;
-	INT8U *pBuf, *pTarget;
-	
-	OS_ENTER_CRITICAL();
-	if( bRecordType == 0 || (Record_beginAcc[0] == NULL && (IsXorY & 1)) || 
-	   (Record_beginAcc[1] == NULL && (IsXorY & 2)))
-	{
-		if((IsXorY & 1))
-		{
-			record_start = (INT32U)curRecord[0] - recordCount*sizeof(struct MOVE_STAT_RECORD);
-			if( record_start < HUGEBUF_END_ADDR)
-				record_start += (BOARD_DDRAM_SIZE/4);
-			record_end = (INT32U)curRecord[0] - sizeof(struct MOVE_STAT_RECORD);
-			if( record_end < HUGEBUF_END_ADDR)
-				record_end += (BOARD_DDRAM_SIZE/4);
-		}
-		else if(IsXorY & 2)
-		{
-			record_start = (INT32U)curRecord[1] - recordCount*sizeof(struct MOVE_STAT_RECORD);
-			if( record_start < (HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4)))
-				record_start += (BOARD_DDRAM_SIZE/4);
-			record_end = (INT32U)curRecord[1] - sizeof(struct MOVE_STAT_RECORD);
-			if( record_end < (HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4)))
-				record_end += (BOARD_DDRAM_SIZE/4);
-		}
-	}
-	else
-	{
-		if( (IsXorY & 1))
-		{
-			record_start = (INT32U)Record_beginAcc[0] - 0x10000;
-			if( record_start < HUGEBUF_END_ADDR)
-				record_start += (BOARD_DDRAM_SIZE/4);
-			record_end = (INT32U)Record_EndDec[0] + 0x10000;
-			if( record_end >= HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4))
-				record_end -= (BOARD_DDRAM_SIZE/4);
-		}
-		else if(IsXorY & 2)
-		{
-			record_start = (INT32U)Record_beginAcc[1] - 0x10000;
-			if( record_start < (HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4)))
-				record_start += (BOARD_DDRAM_SIZE/4);
-			record_end = (INT32U)Record_EndDec[1] + 0x10000;
-			if( record_end >= HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/2))
-				record_end -= (BOARD_DDRAM_SIZE/4);
-		}
-	}
-	OS_EXIT_CRITICAL();
-	
-	if(record_end > record_start)
-		len = record_end - record_start;
-	else
-		len = (record_end - record_start) + (BOARD_DDRAM_SIZE/4);
-	
-	pBuf = (INT8U* )record_start;
-	totallen = len;
-	while(len > 0)
-	{
-		if(len > 512-32)
-			curlen = 512-32;
-		else
-			curlen = len;
-		
-		pTarget = CacheBuf;
-		*(INT16U*)pTarget = EP6_CMD_T_MOTION_RECORD;
-		pTarget += sizeof(INT16U);
-		*(__packed INT32U*)pTarget = totallen;
-		pTarget += sizeof(INT32U);
-		*(__packed INT32U*)pTarget = totallen - len;
-		pTarget += sizeof(INT32U);
-		*(__packed INT32U*)pTarget = curlen;
-		pTarget += sizeof(INT32U);
-		
-		if(IsXorY & 1)
-		{
-			if( (INT32U)pBuf + curlen >= (INT32U)HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4))
-			{
-				memcpy(pTarget, (void*)pBuf,  HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4) - (INT32U)pBuf);
-				memcpy(pTarget + (HUGEBUF_END_ADDR + (BOARD_DDRAM_SIZE/4) - (INT32U)pBuf), 
-					   (void*)HUGEBUF_END_ADDR, curlen - (HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4) - (INT32U)pBuf));
-				pBuf += curlen;
-				pBuf -= (BOARD_DDRAM_SIZE/4);
-			}
-			else
-			{
-				memcpy(pTarget, (void*)pBuf,  curlen);
-				pBuf += curlen;
-			}
-		}
-		else
-		{
-			if( (INT32U)pBuf + curlen >= (INT32U)HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/2))
-			{
-				memcpy(pTarget, (void*)pBuf,  HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/2) - (INT32U)pBuf);
-				memcpy(pTarget + (HUGEBUF_END_ADDR + (BOARD_DDRAM_SIZE/2) - (INT32U)pBuf), 
-					   (void*)(HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4)), 
-					   curlen - (HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/2) - (INT32U)pBuf));
-				pBuf += curlen;
-				pBuf -= (BOARD_DDRAM_SIZE/4);
-			}
-			else
-			{
-				memcpy(pTarget, (void*)pBuf,  curlen);
-				pBuf += curlen;
-			}
-		}
-		PushCommPipeData(COMMPIPE_ARM_CHANNEL_ID, CacheBuf, curlen + (pTarget - CacheBuf), True);
-		len -= curlen;
-	}
-}
-
-void PutMoveRecord(INT8U dir, INT8U SegType, INT8U MoveType, INT8U IsX, INT8U IsFeedBack, 
-				   INT16S out, INT32S target_coor, INT32S real_coor)
-{
-	OS_CPU_SR cpu_sr;
-	
-	//    {
-	//        INT16U reg;
-	//        rFPGA_EPSON_RegAddr = EPSON_REGADDR_COOR_STAT;
-	//        reg = rFPGA_EPSON_RegPort;
-	//        if(ER_CoorStat_OverFreq & reg)
-	//        {
-	//            status_ReportStatus(STATUS_ERR_INTERNAL_DEBUG2, STATUS_SET);
-	//        }
-	//    }
-	
-	if(!bAllowRecord)
-		return;
-	if(IsX && (bAllowRecord & 1 ))
-	{
-		INT8U bRecord = True;
-		if(bRecordType == 1)
-		{
-			if(Record_beginAcc[0]!= NULL && Record_EndDec[0] != NULL)
-			{
-				INT32U p = (INT32U)Record_EndDec[0];
-				p += 0x10000;
-				if(p >= (HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4)))
-					p -= (BOARD_DDRAM_SIZE/4);
-				if((INT32U)curRecord[0] == p)
-					bRecord = False;
-			}
-		}
-		if(bRecord)
-		{
-			//OS_ENTER_CRITICAL();
-#ifdef   HEAD_EPSON_GEN5            
-			curRecord[0]->real_prt_coor = ReadEpsonRegInt(EPSON_REGADDR_X_PRT_COOR);
-#elif defined(HEAD_RICOH_G4)
-			curRecord[0]->real_prt_coor = (INT32S)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
-#endif
-			//OS_EXIT_CRITICAL();
-			if(bAllowRecord == bAllowRecord_Last)
-			{
-				//                if( lastRecord[0]->target_coor > target_coor + 1000 || lastRecord[0]->target_coor < target_coor - 1000 ||
-				//                    lastRecord[0]->real_coor > real_coor + 1000 || lastRecord[0]->real_coor < real_coor - 1000 )
-				//                {
-				//                    target_coor_cur = target_coor;
-				//                    real_coor_cur = real_coor;
-				//                    OS_ENTER_CRITICAL();
-				//                    cur_real_coor[0] = ReadEpsonRegInt(XParam.CoorRegAddr);
-				//                    OS_EXIT_CRITICAL();
-				//                    PWM_Stop(&XParam);
-				//                    status_ReportStatus(STATUS_ERR_INTERNAL_DEBUG2, STATUS_SET);
-				//                }
-				if( SegType != ((lastRecord[0]->stat >>2) & 0x3))
-				{
-					if( SegType == ACCSEGTYPE_CONSTANT_SPEED && Record_beginConst[0] == NULL)
-						Record_beginConst[0] = curRecord[0];
-					else if(SegType == ACCSEGTYPE_SPEED_UP && Record_beginAcc[0] == NULL)
-						Record_beginAcc[0] = curRecord[0];
-					else if(SegType == ACCSEGTYPE_SPEED_DOWN && Record_beginDec[0] == NULL)
-						Record_beginDec[0] = curRecord[0];
-					if(((lastRecord[0]->stat >>2) & 0x3) == ACCSEGTYPE_CONSTANT_SPEED && Record_EndConst[0] == NULL)
-						Record_EndConst[0] = lastRecord[0];
-					else if(((lastRecord[0]->stat >>2) & 0x3) == ACCSEGTYPE_SPEED_UP && Record_EndAcc[0] == NULL)
-						Record_EndAcc[0] = lastRecord[0];
-					else if(((lastRecord[0]->stat >>2) & 0x3) == ACCSEGTYPE_SPEED_DOWN && Record_EndDec[0] == NULL)
-						Record_EndDec[0] = lastRecord[0];
-				}
-			}
-			
-			curRecord[0]->stat = dir | (SegType<<2) | (MoveType << 6) | (IsX<<4) | (IsFeedBack<<5);
-			//          curRecord[0]->speedid = curSpeed[0];
-			//          curRecord[0]->out_delta_frac = out_delta_frac;
-			//          curRecord[0]->out_delta = out_delta;
-			curRecord[0]->out = out;
-			curRecord[0]->target_coor = target_coor;
-			curRecord[0]->real_coor = real_coor;
-			
-			lastRecord[0] = curRecord[0];
-			curRecord[0] ++;
-			if((INT32U)curRecord[0] >= HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4))
-				curRecord[0] = (struct MOVE_STAT_RECORD *)(HUGEBUF_END_ADDR);
-			//count[0] ++;
-			
-			bAllowRecord_Last &= 0xFE;
-			bAllowRecord_Last |= bAllowRecord & 1;
-		}
-	}
-	if(!IsX && (bAllowRecord & 2 ))
-	{
-		INT8U bRecord = True;
-		if(bRecordType == 1)
-		{
-			if(Record_beginAcc[1]!= NULL && Record_EndDec[1] != NULL)
-			{
-				INT32U p = (INT32U)Record_EndDec[1];
-				p += 0x10000;
-				if(p >= (HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/2)))
-					p -= (BOARD_DDRAM_SIZE/4);
-				if((INT32U)curRecord[0] == p)
-					bRecord = False;
-			}
-		}
-		if(bRecord)
-		{
-			//OS_ENTER_CRITICAL();
-#ifdef   HEAD_EPSON_GEN5               
-			curRecord[1]->real_prt_coor = ReadEpsonRegInt(XParam.CoorRegAddr);
-#elif defined(HEAD_RICOH_G4)
-			if(XParam.CoorRegAddr == EPSON_REGADDR_X_MOTOR_COOR)
-			{
-				curRecord[1]->real_prt_coor = (INT32S)(rFPGA_RICOH_XMOTORCOOR_L |(rFPGA_RICOH_XMOTORCOOR_H&0xFF) << 16);
-			}
-			else if(XParam.CoorRegAddr == EPSON_REGADDR_X_PRT_COOR)
-			{
-				curRecord[1]->real_prt_coor = (INT32S)(rFPGA_RICOH_XPRTCOOR_L |(rFPGA_RICOH_XPRTCOOR_H&0xFF) << 16);
-			}
-#endif						
-			//OS_EXIT_CRITICAL();
-			if(bAllowRecord == bAllowRecord_Last)
-			{
-				//                if( lastRecord[1]->target_coor > target_coor + 1000 || lastRecord[1]->target_coor < target_coor - 1000 ||
-				//                    lastRecord[1]->real_coor > real_coor + 1000 || lastRecord[1]->real_coor < real_coor - 1000 )
-				//                {
-				//                    target_coor_cur = target_coor;
-				//                    real_coor_cur = real_coor;
-				//                    OS_ENTER_CRITICAL();
-				//                    cur_real_coor[1] = ReadEpsonRegInt(YParam.CoorRegAddr);
-				//                    OS_EXIT_CRITICAL();
-				//                    PWM_Stop(&YParam);
-				//                    status_ReportStatus(STATUS_ERR_INTERNAL_DEBUG1, STATUS_SET);
-				//                }
-				if( SegType != ((lastRecord[1]->stat >>2) & 0x3))
-				{
-					if(SegType == ACCSEGTYPE_CONSTANT_SPEED)
-						Record_beginConst[1] = curRecord[1];
-					else if(SegType == ACCSEGTYPE_SPEED_UP)
-						Record_beginAcc[1] = curRecord[1];
-					else if(SegType == ACCSEGTYPE_SPEED_DOWN)
-						Record_beginDec[1] = curRecord[1];
-					if(((lastRecord[1]->stat >>2) & 0x3) == ACCSEGTYPE_CONSTANT_SPEED)
-						Record_EndConst[1] = lastRecord[1];
-					else if(((lastRecord[1]->stat >>2) & 0x3) == ACCSEGTYPE_SPEED_UP)
-						Record_EndAcc[1] = lastRecord[1];
-					else if(((lastRecord[1]->stat >>2) & 0x3) == ACCSEGTYPE_SPEED_DOWN)
-						Record_EndDec[1] = lastRecord[1];
-				}
-			}
-			curRecord[1]->stat = dir | (SegType<<2) | (MoveType << 6) | (IsX<<4) | (IsFeedBack<<5);
-			//curRecord[1]->speedid = curSpeed[1];
-			//        curRecord[1]->out_delta_frac = out_delta_frac;
-			//        curRecord[1]->out_delta = out_delta;
-			curRecord[1]->out = out;
-			curRecord[1]->target_coor = target_coor;
-			curRecord[1]->real_coor = real_coor;
-			
-			lastRecord[1] = curRecord[1];
-			curRecord[1] ++;
-			if((INT32U)curRecord[1] >= HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/2))
-				curRecord[1] = (struct MOVE_STAT_RECORD *)(HUGEBUF_END_ADDR+(BOARD_DDRAM_SIZE/4));
-			//count[1] ++;
-			bAllowRecord_Last &= 0xFD;
-			bAllowRecord_Last |= bAllowRecord & 2;
-		}
-	}
-}
-
-#endif
-
-
-#if 1	//function port
+#if 0	//function port
 
 INT8U PWM_Urgent_Stop_p(struct AxisParam_DC_PWM * pDCPWM)
 {
@@ -8704,7 +8142,7 @@ INT8U PWM_Urgent_Stop_p(struct AxisParam_DC_PWM * pDCPWM)
 #ifdef VM_PRINT
 	VM_PWM_STOP();
 #if CVM
-	DW_BASE_TC5->TC_IDR = AT91C_TC_CPCS;
+	AT91C_BASE_TC5->TC_IDR = AT91C_TC_CPCS;
 #else
 	//TC
 #endif
@@ -8774,7 +8212,7 @@ INT8U PWM_Stop_p(struct AxisParam_DC_PWM * pDCPWM)
 	pwm_irq_almost_enable(pDCPWM->Channel_Mask, 0);
 #ifdef VM_PRINT
 #if CVM
-	DW_BASE_TC5->TC_IDR = AT91C_TC_CPCS;
+	AT91C_BASE_TC5->TC_IDR = AT91C_TC_CPCS;
 #else
 	//TC
 #endif
@@ -8795,9 +8233,8 @@ INT8U PWM_Stop_p(struct AxisParam_DC_PWM * pDCPWM)
 
 /*
  * Q:
- * 1£ºPWM_Stop¡¢PWM_Start_MovementµÈº¯ÊýPWM¼«ÐÔ×ª»»£¿
- * 2£ºPWMÖÐ¶Ï´¦Àíº¯ÊýÖÐÕ¼¿Õ±È¸Ä±ä
- * 3£º¿ªÊ¼Ê±PWMÖÜÆÚÓëÕ¼¿Õ±ÈÏàÍ¬
- * 4:PutMoveRecordº¯Êý
+ * 1ï¿½ï¿½PWM_Stopï¿½ï¿½PWM_Start_Movementï¿½Èºï¿½ï¿½ï¿½PWMï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½
+ * 2ï¿½ï¿½PWMï¿½Ð¶Ï´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ¼ï¿½Õ±È¸Ä±ï¿½
+ * 3ï¿½ï¿½ï¿½ï¿½Ê¼Ê±PWMï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ¼ï¿½Õ±ï¿½ï¿½ï¿½Í¬
+ * 4:PutMoveRecordï¿½ï¿½ï¿½ï¿½
  */
-

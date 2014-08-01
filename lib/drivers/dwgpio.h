@@ -29,8 +29,6 @@
 
 int dw_gpio_init(void);
 
-#ifndef INCOMPATIBLE_WITH_ATMEL
-
 #define PIO_INPUT	0
 #define PIO_OUTPUT_0	1
 #define PIO_OUTPUT_1	2
@@ -78,5 +76,4 @@ void PIO_UnConfigureIt(const Pin *pin);
 void PIO_EnableIt(const Pin *pin);
 void PIO_DisableIt(const Pin *pin);
 
-#endif /* INCOMPATIBLE_WITH_ATMEL */
 #endif /* __DWGPIO_H__ */

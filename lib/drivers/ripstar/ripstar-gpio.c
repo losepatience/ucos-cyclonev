@@ -60,15 +60,16 @@ static int cycgpio_get(struct gpio_chip *gc, unsigned offset)
 
 static void cycgpio_set(struct gpio_chip *gc, unsigned offset, int val)
 {
-	unsigned int data_reg;
+	unsigned int reg;
 	unsigned long flags = 0;
 
-	val &= 1;
-
 	spin_lock_irqsave(&gpio_lock, flags);
-	data_reg = readl(gc->priv + FPGA_GPIO_RWIO);
-	data_reg = (data_reg & ~(1 << offset)) | (val << offset);
-	writel(data_reg, gc->priv + FPGA_GPIO_RWIO);
+	reg = readl(gc->priv + FPGA_GPIO_RWIO);
+	if (val)
+		reg |= 1 << offset;
+	else
+		reg &= ~(1 << offset);
+	writel(reg, gc->priv + FPGA_GPIO_RWIO);
 	spin_unlock_irqrestore(&gpio_lock, flags);
 }
 
@@ -98,7 +99,7 @@ static int cycgpio_direction_output(struct gpio_chip *gc,
 	spin_lock_irqsave(&gpio_lock, flags);
 	/* Set pin as output, assumes software controlled IP */
 	mr = readl(gc->priv + FPGA_GPIO_MR);
-	mr |= (1 << offset);
+	mr |= 1 << offset;
 	writel(mr, gc->priv + FPGA_GPIO_MR);
 	spin_unlock_irqrestore(&gpio_lock, flags);
 	return 0;
@@ -117,10 +118,7 @@ static void cycgpio_set_array(struct gpio_chip *gc, unsigned mask, int val)
 	unsigned int reg;
 	unsigned long flags = 0;
 
-	val &= 1;
-
 	spin_lock_irqsave(&gpio_lock, flags);
-
 	reg = readl(gc->priv + FPGA_GPIO_RWIO);
 	if (val)
 		reg |= mask;
@@ -171,13 +169,15 @@ static void cycgpio_set_imode(struct gpio_chip *gc, int en, unsigned mask,
 
 	/* disable irq */
 	if (en == 0) {
+		spin_lock_irqsave(&gpio_lock, flags);
 		reg = readl(gc->priv + FPGA_GPIO_IER);
 		reg &= ~mask;
 		writel(reg, gc->priv + FPGA_GPIO_IER);
+		spin_unlock_irqrestore(&gpio_lock, flags);
 		return;
 	}
 
-	if(mask & itmask) {
+	if (mask & itmask) {
 
 		spin_lock_irqsave(&gpio_lock, flags);
 		if (mask & imode)	/* level */

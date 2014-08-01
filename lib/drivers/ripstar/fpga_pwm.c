@@ -23,14 +23,13 @@ static inline void __pwm_handler_empty(void * chId);
 static inline void __pwm_handler_almost(void * chId);
 static void __pwm_irq_handler(void *arg);
 
-pwm_t *__pwm = (pwm_t *)PWM_BASE_ADDR;
-channel_t *__channels = (channel_t *)PWM_CHANNEL_ADDR;
+pwm_t *const __pwm = (pwm_t *)PWM_BASE_ADDR;
+channel_t *const __channels = (channel_t *)PWM_CHANNEL_ADDR;
 
 //pwm func
-static pwm_handler_t pwm_handler;		//pwm ÷–∂œ¥¶¿Ì∫Ø ˝
+static pwm_handler_t pwm_handler;		//pwm ‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞
 pwm_handler_t pwm_handler_e;
 pwm_handler_t pwm_handler_ae;
-pwm_handler_t pwm_handler_tmp;
 
 pwm_t *pwm_get_pwm()
 {
@@ -155,7 +154,7 @@ static inline void __pwm_irq_almost_mask(uint32_t ch, dbuf_id_t bufId, uint8_t i
 {
 	pwm_t *pwm = __pwm;
 
-	if(ismask == 0)	//≤ª∆¡±Œ
+	if(ismask == 0)	//‰∏çÂ±èËîΩ
 		clrbits32(&pwm->pwm_iaemr[bufId], ch);
 	else
 		setbits32(&pwm->pwm_iaemr[bufId], ch);
@@ -184,15 +183,15 @@ static inline void __pwm_irq_empty_mask(uint32_t ch, dbuf_id_t bufId, uint8_t is
 {
 	pwm_t *pwm = __pwm;
 
-	if(ismask == 0)	//≤ª∆¡±Œ
+	if(ismask == 0)	//‰∏çÂ±èËîΩ
 		clrbits32(&pwm->pwm_iemr[bufId], ch);
 	else
 		setbits32(&pwm->pwm_iemr[bufId], ch);
 
 }
 
-/*∂‘”⁄FPGA¿¥Àµ£¨÷‹∆⁄∫Õ¬ˆøÌµƒ…Ë∂® «”–À≥–Ú“™«Ûµƒ£¨œ»…Ë÷‹∆⁄°¢‘Ÿ…Ë¬ˆøÌ
- * “‘∑¿Õ‚≤øµ˜”√…Ë÷√ ±À≥–Úµﬂµπ£¨≤ª‘Ÿ∂‘Õ‚Ã·π©µ•∂¿…Ë÷√÷‹∆⁄ªÚ¬ˆøÌµƒ∫Ø ˝
+/*ÂØπ‰∫éFPGAÊù•ËØ¥ÔºåÂë®ÊúüÂíåËÑâÂÆΩÁöÑËÆæÂÆöÊòØÊúâÈ°∫Â∫èË¶ÅÊ±ÇÁöÑÔºåÂÖàËÆæÂë®Êúü„ÄÅÂÜçËÆæËÑâÂÆΩ
+ * ‰ª•Èò≤Â§ñÈÉ®Ë∞ÉÁî®ËÆæÁΩÆÊó∂È°∫Â∫èÈ¢†ÂÄíÔºå‰∏çÂÜçÂØπÂ§ñÊèê‰æõÂçïÁã¨ËÆæÁΩÆÂë®ÊúüÊàñËÑâÂÆΩÁöÑÂáΩÊï∞
  */
 inline uint32_t pwm_ch_set_pwm(uint32_t chId, uint32_t period, uint32_t duty)
 {
@@ -214,52 +213,52 @@ inline uint32_t pwm_ch_set_pwm(uint32_t chId, uint32_t period, uint32_t duty)
 }
 
 /*
- * ch		:“™switch bufferµƒchannel,32Œª£¨√ø“ªŒª∂‘”¶“ª∏ˆchannel,»Ù∂‘”¶ŒªŒ™1£¨‘ÚÀµ√˜∏√“™switch
- * bufids	:∂‘”¶√ø“ª∏ˆchannelµƒbufid,32Œª£¨√ø“ªŒª∂‘”¶“ª∏ˆchannel£¨»Ù∂‘”¶ŒªŒ™1£¨‘ÚÀµ√˜∏√channel π”√µƒbufidŒ™DBUF_1
+ * ch		:Ë¶Åswitch bufferÁöÑchannel,32‰ΩçÔºåÊØè‰∏Ä‰ΩçÂØπÂ∫î‰∏Ä‰∏™channel,Ëã•ÂØπÂ∫î‰Ωç‰∏∫1ÔºåÂàôËØ¥ÊòéËØ•Ë¶Åswitch
+ * bufids	:ÂØπÂ∫îÊØè‰∏Ä‰∏™channelÁöÑbufid,32‰ΩçÔºåÊØè‰∏Ä‰ΩçÂØπÂ∫î‰∏Ä‰∏™channelÔºåËã•ÂØπÂ∫î‰Ωç‰∏∫1ÔºåÂàôËØ¥ÊòéËØ•channel‰ΩøÁî®ÁöÑbufid‰∏∫DBUF_1
  */
 static void __pwm_switch_buf(uint32_t ch, uint32_t bufids)
 {
 	pwm_t *pwm = __pwm;
 
-	// ◊œ»◊™ªª execute buffer∫Õfill in buffer
+	//È¶ñÂÖàËΩ¨Êç¢ execute bufferÂíåfill in buffer
 	setbits32(&pwm->pwm_sebr, ch & bufids);
 	clrbits32(&pwm->pwm_sebr, (~bufids) & ch);
 	setbits32(&pwm->pwm_sfbr, ch & bufids);
 	clrbits32(&pwm->pwm_sfbr, (~bufids) & ch);
 
-	//ƒ¨»œ≤ª«Âø’Œﬁ–ßª∫≥Âµƒbuffer
+	//ÈªòËÆ§‰∏çÊ∏ÖÁ©∫Êó†ÊïàÁºìÂÜ≤ÁöÑbuffer
 
-	//«–ªªœ‡”¶µƒ÷–∂œ∆¡±Œºƒ¥Ê∆˜
-	clrbits32(&pwm->pwm_iaemr[DBUF_1], bufids & ch);			//Ω´ø’
+	//ÂàáÊç¢Áõ∏Â∫îÁöÑ‰∏≠Êñ≠Â±èËîΩÂØÑÂ≠òÂô®
+	clrbits32(&pwm->pwm_iaemr[DBUF_1], bufids & ch);			//Â∞ÜÁ©∫
 	setbits32(&pwm->pwm_iaemr[DBUF_1], (~bufids) & ch);
-	setbits32(&pwm->pwm_iaemr[DBUF_0], bufids & ch);			//Ω´ø’
+	setbits32(&pwm->pwm_iaemr[DBUF_0], bufids & ch);			//Â∞ÜÁ©∫
 	clrbits32(&pwm->pwm_iaemr[DBUF_0], (~bufids) & ch);
-	clrbits32(&pwm->pwm_iemr[DBUF_1], bufids & ch);			//ø’
+	clrbits32(&pwm->pwm_iemr[DBUF_1], bufids & ch);			//Á©∫
 	setbits32(&pwm->pwm_iemr[DBUF_1], (~bufids) & ch);
-	setbits32(&pwm->pwm_iemr[DBUF_0], bufids & ch);			//ø’
+	setbits32(&pwm->pwm_iemr[DBUF_0], bufids & ch);			//Á©∫
 	clrbits32(&pwm->pwm_iemr[DBUF_0], (~bufids) & ch);
 
-#if 1	//∆‰ µ÷ª“™±£÷§¡Ω∏ˆbufferµƒ πƒ‹∂º «¥Úø™µƒ£¨≤ª«–ªª“≤√ªπÿœµ£¨“ÚŒ™÷–∂œ∆¡±Œ“—«–ªª
-	//«–ªªœ‡”¶µƒ÷–∂œ πƒ‹ºƒ¥Ê∆˜
-	setbits32(&pwm->pwm_iaeer[DBUF_1], bufids & ch);			//Ω´ø’
+#if 1	//ÂÖ∂ÂÆûÂè™Ë¶Å‰øùËØÅ‰∏§‰∏™bufferÁöÑ‰ΩøËÉΩÈÉΩÊòØÊâìÂºÄÁöÑÔºå‰∏çÂàáÊç¢‰πüÊ≤°ÂÖ≥Á≥ªÔºåÂõ†‰∏∫‰∏≠Êñ≠Â±èËîΩÂ∑≤ÂàáÊç¢
+	//ÂàáÊç¢Áõ∏Â∫îÁöÑ‰∏≠Êñ≠‰ΩøËÉΩÂØÑÂ≠òÂô®
+	setbits32(&pwm->pwm_iaeer[DBUF_1], bufids & ch);			//Â∞ÜÁ©∫
 	clrbits32(&pwm->pwm_iaeer[DBUF_1], (~bufids) & ch);
-	clrbits32(&pwm->pwm_iaeer[DBUF_0], bufids & ch);			//Ω´ø’
+	clrbits32(&pwm->pwm_iaeer[DBUF_0], bufids & ch);			//Â∞ÜÁ©∫
 	setbits32(&pwm->pwm_iaeer[DBUF_0], (~bufids) & ch);
 
-	setbits32(&pwm->pwm_ieer[DBUF_1], bufids & ch);			//ø’
+	setbits32(&pwm->pwm_ieer[DBUF_1], bufids & ch);			//Á©∫
 	clrbits32(&pwm->pwm_ieer[DBUF_1], (~bufids) & ch);
-	clrbits32(&pwm->pwm_ieer[DBUF_0], bufids & ch);			//ø’
+	clrbits32(&pwm->pwm_ieer[DBUF_0], bufids & ch);			//Á©∫
 	setbits32(&pwm->pwm_ieer[DBUF_0], (~bufids) & ch);
 #endif
 }
 
-/*NOTE£∫∏√∫Ø ˝ª·∞—ª∫≥Â÷–Œ¥÷¥––µƒPWM ˝æ›«Âø’£¨÷±Ω”÷¥––’‚¿ÔÃÓ≥‰µƒPWM ˝æ›
- * ”…”⁄ «ΩÙº±÷¥––µƒpwm ˝æ›£¨À˘“‘ÃÓ≥‰µƒ ˝æ›æ°¡ø≤ª“™Ã´∂‡£®øÿ÷∆‘⁄10“‘ƒ⁄£©£¨
- * ”…”⁄ ‹FPGA∂Àbuffer¥Û–°œﬁ÷∆£¨À˘“‘ÃÓ≥‰ ˝æ›≤ª“™Ã´∂‡£¨“ª∂®“™–°”⁄buffer¥Û–°£®FPAG buffer:256£©
- * »Ù µº –Ë“™÷¥––µƒpwm ˝¥Û–°¥Û”⁄10£¨ø…œ»ÃÓ≥‰5-10∏ˆ£¨ £”‡ ˝æ›ø…‘⁄÷¥––∆⁄‘Ÿ¥ŒÃÓ≥‰£¨
- * µ´–Ë“™◊¢“‚£∫»Ù «ºÃ–¯ÃÓ≥‰±ÿ–Î÷±Ω”µ˜”√∫Ø ˝pwm_ch_set_pwmÃÓ≥‰£¨≤ªø…‘Ÿ¥Œ”√pwm_ch_urgency_pwm
- * (æ≠≤‚ ‘£∫–¬–¥»Îµƒ ˝æ›÷¥–– «”–—” ± ±º‰µƒ£¨¥Û∏≈√ø∂‡–¥20∏ˆ◊Û”“µƒPWM ˝æ›æÕª·—” ±10um
- * “Ú¥À£¨∏√∫Ø ˝ƒ⁄–¥»ÎµƒPWM ˝æ›Ω®“È±£≥÷‘⁄5-10∏ˆ£¨∆‰”‡ ˝æ›ø…‘⁄…‘∫Û–¥»Î)
+/*NOTEÔºöËØ•ÂáΩÊï∞‰ºöÊääÁºìÂÜ≤‰∏≠Êú™ÊâßË°åÁöÑPWMÊï∞ÊçÆÊ∏ÖÁ©∫ÔºåÁõ¥Êé•ÊâßË°åËøôÈáåÂ°´ÂÖÖÁöÑPWMÊï∞ÊçÆ
+ * Áî±‰∫éÊòØÁ¥ßÊÄ•ÊâßË°åÁöÑpwmÊï∞ÊçÆÔºåÊâÄ‰ª•Â°´ÂÖÖÁöÑÊï∞ÊçÆÂ∞ΩÈáè‰∏çË¶ÅÂ§™Â§öÔºàÊéßÂà∂Âú®10‰ª•ÂÜÖÔºâÔºå
+ * Áî±‰∫éÂèóFPGAÁ´ØbufferÂ§ßÂ∞èÈôêÂà∂ÔºåÊâÄ‰ª•Â°´ÂÖÖÊï∞ÊçÆ‰∏çË¶ÅÂ§™Â§öÔºå‰∏ÄÂÆöË¶ÅÂ∞è‰∫ébufferÂ§ßÂ∞èÔºàFPAG buffer:256Ôºâ
+ * Ëã•ÂÆûÈôÖÈúÄË¶ÅÊâßË°åÁöÑpwmÊï∞Â§ßÂ∞èÂ§ß‰∫é10ÔºåÂèØÂÖàÂ°´ÂÖÖ5-10‰∏™ÔºåÂâ©‰ΩôÊï∞ÊçÆÂèØÂú®ÊâßË°åÊúüÂÜçÊ¨°Â°´ÂÖÖÔºå
+ * ‰ΩÜÈúÄË¶ÅÊ≥®ÊÑèÔºöËã•ÊòØÁªßÁª≠Â°´ÂÖÖÂøÖÈ°ªÁõ¥Êé•Ë∞ÉÁî®ÂáΩÊï∞pwm_ch_set_pwmÂ°´ÂÖÖÔºå‰∏çÂèØÂÜçÊ¨°Áî®pwm_ch_urgency_pwm
+ * (ÁªèÊµãËØïÔºöÊñ∞ÂÜôÂÖ•ÁöÑÊï∞ÊçÆÊâßË°åÊòØÊúâÂª∂Êó∂Êó∂Èó¥ÁöÑÔºåÂ§ßÊ¶ÇÊØèÂ§öÂÜô20‰∏™Â∑¶Âè≥ÁöÑPWMÊï∞ÊçÆÂ∞±‰ºöÂª∂Êó∂10um
+ * Âõ†Ê≠§ÔºåËØ•ÂáΩÊï∞ÂÜÖÂÜôÂÖ•ÁöÑPWMÊï∞ÊçÆÂª∫ËÆÆ‰øùÊåÅÂú®5-10‰∏™ÔºåÂÖ∂‰ΩôÊï∞ÊçÆÂèØÂú®Á®çÂêéÂÜôÂÖ•)
  */
 uint32_t pwm_ch_urgency_pwm(uint32_t chId, uint32_t period[], uint32_t duty[], uint32_t num)
 {
@@ -271,26 +270,26 @@ uint32_t pwm_ch_urgency_pwm(uint32_t chId, uint32_t period[], uint32_t duty[], u
 #if 1
 	old_buf = (pwm->pwm_sebr & (0x01 << chId)) ? DBUF_1 : DBUF_0;
 	new_buf = (old_buf == DBUF_1) ? DBUF_0: DBUF_1;
-	pwm_switch_fill_b0(0x01 << chId, new_buf == DBUF_0);		//–¬ÃÓ≥‰pwm ˝æ› π”√¡ÌÕ‚“ª∏ˆbuf
+	pwm_switch_fill_b0(0x01 << chId, new_buf == DBUF_0);		//Êñ∞Â°´ÂÖÖpwmÊï∞ÊçÆ‰ΩøÁî®Âè¶Â§ñ‰∏Ä‰∏™buf
 
 	for(i = 0; i < num; i ++)
 	{
-		//’‚¿Ô√ª”–≈–∂œª∫≥Â «∑ÒÃÓ¬˙£¨À˘“‘ÃÓ≥‰ ±“™◊¢“‚ÃÓ≥‰¥Û–°
+		//ËøôÈáåÊ≤°ÊúâÂà§Êñ≠ÁºìÂÜ≤ÊòØÂê¶Â°´Êª°ÔºåÊâÄ‰ª•Â°´ÂÖÖÊó∂Ë¶ÅÊ≥®ÊÑèÂ°´ÂÖÖÂ§ßÂ∞è
 		pwm_ch_set_pwm(chId, period[i], duty[i]);
 	}
 
-	__pwm_switch_buf(0x01 << chId, new_buf << chId);			//◊™ªª÷¥–––¬ª∫≥ÂµƒPWM
-	__pwm_clear_buffer(0x01 << chId, old_buf);					//«Â≥˝“‘«∞µƒª∫≥Â÷–µƒPWM
+	__pwm_switch_buf(0x01 << chId, new_buf << chId);			//ËΩ¨Êç¢ÊâßË°åÊñ∞ÁºìÂÜ≤ÁöÑPWM
+	__pwm_clear_buffer(0x01 << chId, old_buf);					//Ê∏ÖÈô§‰ª•ÂâçÁöÑÁºìÂÜ≤‰∏≠ÁöÑPWM
 #endif
-	if(num == 0)		//»Áπ˚numŒ™0£¨£®∂‘”⁄Õ‚≤ø£©œ‡µ±”⁄÷ª ««Âª∫≥Â
+	if(num == 0)		//Â¶ÇÊûúnum‰∏∫0ÔºåÔºàÂØπ‰∫éÂ§ñÈÉ®ÔºâÁõ∏ÂΩì‰∫éÂè™ÊòØÊ∏ÖÁºìÂÜ≤
 		return 0;
 
-	return i;			//∑µªÿ—π»Îª∫≥ÂµƒPWM∏ˆ ˝
+	return i;			//ËøîÂõûÂéãÂÖ•ÁºìÂÜ≤ÁöÑPWM‰∏™Êï∞
 }
 
-/*œÚƒ≥“ª∏ˆpwm channel¿Ô–¥œÎ“™ΩÙº±÷¥––µƒpwm ˝æ›£®“™œÎ π∂‡∏ˆchannel¿ÔµƒΩÙº± ˝æ›÷¥––£¨–Ë“™∂‡¥Œµ˜”√∏√∫Ø ˝£¨
-* «“√ø¥Œ÷ªƒ‹–¥“ª∏ˆchannel£©£¨–¥ÕÍ∫Û–Ë“™¡¢øÃµ˜”√∫Ø ˝pwm_start_urgency_pwm≤≈ø… π–¬–¥»Îµƒpwm ˝æ›÷¥––
-* πÿ”⁄ÃÓ≥‰¥Û–°œﬁ÷∆≤Œ ˝∫Ø ˝pwm_ch_urgency_pwmµƒ◊¢ Õ
+/*ÂêëÊüê‰∏Ä‰∏™pwm channelÈáåÂÜôÊÉ≥Ë¶ÅÁ¥ßÊÄ•ÊâßË°åÁöÑpwmÊï∞ÊçÆÔºàË¶ÅÊÉ≥‰ΩøÂ§ö‰∏™channelÈáåÁöÑÁ¥ßÊÄ•Êï∞ÊçÆÊâßË°åÔºåÈúÄË¶ÅÂ§öÊ¨°Ë∞ÉÁî®ËØ•ÂáΩÊï∞Ôºå
+* ‰∏îÊØèÊ¨°Âè™ËÉΩÂÜô‰∏Ä‰∏™channelÔºâÔºåÂÜôÂÆåÂêéÈúÄË¶ÅÁ´ãÂàªË∞ÉÁî®ÂáΩÊï∞pwm_start_urgency_pwmÊâçÂèØ‰ΩøÊñ∞ÂÜôÂÖ•ÁöÑpwmÊï∞ÊçÆÊâßË°å
+* ÂÖ≥‰∫éÂ°´ÂÖÖÂ§ßÂ∞èÈôêÂà∂ÂèÇÊï∞ÂáΩÊï∞pwm_ch_urgency_pwmÁöÑÊ≥®Èáä
 */
 uint32_t pwm_ch_set_urgency_pwm(uint32_t chId, uint32_t period[], uint32_t duty[], uint32_t num)
 {
@@ -302,12 +301,12 @@ uint32_t pwm_ch_set_urgency_pwm(uint32_t chId, uint32_t period[], uint32_t duty[
 	old_buf = (pwm->pwm_sebr & (0x01 << chId)) ? DBUF_1 : DBUF_0;
 	new_buf = (old_buf == DBUF_1) ? DBUF_0: DBUF_1;
 
-	pwm_switch_fill_b0(0x01 << chId, new_buf == DBUF_0);		//–¬ÃÓ≥‰pwm ˝æ› π”√¡ÌÕ‚“ª∏ˆbuffer
+	pwm_switch_fill_b0(0x01 << chId, new_buf == DBUF_0);		//Êñ∞Â°´ÂÖÖpwmÊï∞ÊçÆ‰ΩøÁî®Âè¶Â§ñ‰∏Ä‰∏™buffer
 	for(i = 0; i < num; i ++)
 	{
 		pwm_ch_set_pwm(chId, period[i], duty[i]);
 	}
-	pwm_switch_fill_b0(0x01 << chId, old_buf == DBUF_0);		//ÃÓ≥‰ÕÍ∫Û«–ªªªÿ‘≠¿¥µƒfill buffer
+	pwm_switch_fill_b0(0x01 << chId, old_buf == DBUF_0);		//Â°´ÂÖÖÂÆåÂêéÂàáÊç¢ÂõûÂéüÊù•ÁöÑfill buffer
 
 	return i;
 }
@@ -324,25 +323,25 @@ void pwm_start_urgency_pwm(uint32_t ch)
 		if(!((pwm->pwm_sebr & ch) & (0x01 << i)))
 			newBufId |= 0x01 << i;
 	}
-	__pwm_switch_buf(ch, newBufId);			//÷¥–––¬µƒbufferµƒΩÙº±pwm ˝æ›
+	__pwm_switch_buf(ch, newBufId);			//ÊâßË°åÊñ∞ÁöÑbufferÁöÑÁ¥ßÊÄ•pwmÊï∞ÊçÆ
 
-	//«Âø’æ…µƒbuffer¿Ôµƒpwm ˝æ›
+	//Ê∏ÖÁ©∫ÊóßÁöÑbufferÈáåÁöÑpwmÊï∞ÊçÆ
 	for(i = 0; i < PWM_MAX_CH_CNT; i++)
 	{
 		if(!(ch & (0x01 << i)))
 			continue;
 		oldBufId = (newBufId & (0x01 << i)) ? DBUF_0 : DBUF_1;
-		__pwm_clear_buffer(ch & (0x01 << i), oldBufId);				//«Â≥˝“‘«∞µƒª∫≥Â÷–µƒPWM
+		__pwm_clear_buffer(ch & (0x01 << i), oldBufId);				//Ê∏ÖÈô§‰ª•ÂâçÁöÑÁºìÂÜ≤‰∏≠ÁöÑPWM
 	}
 }
 
 #if 1
-/*∂‘Õ‚Ω”ø⁄£¨“ª∞„≤ª–Ë“™ π”√’‚–©∫Ø ˝£¨’˝≥£«Èøˆœ¬≤ª±‡“Î£¨(Œ¥æ≠≤‚ ‘£¨≤ª“ª∂®∂‘£¨…˜”√,(-_-))
- * ’‚¿Ô—°‘Ò–‘µƒø™∑≈¡Àº∏∏ˆ”√µΩµƒø…ƒ‹–‘±»Ωœ¥Ûµƒ∫Ø ˝£¨∆‰À¸∫Ø ˝‘›«“≤ª±‡“Î
- * pwm_clear_buffer:«Âø’µ±«∞÷¥––ª∫≥Âµƒ ˝æ›
- * pwm_buffer_isfull£∫≈–∂œµ±«∞–¥»Îµƒª∫≥Â «∑Ò“—¬˙
+/*ÂØπÂ§ñÊé•Âè£Ôºå‰∏ÄËà¨‰∏çÈúÄË¶Å‰ΩøÁî®Ëøô‰∫õÂáΩÊï∞ÔºåÊ≠£Â∏∏ÊÉÖÂÜµ‰∏ã‰∏çÁºñËØëÔºå(Êú™ÁªèÊµãËØïÔºå‰∏ç‰∏ÄÂÆöÂØπÔºåÊÖéÁî®,(-_-))
+ * ËøôÈáåÈÄâÊã©ÊÄßÁöÑÂºÄÊîæ‰∫ÜÂá†‰∏™Áî®Âà∞ÁöÑÂèØËÉΩÊÄßÊØîËæÉÂ§ßÁöÑÂáΩÊï∞ÔºåÂÖ∂ÂÆÉÂáΩÊï∞ÊöÇ‰∏î‰∏çÁºñËØë
+ * pwm_clear_buffer:Ê∏ÖÁ©∫ÂΩìÂâçÊâßË°åÁºìÂÜ≤ÁöÑÊï∞ÊçÆ
+ * pwm_buffer_isfullÔºöÂà§Êñ≠ÂΩìÂâçÂÜôÂÖ•ÁöÑÁºìÂÜ≤ÊòØÂê¶Â∑≤Êª°
  */
-inline void pwm_clear_buffer(uint32_t ch)		//µ±«∞÷¥––ª∫≥Â
+inline void pwm_clear_buffer(uint32_t ch)		//ÂΩìÂâçÊâßË°åÁºìÂÜ≤
 {
 	pwm_t *pwm = __pwm;
 	int i = 0;
@@ -355,7 +354,7 @@ inline void pwm_clear_buffer(uint32_t ch)		//µ±«∞÷¥––ª∫≥Â
 	}
 }
 
-inline uint8_t pwm_buffer_isfull(uint32_t ch)	//µ±«∞ÃÓ≥‰ª∫≥Â£¨Õ¨ ±÷ªƒ‹≈–∂œ“ª∏ˆÕ®µ¿
+inline uint8_t pwm_buffer_isfull(uint32_t ch)	//ÂΩìÂâçÂ°´ÂÖÖÁºìÂÜ≤ÔºåÂêåÊó∂Âè™ËÉΩÂà§Êñ≠‰∏Ä‰∏™ÈÄöÈÅì
 {
 	pwm_t *pwm = __pwm;
 	dbuf_id_t bufId = (pwm->pwm_sfbr & ch) ? DBUF_1 : DBUF_0;
@@ -363,7 +362,7 @@ inline uint8_t pwm_buffer_isfull(uint32_t ch)	//µ±«∞ÃÓ≥‰ª∫≥Â£¨Õ¨ ±÷ªƒ‹≈–∂œ“ª∏ˆÕ®
 	return ((pwm->pwm_sfr[bufId] & ch) ? 1 : 0);
 }
 
-inline uint8_t pwm_buffer_isempty(uint32_t ch)	//µ±«∞÷¥––ª∫≥Â£¨Õ¨ ±÷ªƒ‹≈–∂œ“ª∏ˆÕ®µ¿
+inline uint8_t pwm_buffer_isempty(uint32_t ch)	//ÂΩìÂâçÊâßË°åÁºìÂÜ≤ÔºåÂêåÊó∂Âè™ËÉΩÂà§Êñ≠‰∏Ä‰∏™ÈÄöÈÅì
 {
 	pwm_t *pwm = __pwm;
 	dbuf_id_t bufId = (pwm->pwm_sebr & ch) ? DBUF_1 : DBUF_0;
@@ -371,7 +370,7 @@ inline uint8_t pwm_buffer_isempty(uint32_t ch)	//µ±«∞÷¥––ª∫≥Â£¨Õ¨ ±÷ªƒ‹≈–∂œ“ª∏ˆÕ
 	return ((pwm->pwm_ser[bufId] & ch) ? 1 : 0);
 }
 
-inline void pwm_irq_almost_clr(uint32_t ch)		//µ±«∞÷¥––
+inline void pwm_irq_almost_clr(uint32_t ch)		//ÂΩìÂâçÊâßË°å
 {
 	pwm_t *pwm = __pwm;
 	int i = 0;
@@ -384,7 +383,7 @@ inline void pwm_irq_almost_clr(uint32_t ch)		//µ±«∞÷¥––
 	}
 }
 
-inline void pwm_irq_almost_enable(uint32_t ch, uint8_t isena)	//µ±«∞÷¥––
+inline void pwm_irq_almost_enable(uint32_t ch, uint8_t isena)	//ÂΩìÂâçÊâßË°å
 {
 	pwm_t *pwm = __pwm;
 	int i = 0;
@@ -400,7 +399,7 @@ inline void pwm_irq_almost_enable(uint32_t ch, uint8_t isena)	//µ±«∞÷¥––
 	}
 }
 
-inline void pwm_irq_almost_mask(uint32_t ch, uint8_t ismask)	//µ±«∞÷¥––
+inline void pwm_irq_almost_mask(uint32_t ch, uint8_t ismask)	//ÂΩìÂâçÊâßË°å
 {
 	pwm_t *pwm = __pwm;
 	int i = 0;
@@ -409,7 +408,7 @@ inline void pwm_irq_almost_mask(uint32_t ch, uint8_t ismask)	//µ±«∞÷¥––
 	{
 		dbuf_id_t bufId = ((pwm->pwm_sebr & ch) & (0x01 << i)) ? DBUF_1 : DBUF_0;
 
-		if(ismask == 0)	//≤ª∆¡±Œ
+		if(ismask == 0)	//‰∏çÂ±èËîΩ
 			clrbits32(&pwm->pwm_iaemr[bufId], ch);
 		else
 			setbits32(&pwm->pwm_iaemr[bufId], ch);
@@ -417,7 +416,7 @@ inline void pwm_irq_almost_mask(uint32_t ch, uint8_t ismask)	//µ±«∞÷¥––
 
 }
 
-inline uint32_t pwm_irq_almost_status(uint32_t ch)				//µ±«∞÷¥––
+inline uint32_t pwm_irq_almost_status(uint32_t ch)				//ÂΩìÂâçÊâßË°å
 {
 	pwm_t *pwm = __pwm;
 	int i = 0;
@@ -432,7 +431,7 @@ inline uint32_t pwm_irq_almost_status(uint32_t ch)				//µ±«∞÷¥––
 	return irq_status;
 }
 /*------------buffer empty interrupt register----------*/
-inline void pwm_irq_empty_enable(uint32_t ch, uint8_t isena)		//µ±«∞÷¥––
+inline void pwm_irq_empty_enable(uint32_t ch, uint8_t isena)		//ÂΩìÂâçÊâßË°å
 {
 	pwm_t *pwm = __pwm;
 	int i = 0;
@@ -448,7 +447,7 @@ inline void pwm_irq_empty_enable(uint32_t ch, uint8_t isena)		//µ±«∞÷¥––
 	}
 }
 
-inline void pwm_irq_empty_clr(uint32_t ch)			//µ±«∞÷¥––
+inline void pwm_irq_empty_clr(uint32_t ch)			//ÂΩìÂâçÊâßË°å
 {
 	pwm_t *pwm = __pwm;
 	int i = 0;
@@ -461,7 +460,7 @@ inline void pwm_irq_empty_clr(uint32_t ch)			//µ±«∞÷¥––
 	}
 }
 
-inline void pwm_irq_empty_mask(uint32_t ch, uint8_t ismask)			//µ±«∞÷¥––
+inline void pwm_irq_empty_mask(uint32_t ch, uint8_t ismask)			//ÂΩìÂâçÊâßË°å
 {
 	pwm_t *pwm = __pwm;
 	int i = 0;
@@ -470,14 +469,14 @@ inline void pwm_irq_empty_mask(uint32_t ch, uint8_t ismask)			//µ±«∞÷¥––
 	{
 		dbuf_id_t bufId = ((pwm->pwm_sebr & ch) & (0x01 << i)) ? DBUF_1 : DBUF_0;
 
-		if(ismask == 0)	//≤ª∆¡±Œ
+		if(ismask == 0)	//‰∏çÂ±èËîΩ
 			clrbits32(&pwm->pwm_iemr[bufId], ch);
 		else
 			setbits32(&pwm->pwm_iemr[bufId], ch);
 	}
 }
 
-inline uint32_t pwm_irq_empty_status(uint32_t ch)				//µ±«∞÷¥––
+inline uint32_t pwm_irq_empty_status(uint32_t ch)				//ÂΩìÂâçÊâßË°å
 {
 	pwm_t *pwm = __pwm;
 	int i = 0;
@@ -492,44 +491,44 @@ inline uint32_t pwm_irq_empty_status(uint32_t ch)				//µ±«∞÷¥––
 	return irq_status;
 }
 
-/*∏√∫Ø ˝…˜”√
- * 1:“ª∞„«Èøˆœ¬Õ‚≤ø≤ª–Ë“™ ÷∂Ø«–ªªbuffer
- * 2:«–ªªbuffer“ª∞„∏˘æ›–Ë“™«Â≥˝…œ“ª∏ˆbuffer¿ÔŒ¥÷¥––ÕÍµƒpwm ˝æ›£¨∏√∫Ø ˝ƒ⁄√ª”–«Â≥˝
- * “Ú¥À‘⁄µ˜”√∫Û∏˘æ›–Ë“™«Â≥˝*/
+/*ËØ•ÂáΩÊï∞ÊÖéÁî®
+ * 1:‰∏ÄËà¨ÊÉÖÂÜµ‰∏ãÂ§ñÈÉ®‰∏çÈúÄË¶ÅÊâãÂä®ÂàáÊç¢buffer
+ * 2:ÂàáÊç¢buffer‰∏ÄËà¨Ê†πÊçÆÈúÄË¶ÅÊ∏ÖÈô§‰∏ä‰∏Ä‰∏™bufferÈáåÊú™ÊâßË°åÂÆåÁöÑpwmÊï∞ÊçÆÔºåËØ•ÂáΩÊï∞ÂÜÖÊ≤°ÊúâÊ∏ÖÈô§
+ * Âõ†Ê≠§Âú®Ë∞ÉÁî®ÂêéÊ†πÊçÆÈúÄË¶ÅÊ∏ÖÈô§*/
 dbuf_id_t pwm_switch_buf(uint32_t ch)
 {
 	pwm_t *pwm = __pwm;
 
 	uint32_t cur_bufid = pwm->pwm_sebr;
 	uint32_t new_bufid = (~(ch & cur_bufid)) | ((~ch) & cur_bufid);
-	// ◊œ»◊™ªª execute buffer∫Õfill in buffer
+	//È¶ñÂÖàËΩ¨Êç¢ execute bufferÂíåfill in buffer
 	setbits32(&pwm->pwm_sebr, ch & new_bufid);
 	clrbits32(&pwm->pwm_sebr, (~new_bufid) & ch);
 	setbits32(&pwm->pwm_sfbr, ch & new_bufid);
 	clrbits32(&pwm->pwm_sfbr, (~new_bufid) & ch);
 
-	//ƒ¨»œ≤ª«Âø’Œﬁ–ßª∫≥Âµƒbuffer
+	//ÈªòËÆ§‰∏çÊ∏ÖÁ©∫Êó†ÊïàÁºìÂÜ≤ÁöÑbuffer
 
-	//«–ªªœ‡”¶µƒ÷–∂œ∆¡±Œºƒ¥Ê∆˜
-	clrbits32(&pwm->pwm_iaemr[DBUF_1], new_bufid & ch);			//Ω´ø’
+	//ÂàáÊç¢Áõ∏Â∫îÁöÑ‰∏≠Êñ≠Â±èËîΩÂØÑÂ≠òÂô®
+	clrbits32(&pwm->pwm_iaemr[DBUF_1], new_bufid & ch);			//Â∞ÜÁ©∫
 	setbits32(&pwm->pwm_iaemr[DBUF_1], (~new_bufid) & ch);
-	setbits32(&pwm->pwm_iaemr[DBUF_0], new_bufid & ch);			//Ω´ø’
+	setbits32(&pwm->pwm_iaemr[DBUF_0], new_bufid & ch);			//Â∞ÜÁ©∫
 	clrbits32(&pwm->pwm_iaemr[DBUF_0], (~new_bufid) & ch);
-	clrbits32(&pwm->pwm_iemr[DBUF_1], new_bufid & ch);			//ø’
+	clrbits32(&pwm->pwm_iemr[DBUF_1], new_bufid & ch);			//Á©∫
 	setbits32(&pwm->pwm_iemr[DBUF_1], (~new_bufid) & ch);
-	setbits32(&pwm->pwm_iemr[DBUF_0], new_bufid & ch);			//ø’
+	setbits32(&pwm->pwm_iemr[DBUF_0], new_bufid & ch);			//Á©∫
 	clrbits32(&pwm->pwm_iemr[DBUF_0], (~new_bufid) & ch);
 
-#if 1	//∆‰ µ÷ª“™±£÷§¡Ω∏ˆbufferµƒ»´ƒ‹∂º «¥Úø™µƒ£¨≤ª«–ªª“≤√ªπÿœµ£¨“ÚŒ™÷–∂œ∆¡±Œ“—«–ªª
-	//«–ªªœ‡”¶µƒ÷–∂œ πƒ‹ºƒ¥Ê∆˜
-	setbits32(&pwm->pwm_iaeer[DBUF_1], new_bufid & ch);			//Ω´ø’
+#if 1	//ÂÖ∂ÂÆûÂè™Ë¶Å‰øùËØÅ‰∏§‰∏™bufferÁöÑÂÖ®ËÉΩÈÉΩÊòØÊâìÂºÄÁöÑÔºå‰∏çÂàáÊç¢‰πüÊ≤°ÂÖ≥Á≥ªÔºåÂõ†‰∏∫‰∏≠Êñ≠Â±èËîΩÂ∑≤ÂàáÊç¢
+	//ÂàáÊç¢Áõ∏Â∫îÁöÑ‰∏≠Êñ≠‰ΩøËÉΩÂØÑÂ≠òÂô®
+	setbits32(&pwm->pwm_iaeer[DBUF_1], new_bufid & ch);			//Â∞ÜÁ©∫
 	clrbits32(&pwm->pwm_iaeer[DBUF_1], (~new_bufid) & ch);
-	clrbits32(&pwm->pwm_iaeer[DBUF_0], new_bufid & ch);			//Ω´ø’
+	clrbits32(&pwm->pwm_iaeer[DBUF_0], new_bufid & ch);			//Â∞ÜÁ©∫
 	setbits32(&pwm->pwm_iaeer[DBUF_0], (~new_bufid) & ch);
 
-	setbits32(&pwm->pwm_ieer[DBUF_1], new_bufid & ch);			//ø’
+	setbits32(&pwm->pwm_ieer[DBUF_1], new_bufid & ch);			//Á©∫
 	clrbits32(&pwm->pwm_ieer[DBUF_1], (~new_bufid) & ch);
-	clrbits32(&pwm->pwm_ieer[DBUF_0], new_bufid & ch);			//ø’
+	clrbits32(&pwm->pwm_ieer[DBUF_0], new_bufid & ch);			//Á©∫
 	setbits32(&pwm->pwm_ieer[DBUF_0], (~new_bufid) & ch);
 #endif
 
@@ -545,13 +544,11 @@ static inline void __pwm_handler_empty(void * arg)
 
 static inline void __pwm_handler_almost(void * arg)
 {
-
-	int i = 0;
 	uint32_t chId = (uint32_t)arg;
 	static uint32_t cnt = 0;
 	int chIndex = 0;
 
-	if(!(chId & PWM_CH(0)))
+	if(!(chId & PWM_MSK(0)))
 		return;
 
 #if 0
@@ -559,14 +556,14 @@ static inline void __pwm_handler_almost(void * arg)
 	{
 		static uint8_t pwm_num = 18;
 #if 0
-		//∑Ω Ω“ª
-		pwm_ch_urgency_pwm(PWM_CHID0, period, duty, pwm_num);
-		pwm_ch_urgency_pwm(PWM_CHID1, period, duty, pwm_num);
+		//ÊñπÂºè‰∏Ä
+		pwm_ch_urgency_pwm(PWM_IDX(0), period, duty, pwm_num);
+		pwm_ch_urgency_pwm(PWM_IDX(1), period, duty, pwm_num);
 #else
-		//∑Ω Ω∂˛
-		pwm_ch_set_urgency_pwm(PWM_CHID0, period, duty, pwm_num);
-		pwm_ch_set_urgency_pwm(PWM_CHID1, period, duty, pwm_num);
-		pwm_start_urgency_pwm(PWM_CH(0)|PWM_CH(1));
+		//ÊñπÂºè‰∫å
+		pwm_ch_set_urgency_pwm(PWM_IDX(0), period, duty, pwm_num);
+		pwm_ch_set_urgency_pwm(PWM_IDX(1), period, duty, pwm_num);
+		pwm_start_urgency_pwm(PWM_MSK(0)|PWM_MSK(1));
 #endif
 	}
 	else
@@ -584,7 +581,7 @@ static inline void __pwm_handler_almost(void * arg)
 	static uint32_t period_s = 5000;
 	static uint32_t period_e = 1000;
 	static uint32_t duty_acc = 500;
-	static uint8_t acc_time = 1;	//√Î
+	static uint8_t acc_time = 1;	//Áßí
 	static uint32_t per_tatal_num = 0;
 
 	static uint32_t cur_per = 3000;
@@ -592,7 +589,7 @@ static inline void __pwm_handler_almost(void * arg)
 			- (period_e * 10 / 1000) * (period_e * 10 / 1000 - 1) / 2);
 
 
-	if(per_tatal_num++ < 10 * 1000 * 60)	//º”
+	if(per_tatal_num++ < 10 * 1000 * 60)	//Âä†
 	{
 
 		if(cur_per >= period_e)
@@ -613,11 +610,11 @@ static inline void __pwm_handler_almost(void * arg)
 			pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
 		}
 	}
-	else if(per_tatal_num++ < 10 * 1000 * 110)	// ‘»
+	else if(per_tatal_num++ < 10 * 1000 * 110)	// ÂåÄ
 	{
 		pwm_ch_set_pwm(chIndex, cur_per, duty_acc);
 	}
-	else if(per_tatal_num++ < 10 * 1000 * 180)	//ºı
+	else if(per_tatal_num++ < 10 * 1000 * 180)	//Âáè
 	{
 		if(cur_per < period_s)
 		{
@@ -656,6 +653,8 @@ static void __pwm_irq_handler(void *arg)
 	for(i = 0; i < PWM_MAX_CH_CNT; i++)
 	{
 		dbuf_id_t valid_buf = (__pwm->pwm_sebr & (0x01 << i)) ? DBUF_1 : DBUF_0;
+		if(__pwm->pwm_iesr[valid_buf] == 0)
+			break;
 		chId |= __pwm->pwm_iesr[valid_buf] & (0x01 << i);
 	}
 	if(chId != 0 && pwm_handler_e != NULL)
@@ -664,8 +663,8 @@ static void __pwm_irq_handler(void *arg)
 
 	if(chId != 0)
 	{
-		__pwm_irq_empty_clr(PWM_CHID_ALL,DBUF_0);		//«Â÷–∂œ
-		__pwm_irq_empty_clr(PWM_CHID_ALL,DBUF_1);		//«Â÷–∂œ
+		__pwm_irq_empty_clr(PWM_MSK_ALL,DBUF_0);		//Ê∏Ö‰∏≠Êñ≠
+		__pwm_irq_empty_clr(PWM_MSK_ALL,DBUF_1);		//Ê∏Ö‰∏≠Êñ≠
 	}
 
 	//check the almost empty irq
@@ -675,6 +674,8 @@ static void __pwm_irq_handler(void *arg)
 	for(i = 0; i < PWM_MAX_CH_CNT; i ++)
 	{
 		valid_buf = (__pwm->pwm_sebr & (0x01 << i)) ? DBUF_1 : DBUF_0;
+		if(__pwm->pwm_iaesr[valid_buf] == 0)
+			break;
 		chId |= (__pwm->pwm_iaesr[valid_buf] & (0x01 << i));
 	}
 	if(chId != 0 && pwm_handler_ae != NULL)
@@ -684,8 +685,8 @@ static void __pwm_irq_handler(void *arg)
 
 	if(chId != 0)
 	{
-		__pwm_irq_almost_clr(PWM_CHID_ALL,DBUF_0);		//«Â÷–∂œ
-		__pwm_irq_almost_clr(PWM_CHID_ALL,DBUF_1);		//«Â÷–∂œ
+		__pwm_irq_almost_clr(PWM_MSK_ALL,DBUF_0);		//Ê∏Ö‰∏≠Êñ≠
+		__pwm_irq_almost_clr(PWM_MSK_ALL,DBUF_1);		//Ê∏Ö‰∏≠Êñ≠
 	}
 
 }
@@ -698,11 +699,11 @@ int pwm_reset(uint32_t ch)
 	pwm_mode_pwm(ch, 1);							// pwm mode
 	pwm_control_source_hps(ch, 0);					//control by fpga
 	pwm_polar_pos(ch, 1);							//positive logic
-	pwm_override(ch, 0);							//∑«HPS‘Ω»®÷±Ω”øÿ÷∆
+	pwm_override(ch, 0);							//ÈùûHPSË∂äÊùÉÁõ¥Êé•ÊéßÂà∂
 	__pwm_clear_buffer(ch, DBUF_0);					//clear buffer
 	__pwm_clear_buffer(ch, DBUF_1);					//clear buffer
-	pwm_switch_fill_b0(ch, 1);						//ƒ¨»œÃÓ≥‰ bufferŒ™buf0
-	pwm_switch_exe_b0(ch, 1);						//ƒ¨»œ÷¥––bufferŒ™buf0
+	pwm_switch_fill_b0(ch, 1);						//ÈªòËÆ§Â°´ÂÖÖ buffer‰∏∫buf0
+	pwm_switch_exe_b0(ch, 1);						//ÈªòËÆ§ÊâßË°åbuffer‰∏∫buf0
 
 	// disable all almost empty interrutp
 	__pwm_irq_almost_enable(ch, DBUF_0, 0);
@@ -716,11 +717,11 @@ int pwm_reset(uint32_t ch)
 	__pwm_irq_empty_enable(ch, DBUF_1, 0);
 	__pwm_irq_empty_mask(ch, DBUF_1, 1);
 
-	pwm_switch_fill_b0(ch, 1);							//…Ë÷√ÃÓ≥‰bufferŒ™buffer0
+	pwm_switch_fill_b0(ch, 1);							//ËÆæÁΩÆÂ°´ÂÖÖbuffer‰∏∫buffer0
 
-	/*…Ë÷√÷–∂œ¥¶¿Ì∫Ø ˝£¨’‚∏ˆ»˝÷–∂œ∫Ø ˝ø…◊‘∂®“Â£¨µ´“ª∞„«Èøˆœ¬÷ª–Ë“™∂®“Â¡Ω∏ˆ
-	 *º¥ø’÷–∂œ¥¶¿Ì∫Ø ˝∫ÕΩ´ø’÷–∂œ¥¶¿Ì∫Ø ˝£¨º¥ø’÷–∂œ¥¶¿Ì∫Ø ˝∫ÕΩ´ø’÷–∂œ¥¶¿Ì∫Ø ˝£¨
-	 *“ÚŒ™÷–∂œ¥¶¿Ì∫Ø ˝ª·≈–∂œ÷–∂œ◊¥Ã¨Ω¯»Îœ‡πÿµƒ÷–∂œ¥¶¿Ì∫Ø ˝£®ø’ªÚ’ﬂΩ´ø’£©
+	/*ËÆæÁΩÆ‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞ÔºåËøô‰∏™‰∏â‰∏≠Êñ≠ÂáΩÊï∞ÂèØËá™ÂÆö‰πâÔºå‰ΩÜ‰∏ÄËà¨ÊÉÖÂÜµ‰∏ãÂè™ÈúÄË¶ÅÂÆö‰πâ‰∏§‰∏™
+	 *Âç≥Á©∫‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞ÂíåÂ∞ÜÁ©∫‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞ÔºåÂç≥Á©∫‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞ÂíåÂ∞ÜÁ©∫‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞Ôºå
+	 *Âõ†‰∏∫‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞‰ºöÂà§Êñ≠‰∏≠Êñ≠Áä∂ÊÄÅËøõÂÖ•Áõ∏ÂÖ≥ÁöÑ‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞ÔºàÁ©∫ÊàñËÄÖÂ∞ÜÁ©∫Ôºâ
 	 */
 	pwm_handler = __pwm_irq_handler;
 	pwm_handler_e = __pwm_handler_empty;
@@ -731,10 +732,8 @@ int pwm_reset(uint32_t ch)
 
 int pwm_init(void)
 {
-	pwm_reset(PWM_CHID_ALL);
+	pwm_reset(PWM_MSK_ALL);
 
-	pwm_irq_almost_enable(PWM_CHID_ALL, 0);					//πÿ÷–∂œ
-	pwm_irq_almost_mask(PWM_CHID_ALL, 1);					//πÿ÷–∂œ∆¡±Œ
 	request_irq(CONFIG_PWM_IRQ, pwm_handler, __pwm);		//set interrupt handle function
 
 	return 0;
@@ -743,4 +742,3 @@ int pwm_init(void)
 #if 1// old function
 
 #endif
-

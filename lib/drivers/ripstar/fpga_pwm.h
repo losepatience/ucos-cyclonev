@@ -1,3 +1,7 @@
+#ifndef __FPGA_PWM_H__
+#define __FPGA_PWM_H__
+#include <asm/io.h>
+
 /*
  *  PWM0		: out std_logic;	-- FPGA_3A_GPIO10     --xPul     --AJ2
  *	PWM1		: out std_logic;	-- FPGA_3A_GPIO16     --xDir     --AG2
@@ -27,23 +31,15 @@
 #define REG_FIRE_END		 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x24))		//RW
 #endif
 
-#ifndef __FPGA_PWM_H__
-#define __FPGA_PWM_H__
-#include <asm/io.h>
-
 #define PWM_MAX_CH_CNT 14
 #define CONFIG_PWM_IRQ		78
 
 #define PWM_BASE_ADDR (SOCFPGA_LWH2F_ADDRESS + 0x2000)
 #define PWM_CHANNEL_ADDR (PWM_BASE_ADDR + 0x80)
 
-#define PWM_CHID_ALL (0xFFFFFFFF)
-#define PWM_CHID0 0
-#define PWM_CHID1 1
-#define PWM_CHID2 2
-#define PWM_CHID3 3
-#define PWM_CHID(num) (num)
-#define PWM_CH(i) (0x01 << (i))
+#define PWM_IDX(n) (n)					//pwm é€šé“ç´¢å¼•
+#define PWM_MSK(n) (0x01 << (n))		//pwm é€šé“ä½æŽ©ç 
+#define PWM_MSK_ALL (0xFFFFFFFF)
 
 #define PWM_PR_NEG 1
 typedef struct pwm_channel_t
@@ -68,31 +64,31 @@ typedef enum DOUBLE_BUFFER_ID
 
 typedef struct pwm_t
 {
-	/*1 pwm_ovr:³¬¿ØÄÇ¸öÖ±½Ó¾ÍÊÇarm¿ØÖÆ£º
-	 * 		µ±Îªpwm_mr(Ä£Ê½Ñ¡Ôñ)ÎªPWMÄ£Ê½ÇÒ¿ØÖÆÔ´£¨PWMÔ´£©ÎªHPSÊ±£¬Ö±½ÓÔÚpwm_ovrÀïÐ´010101010
-	 * 		µ±ÎªgpioÄ£Ê½Ê±£¬ËùÓÐ¼Ä´æÆ÷ÖÐÖ»ÓÐpwm_ovrÆð×÷ÓÃ£¬´ËÊ±ÔÚpwm_ovrÀïÐ´0/1¼´Êä³ö0/1
-	 * 2 pwm_csr:control source register×¨ÓÃÔÚÊä³öPWMÊ±,Õâ¸öÊ±ºòÊä³öÊÇÊÕµ½¼«ÐÔ¼Ä´æÆ÷µÄÓ°ÏìµÄ
-	 * 3 ½«¿ÕÖÐ¶Ï:µ±bufferÀïÉÙÓÚÄ³Ò»ÊýÖµÊ±£¬»áÒ»Ö±·¢ÖÐ¶Ï£¬¿ÕÖÐ¶Ïµ±bufferÃ¿´ÎÓÉ·Ç¿Õ±äÎª¿ÕÊ±·¢ËÍÒ»´ÎÖÐ¶Ï
-	 * 4 pwmµÄÊµÏÖÎªË«»º³å»úÖÆ£¬µ«ÔÚÒ»°ãÇé¿öÏÂ£¬¶ÔÍâË«»º³åÊÇÍ¸Ã÷µÄ£¬Íâ²¿¶øÑÔÒ»°ãÇé¿öÏÂ²»ÐèÒªÓÃ»§ÇÐ»»»º³å
-	 * 	»º³åµÄÇÐ»»ÔÚÄÚ²¿×Ô¶¯ÇÐ»»£¬Òò´Ë¹ØÓÚ»º³åµÄÒ»°ãº¯ÊýÍâ²¿¾¡Á¿²»Òªµ÷ÓÃ
-	 * 5 pwm_mr:µ±ÉèÖÃÎª0Ê±£¬Îªgpio¡£
+	/*1 pwm_ovr:è¶…æŽ§é‚£ä¸ªç›´æŽ¥å°±æ˜¯armæŽ§åˆ¶ï¼š
+	 * 		å½“ä¸ºpwm_mr(æ¨¡å¼é€‰æ‹©)ä¸ºPWMæ¨¡å¼ä¸”æŽ§åˆ¶æºï¼ˆPWMæºï¼‰ä¸ºHPSæ—¶ï¼Œç›´æŽ¥åœ¨pwm_ovré‡Œå†™010101010
+	 * 		å½“ä¸ºgpioæ¨¡å¼æ—¶ï¼Œæ‰€æœ‰å¯„å­˜å™¨ä¸­åªæœ‰pwm_ovrèµ·ä½œç”¨ï¼Œæ­¤æ—¶åœ¨pwm_ovré‡Œå†™0/1å³è¾“å‡º0/1
+	 * 2 pwm_csr:control source registerä¸“ç”¨åœ¨è¾“å‡ºPWMæ—¶,è¿™ä¸ªæ—¶å€™è¾“å‡ºæ˜¯æ”¶åˆ°æžæ€§å¯„å­˜å™¨çš„å½±å“çš„
+	 * 3 å°†ç©ºä¸­æ–­:å½“bufferé‡Œå°‘äºŽæŸä¸€æ•°å€¼æ—¶ï¼Œä¼šä¸€ç›´å‘ä¸­æ–­ï¼Œç©ºä¸­æ–­å½“bufferæ¯æ¬¡ç”±éžç©ºå˜ä¸ºç©ºæ—¶å‘é€ä¸€æ¬¡ä¸­æ–­
+	 * 4 pwmçš„å®žçŽ°ä¸ºåŒç¼“å†²æœºåˆ¶ï¼Œä½†åœ¨ä¸€èˆ¬æƒ…å†µä¸‹ï¼Œå¯¹å¤–åŒç¼“å†²æ˜¯é€æ˜Žçš„ï¼Œå¤–éƒ¨è€Œè¨€ä¸€èˆ¬æƒ…å†µä¸‹ä¸éœ€è¦ç”¨æˆ·åˆ‡æ¢ç¼“å†²
+	 * 	ç¼“å†²çš„åˆ‡æ¢åœ¨å†…éƒ¨è‡ªåŠ¨åˆ‡æ¢ï¼Œå› æ­¤å…³äºŽç¼“å†²çš„ä¸€èˆ¬å‡½æ•°å¤–éƒ¨å°½é‡ä¸è¦è°ƒç”¨
+	 * 5 pwm_mr:å½“è®¾ç½®ä¸º0æ—¶ï¼Œä¸ºgpioã€‚
 	 */
-	volatile uint32_t pwm_mr;		// PWM Mode Register 0:gpio	1:pwm,µ±×÷ÎªgpioÊ±£¬ÓÃ×÷pwmµç»úµÄ·½Ïò¿ØÖÆ
+	volatile uint32_t pwm_mr;		// PWM Mode Register 0:gpio	1:pwm,å½“ä½œä¸ºgpioæ—¶ï¼Œç”¨ä½œpwmç”µæœºçš„æ–¹å‘æŽ§åˆ¶
 	volatile uint32_t pwm_csr;		// PWM Control Source Register 0:FPGA	1:HPS
-	volatile uint32_t pwm_pr;		// PWM Polarity Register: 0ÕýÂß¼­£¬1£º¸ºÂß¼­
-	volatile uint32_t pwm_ovr;		// PWM Override Register 1:HPS Ô½È¨¿ØÖÆ.µ±ÅäÖÃÎªgpioÄ£Ê½Ê±£¬¸ÃÎ»¿ØÖÆGPIOµçÆ½
+	volatile uint32_t pwm_pr;		// PWM Polarity Register: 0æ­£é€»è¾‘ï¼Œ1ï¼šè´Ÿé€»è¾‘
+	volatile uint32_t pwm_ovr;		// PWM Override Register 1:HPS è¶ŠæƒæŽ§åˆ¶.å½“é…ç½®ä¸ºgpioæ¨¡å¼æ—¶ï¼Œè¯¥ä½æŽ§åˆ¶GPIOç”µå¹³
 	volatile uint32_t pwm_enr; 		// PWM Enable Register
 	volatile uint32_t pwm_sfbr;		// PWM Switch Fill Buffer Register 0:buffer0, 1:buffer1
 	volatile uint32_t pwm_sebr;		// PWM Switch Execute Buffer Register 0:buffer0, 1:buffer1
 	volatile uint32_t pwm_cbr[2];	// PWM Clear Buffer Register
 	volatile uint32_t pwm_sfr[2];	// PWM Status Full Register
 	volatile uint32_t pwm_ser[2];	// PWM Status Empty Register
-	//½«¿ÕÖÐ¶Ï¼Ä´æÆ÷£¬µ±pwm bufferÀïÉÙÓÚÒ»¶¨³Ì¶È£¨Ä¿Ç°(FPGA)¹æ¶¨Îª10¸ö£©Ê±»áÒ»Ö±ÓÐÖÐ¶Ï£¬µ±´óÓÚÊ±²»ÔÙÓÐÖÐ¶Ï
+	//å°†ç©ºä¸­æ–­å¯„å­˜å™¨ï¼Œå½“pwm bufferé‡Œå°‘äºŽä¸€å®šç¨‹åº¦ï¼ˆç›®å‰(FPGA)è§„å®šä¸º10ä¸ªï¼‰æ—¶ä¼šä¸€ç›´æœ‰ä¸­æ–­ï¼Œå½“å¤§äºŽæ—¶ä¸å†æœ‰ä¸­æ–­
 	volatile uint32_t pwm_iaesr[2];	// PWM Almost Empty Interrupt Status Register
 	volatile uint32_t pwm_iaeer[2];	// PWM Almost Empty Interrupt Enable Register
 	volatile uint32_t pwm_iaemr[2];	// PWM Almost Empty Interrupt Mask Register
 	volatile uint32_t pwm_iaecr[2];	// PWM Almost Empty Interrupt Clear Register
-	//¿ÕÖÐ¶Ï¼Ä´æÆ÷£¬µ±pwm buffer ÀïÎª¿ÕÊ±·¢ËÍÒ»¸öÖÐ¶Ï
+	//ç©ºä¸­æ–­å¯„å­˜å™¨ï¼Œå½“pwm buffer é‡Œä¸ºç©ºæ—¶å‘é€ä¸€ä¸ªä¸­æ–­
 	volatile uint32_t pwm_iesr[2]; 	// PWM Empty Interrupt Status Register
 	volatile uint32_t pwm_ieer[2]; 	// PWM Empty Interrupt Enable Register
 	volatile uint32_t pwm_iemr[2]; 	// PWM Empty Interrupt Mask Register
@@ -128,8 +124,9 @@ int pwm_reset(uint32_t ch);
 extern int pwm_init(void);
 
 typedef void (*pwm_handler_t)(void *);
-extern pwm_handler_t pwm_handler_e;			//¿ÕÖÐ¶Ï´¦Àíº¯Êý
-extern pwm_handler_t pwm_handler_ae;		//½«¿ÕÖÐ¶Ï´¦Àíº¯Êý
+extern pwm_handler_t pwm_handler_e;			//ç©ºä¸­æ–­å¤„ç†å‡½æ•°
+extern pwm_handler_t pwm_handler_ae;		//å°†ç©ºä¸­æ–­å¤„ç†å‡½æ•°
+
 
 /*	 can delete
 	-- FPGA_5A_GPIO8   : inout std_logic;	 --FPGA_GPIO_Set0(0)    --AB25

@@ -13,6 +13,4 @@
 #define OS_TIMEOUT		OS_ERR_TIMEOUT
 #define OS_TASK_NOT_EXIST	OS_ERR_TASK_NOT_EXIST
 
-#define AT91C_DDR2		0
-
 #endif

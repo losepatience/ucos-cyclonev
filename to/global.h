@@ -287,10 +287,6 @@
 #define IS_2COLOR_1HEAD    (factoryData.group_num < 0)
 #define FACTORYDATA_LOGIC_GROUP_NUM   (abs(factoryData.group_num))
 
-#ifdef ALLWIN_EPSON_SAME
-#define FAST_CLEAN
-#endif
-
 #ifdef RIPSTAR_FLAT_EX
 #define STEP_NUM_CAL 32
 #define EX_MAX_BYTE (STEP_NUM_CAL*sizeof(float))
