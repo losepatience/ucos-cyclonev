@@ -135,7 +135,6 @@ u8 HugeBuf_GetInfHead(DataHeaderType *header)
 	void *addr;
 	int size;
 
-
 	if (fifo_cached(fifo) < circ->sizeof_header)
 		return false;
 

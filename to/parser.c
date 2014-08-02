@@ -66,9 +66,6 @@ struct sShakeInfo_Ricoh shakeInfo_Ricoh = {4,1,100};
 
 volatile INT8U nextband_autoClean = False;
 volatile INT8U nextband_autoSpray = False;
-#ifdef FAST_CLEAN
-volatile INT8U nextband_autoCleanUseFlash = False;		//以闪喷的方式进行清洗(快速清洗)
-#endif
 
 static DataHeaderType data_header;
 struct Struct_JobStart job_info;
@@ -679,8 +676,6 @@ void UV_POSI_INIT(INT32S Fire_on,INT32S Fire_off,INT8U dir)
 
 #if defined( HEAD_EPSON_GEN5) || defined(HEAD_RICOH_G4)
 INT8U GenerateMotionPrintCMD(INT8U *buf, INT8U bBlankBand, INT32U PreFireNum, INT32U PostFireNum)
-#else
-INT8U GenerateMotionPrintCMD(INT8U *buf, INT8U bBlankBand)
 #endif
 {
 	INT32S startPoint, endPoint, next_startPoint, next_endPoint;
@@ -736,28 +731,18 @@ INT8U GenerateMotionPrintCMD(INT8U *buf, INT8U bBlankBand)
 	if (next_direction == 2)
 		next_direction = 0;
 
-#ifdef Y_ENCODER_ENABLE		
-	//	if (next_direction == 2) //20090328 add, this is wrong, why???
-	//		next_direction = 0;
-#endif		
-
 	//1:正向(远离原点, 位置值增大) 0:反向(接近原点, 位置值减小)
 
 #ifdef UV_PRINTER	
 	uv_PrintDir = direction;
 #endif	
-	//	startPoint = data_header.Inf.band_inf.band_X + printer.platSpace + job_info.dir_space;	???????????????????
 	startPoint = data_header.Inf.band_inf.band_X + platSpace;	
 	endPoint = data_header.Inf.band_inf.band_X + data_header.Inf.band_inf.band_width + platSpace; // + printer.platSpace?
-	//	endPoint = data_header.Inf.band_inf.band_X + data_header.Inf.band_inf.band_width;
-
-	//#ifdef Y_ENCODER_ENABLE
 	if (direction)
 	{
 		startPoint += g_adjustInf.bidirectionValue;	
 		endPoint += g_adjustInf.bidirectionValue;
 	}
-	//#endif	
 	if (cleanPara.autoClean_passInterval == 0xFF)
 		cleanPara.autoClean_passInterval--;
 
@@ -1175,8 +1160,6 @@ INT8U GenerateMotionPrintCMD(INT8U *buf, INT8U bBlankBand)
 	*((__packed INT32U *)&buf[18]) = cur_step_distance;
 #endif    
 
-	//	CONSOL_Printf("Start Point: %d", startPoint);
-	//	CONSOL_Printf("End   Point: %d\r\n", endPoint);
 
 #if defined(DEBUG_Y_ENCODER)
 	status_EP0Buf.statusCode[5] = data_header.Inf.band_inf.nextBandY;
@@ -1293,128 +1276,9 @@ void GEN5E_Change_Memory(INT32U real_start)
 		Cur_Band_Size -= (DEN5_FIX_FIRE + DEN5_FIX_FIRE_INTERVAL)*EPSON_DATA_PER_FIRE;
 	}
 }
+
 void PushVSDCMD(INT8U b_first_pass)
 {
-#if defined(HEAD_EPSON_GEN5) && defined(SIM_EPSON_MACHINE)
-	if (factoryData.HeadType == HeadNo_Epson_Gen5)
-	{
-		INT32U currentFireCount = 0;
-
-		if(b_first_pass)
-		{
-			currentFireCount += 1;
-			FPGA_SET_DATASEG(currentFireCount); //prefill print data.
-#ifdef TEST_F_CMD
-			FPGA_SET_DATASEG(TESTED_F_CMD);
-#else
-			switch(job_info.VSDModel)
-			{
-			case 1: //VSD1
-				FPGA_SET_DATASEG(10);
-				break;
-			case 2: //VSD2
-				FPGA_SET_DATASEG(12);
-				break;
-			default:
-			case 3: //VSD3
-				FPGA_SET_DATASEG(13);
-				break;
-			case 4: //VSD4
-				FPGA_SET_DATASEG(14);
-				break;
-			}
-#endif							
-		}
-		currentFireCount += 1;
-		FPGA_SET_DATASEG(currentFireCount); //up to middle-voltage.
-#ifdef TEST_F_CMD
-		FPGA_SET_DATASEG(TESTED_F_CMD);
-#else							
-		FPGA_SET_DATASEG(1);
-#endif						
-		if(job_info.VSDModel == 2)
-		{
-			currentFireCount += EPSON_PREPRINT_SHAKE_NUM;
-			FPGA_SET_DATASEG(currentFireCount); //shake.
-#ifdef TEST_F_CMD
-			FPGA_SET_DATASEG(TESTED_F_CMD);
-#else							
-			FPGA_SET_DATASEG(3);
-#endif							
-		}
-		else
-		{
-			currentFireCount += EPSON_PREPRINT_SHAKE_NUM*2;
-			FPGA_SET_DATASEG(currentFireCount); //shake.
-#ifdef TEST_F_CMD
-			FPGA_SET_DATASEG(TESTED_F_CMD);
-#else							
-			FPGA_SET_DATASEG(11);
-#endif							
-		}
-		if(data_header.Inf.band_inf.band_width/job_info.encoder_div % 2  == 1)
-			currentFireCount += (EPSON_MIN_DATA_UNIT - 1) + data_header.Inf.band_inf.band_width/job_info.encoder_div;
-		else
-			currentFireCount += EPSON_MIN_DATA_UNIT + data_header.Inf.band_inf.band_width/job_info.encoder_div;
-		INT32U cur = currentFireCount ;
-			while(cur > 0)//回绕发生后的第一次需要填2个坐标
-			{
-				if(cur > 0x10000)
-				{
-					FPGA_SET_DATASEG(0); //normal printing.
-					if(cur != currentFireCount)
-						FPGA_SET_DATASEG(0); //normal printing.
-					cur -= 0x10000;
-				}
-				else
-				{
-					FPGA_SET_DATASEG(cur); //normal printing.
-					if(cur != currentFireCount)
-						FPGA_SET_DATASEG(cur); //normal printing.
-					cur = 0;
-				}
-
-#ifdef TEST_F_CMD
-				FPGA_SET_DATASEG(TESTED_F_CMD);
-#else							
-				switch(job_info.VSDModel)
-				{
-				case 1: //VSD1
-					FPGA_SET_DATASEG(4);
-					break;
-				case 2: //VSD2
-					FPGA_SET_DATASEG(5);
-					break;
-				default:
-				case 3: //VSD3
-					FPGA_SET_DATASEG(6);
-					break;
-				case 4: //VSD4
-					FPGA_SET_DATASEG(7);
-					break;
-				}
-#endif		
-			}
-
-		currentFireCount += 1;
-		FPGA_SET_DATASEG(currentFireCount); //down to 0x1E.
-#ifdef TEST_F_CMD
-		FPGA_SET_DATASEG(TESTED_F_CMD);
-#else							
-		FPGA_SET_DATASEG(2);
-#endif						
-		currentFireCount += 1;
-		FPGA_SET_DATASEG(currentFireCount); //begin shake between pass.
-#ifdef TEST_F_CMD
-		FPGA_SET_DATASEG(TESTED_F_CMD | FPGA_LAST_DATASEG);
-#else						
-		FPGA_SET_DATASEG(9 | FPGA_LAST_DATASEG);
-#endif						
-		//        currentFireCount += 1;
-		//        FPGA_SET_DATASEG(currentFireCount); //only for safe.
-		//        FPGA_SET_DATASEG(0);
-	}
-#endif				
 }
 
 void SetFPGAReg(INT32U PreFireNum, INT32U PostFireNum)
@@ -1524,15 +1388,6 @@ void SetFPGAReg(INT32U PreFireNum, INT32U PostFireNum)
 		}
 
 		OS_ENTER_CRITICAL();
-#ifdef HEAD_EPSON_GEN5
-		SetEpsonRegInt(EPSON_REGADDR_COOR_CTRL, reg_ctrl | ER_CoorCtrl_FIRE);
-		SetEpsonRegInt(EPSON_REGADDR_X_FIRE_START, startPoint);
-		SetEpsonRegInt(EPSON_REGADDR_X_FIRE_END, endPoint);
-#elif defined(HEAD_RICOH_G4)
-#ifdef ONE_BIT_DATA
-		if(RIPSTAR_PRT_BIT == 2)
-			reg_ctrl |= ER_CoorCtrl_SINGLE_DOT_MODE;
-#endif		
 		if(job_info.VSDModel == 3)
 			rFPGA_RICOH_COORCTRL_L = (INT16U)(reg_ctrl | ER_CoorCtrl_FIRE);
 		else
@@ -1541,41 +1396,7 @@ void SetFPGAReg(INT32U PreFireNum, INT32U PostFireNum)
 		rFPGA_RICOH_FIRESTART_L	= (INT16U)startPoint;
 		rFPGA_RICOH_FIREEND_L = (INT16U)endPoint;
 		rFPGA_RICOH_FIRESTART_END_H = (INT16U)(((startPoint>>16)&0xFF) | ((endPoint>>8)&0xFF00));
-#endif
 		OS_EXIT_CRITICAL();
-#if defined(TEST_FIRE_BY_FPGA)
-		if( data_header.Inf.band_inf.dir == 1)
-		{
-			INT16U mask, bit;
-
-			bit = ((INT16U)5)<<(0*4);
-			mask = (0xF)<<(0*4);
-
-			OS_ENTER_CRITICAL();
-			rFPGA_EPSON_RegAddr = EPSON_REGADDR_X_POSI_0;
-			rFPGA_EPSON_RegPort = endPoint;
-			rFPGA_EPSON_RegAddr = EPSON_REGADDR_POSI_CTRL;
-			rFPGA_EPSON_RegPortL &= ~mask;
-			rFPGA_EPSON_RegPortL |= bit;
-			OS_EXIT_CRITICAL();
-		}
-		else
-		{
-			INT16U mask, bit;
-
-			bit = ((INT16U)9)<<(0*4);
-			mask = (0xF)<<(0*4);
-
-			OS_ENTER_CRITICAL();
-			rFPGA_EPSON_RegAddr = EPSON_REGADDR_X_POSI_0;
-			rFPGA_EPSON_RegPort = startPoint;
-			rFPGA_EPSON_RegAddr = EPSON_REGADDR_POSI_CTRL;
-			rFPGA_EPSON_RegPortL &= ~mask;
-			rFPGA_EPSON_RegPortL |= bit;
-			OS_EXIT_CRITICAL();
-		}
-		ConfigFPGAPosiIT(0, FPGAPosi_Test_IntHandler, NULL);
-#endif
 	}
 
 #endif
@@ -1583,20 +1404,8 @@ void SetFPGAReg(INT32U PreFireNum, INT32U PostFireNum)
 
 void BeginFPGABand(INT32U PreFireNum, INT32U PostFireNum, INT8U b_first_pass)
 {
-#if defined(HEAD_EPSON_GEN5) && (defined(SUPPORT_MOTOR_CONTROL) || defined(FPGA_MAINTAIN_COOR) || defined(EPSON_PRT_FLASH))
-	if(IsDelaySendData())
-	{
-		DelaySendData(PreFireNum, PostFireNum, b_first_pass);
-	}
-	else
-	{
-#endif
 
-#if defined(HEAD_EPSON_GEN5)
-		FPGA_SendData(True, PreFireNum); //Begin send data to FPGA FIFO
-#else
 		FPGA_SendData(True); //Begin send data to FPGA FIFO
-#endif					
 
 		while (g_FPGADMA_sendPkg < 3)
 			OSTimeDly(2);			
@@ -1609,32 +1418,7 @@ void BeginFPGABand(INT32U PreFireNum, INT32U PostFireNum, INT8U b_first_pass)
 		FPGA_BEGIN_BAND();   //FPGA transfer first data to print head
 #endif
 
-#if defined(HEAD_EPSON_GEN5) && (defined(SUPPORT_MOTOR_CONTROL) || defined(FPGA_MAINTAIN_COOR) || defined(EPSON_PRT_FLASH))
-	}
-#endif
 }
-#ifdef MICOLOR_AUTOFUCTION
-INT8U Media_Lack = False;
-INT8U Cover_up = False;
-INT8U Media_Not_Fixed = False;
-void Check_Print_Autofuction(void)
-{
-	if(IsOutOfMedia() && LCDMenuConfig.AutoLackMediaCheck)
-		Media_Lack = True;
-	else
-		Media_Lack = False;
-
-	if(LCDMenuConfig.AutoCoverCheck && !IsCoverSensorValid())
-		Cover_up = True;
-	else
-		Cover_up = False;
-
-	if(LCDMenuConfig.AutoFixCheck && !IsMediaFixed())
-		Media_Not_Fixed = True;
-	else
-		Media_Not_Fixed = False;
-}
-#endif
 INT8U BE_FLASH = False;
 void wait_cancel_Resume(void)
 {
@@ -1695,143 +1479,6 @@ void wait_cancel_Resume(void)
 }
 INT8U MediaType = 0;
 
-#ifdef EPSON_FLASH_IDLE
-extern void motion_wipe_split(INT8U Wipe_Speed,INT8U Wipe_Times,INT32S Wiper_Pos,
-		INT32S Z_WipePos,INT32S X_WipePos_Start,INT32S X_Wipe_Distance,INT8U head_num);
-extern void WIPE_TATE_RICOH(INT8U Wipe_Speed,INT8U Wipe_Times,INT32S Wiper_Pos,
-		INT32S Z_WipePos,INT32S X_WipePos_Start);
-extern INT8U flash_idle_on;
-#endif
-
-#if defined(EPSON_FLASH_IDLE)&&defined(EPSON_CLEAN_UPDOWN)
-void flash_idle_wiper(void)
-{	
-	INT8U cmdbuf[32],i,err;
-	struct CleanParaEpsonAllwin_Factory ActiveFactory;
-	struct CleanParaEpsonAllwin_Config ActiveConfig;
-	struct CleanParaEpsonAllwin_Runtime ActiveRuntime;
-	INT8U bAutoCleanInPrint = False;
-	INT16U Z_FlashPos = 0;
-	INT8U Allwin_ActivedConfig = 0;
-
-	status_ReportStatus(STATUS_CLEANING, STATUS_SET);
-
-	OSSemPend(CleaningParamSem, 0, &err);
-	memcpy(&ActiveFactory, &cleanparam_EPSON_ALLWIN.factory, sizeof(struct CleanParaEpsonAllwin_Factory));
-	memcpy(&ActiveRuntime, &cleanparam_EPSON_ALLWIN.Runtime, sizeof(struct CleanParaEpsonAllwin_Runtime));
-	memcpy(&ActiveConfig, &cleanparam_EPSON_ALLWIN.Config[2], sizeof(struct CleanParaEpsonAllwin_Config));
-	OSSemPost(CleaningParamSem);
-
-	for(i =0; i<2; i++)
-	{
-		if(1)
-		{
-#ifdef EPSON_CLEAN_UPDOWN_TATE_8H_RICOH                                                                            
-			WIPE_TATE_RICOH(ActiveConfig.Carriage_X_Wipe_Speed, ActiveConfig.WipeTimes, ActiveFactory.WiperPos_Y[i], 
-					ActiveFactory.HeadBox_Z_WipePos, ActiveFactory.Carriage_X_WipePos_Start[i]);
-#elif defined(EPSON_CLEAN_UPDOWN_WIPER_EX)||defined(SUPPORT_MOTOR_CONTROL_ONLY_STEP)
-			motion_wipe_split(ActiveConfig.Carriage_X_Wipe_Speed,ActiveConfig.WipeTimes,ActiveFactory.WiperPos_Y[i]
-					,ActiveFactory.HeadBox_Z_WipePos,ActiveFactory.Carriage_X_WipePos_Start[i],ActiveFactory.Carriage_X_WipePos_End[i] - 
-					ActiveFactory.Carriage_X_WipePos_Start[i],ActiveRuntime.HeadMask & (1<<i));										
-#else
-			status_ReportStatus(STATUS_MOVING, STATUS_SET);		              		              
-			cmdbuf[0] = 20; //Length						
-			cmdbuf[1] = UART_STARTSWIPE_CMD; 
-			cmdbuf[2] = ActiveConfig.Carriage_X_Wipe_Speed; 
-			cmdbuf[3] = ActiveConfig.WipeTimes; 
-			*((__packed INT32S *)&cmdbuf[4]) =  ActiveFactory.WiperPos_Y[i];
-			*((__packed INT32S *)&cmdbuf[8]) =  ActiveFactory.HeadBox_Z_WipePos;
-			*((__packed INT32S *)&cmdbuf[12]) =  ActiveFactory.Carriage_X_WipePos_Start[i];
-			*((__packed INT32S *)&cmdbuf[16]) =  (ActiveFactory.Carriage_X_WipePos_End[i] - 
-					ActiveFactory.Carriage_X_WipePos_Start[i]);                            
-			while (!UART_SendCMD(UART_MOTION_CHANNEL, cmdbuf)) 
-				OSTimeDly(100);			
-
-			OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,0,&err); //Waiting moving stop	
-#endif    
-			status_ReportStatus(STATUS_MOVING, STATUS_SET);		    
-			cmdbuf[0] = 7; //Length
-			cmdbuf[1] = UART_MOVETO_CMD;
-			*((__packed INT32S *)&cmdbuf[2]) = 0;
-			cmdbuf[6] = 7;
-
-			while (!UART_SendCMD(UART_MOTION_CHANNEL, cmdbuf)) 
-				OSTimeDly(100);			
-			OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, 0, &err); //Waiting moving stop
-
-		}
-	}
-	FPGA_START_FLASH_ALLWIN(1000,0xf);
-	OSTimeDly(500);
-	FPGA_STOP_FLASH();
-	OSTimeDly(100);
-	status_ReportStatus(STATUS_CLEANING, STATUS_CLR);
-}
-#endif		
-
-#if defined(RICOH_3H)&&defined(MANUFACTURER_DYSS) &&defined(UV_PRINTER)
-void End_Prt_Do_Uv(void)
-{
-	INT8U err;
-	INT8U cmdbuf[32];
-	if(uv_PrintDir == 1 && cur_step_distance <= DYSS_BASE_STEP * CAL_PRINT_UV_Y_STEP_PERCENT)
-	{
-		INT32U HEAD23_OFFSET = 0;
-
-		if(COLOR_NUMBER_CALIBRATION == 4)
-			HEAD23_OFFSET = UV_LIGHT_HEAD0_OFFSET - factoryData.m_fHeadXColorSpace*X_BASE_RES;
-		else 
-			HEAD23_OFFSET = UV_LIGHT_HEAD0_OFFSET - 2*factoryData.m_fHeadXColorSpace*X_BASE_RES;
-
-		if(data_header.Inf.band_inf.dir == 1)
-		{
-			print_Info.UV_MOVE_End =print_Info.PrintFire_Start - HEAD23_OFFSET - UV_LIGHT;
-			print_Info.UV_MOVE_Start = print_Info.PrintFire_End - UV_LIGHT_HEAD0_OFFSET;
-		}
-		else
-		{
-			print_Info.UV_MOVE_End = print_Info.PrintFire_End - UV_LIGHT_HEAD0_OFFSET;
-			print_Info.UV_MOVE_Start = print_Info.PrintFire_Start - HEAD23_OFFSET - UV_LIGHT;
-		}
-		DisableFPGAPosiIT(0);
-
-
-		OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, 0, &err); //Waiting moving stop
-
-		status_ReportStatus(STATUS_MOVING, STATUS_SET);		      
-		cmdbuf[0] = 7; //Length
-		cmdbuf[1] = UART_MOVETO_CMD;
-		*((__packed INT32U *)&cmdbuf[2]) = print_Info.UV_MOVE_Start;
-		cmdbuf[6] = X_PRINT_UV_SPEED;
-		while (!UART_SendCMD(UART_MOTION_CHANNEL, cmdbuf)) 
-			OSTimeDly(100);			
-		OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, 0, &err); //Waiting moving stop
-
-		Front_Light_on();
-		status_ReportStatus(STATUS_MOVING, STATUS_SET);		      
-		cmdbuf[0] = 7; //Length
-		cmdbuf[1] = UART_MOVETO_CMD;
-		*((__packed INT32U *)&cmdbuf[2]) = print_Info.UV_MOVE_End;
-		cmdbuf[6] = X_PRINT_UV_SPEED;
-		while (!UART_SendCMD(UART_MOTION_CHANNEL, cmdbuf)) 
-			OSTimeDly(100);			
-		OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, 0, &err); //Waiting moving stop
-
-		status_ReportStatus(STATUS_MOVING, STATUS_SET);		      
-		cmdbuf[0] = 7; //Length
-		cmdbuf[1] = UART_MOVETO_CMD;
-		*((__packed INT32U *)&cmdbuf[2]) = print_Info.UV_MOVE_Start;
-		cmdbuf[6] = X_PRINT_UV_SPEED;
-		while (!UART_SendCMD(UART_MOTION_CHANNEL, cmdbuf)) 
-			OSTimeDly(100);			
-		OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL, 0, &err); //Waiting moving stop
-
-		Front_Light_off();
-
-		EnableFPGAPosiIT(0);
-	}
-}
-#endif
 
 void Parser_Task(void* data)
 {
@@ -2003,12 +1650,6 @@ YZStat:
 
 #endif
 
-#ifdef FULGENCY_FUN
-			if(Y_GOHOME_Dirty >= Y_GOHOME_WAITE)
-				UV_CTR_PRT_Y_HOME_CLEAR();
-			if(Y_GOHOME_Dirty >= Y_GOHOME_IDLE)
-				Y_GOHOME_Dirty = Y_NORMAL;
-#endif
 #ifdef COORD_NEW_UV
 #if defined(MANUFACTURER_DYSS)||defined(ORIC_FUNCTION)
 			uv_UVMode = (Ripstar_UV_Setting.UV_SETTING >> 24)/10;

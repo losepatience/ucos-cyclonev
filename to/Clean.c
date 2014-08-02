@@ -1725,8 +1725,6 @@ void Clean_Task(void* data)
 					}
 					if(!bBreak)
 						OSTimeDly(lefttime*100);
-					//OSTimeDly(cleanPara.pauseIntervalAfterClean);
-
 
 					for(i =0; i<COLOR_NUMBER_CALIBRATION; i++)
 					{
@@ -1933,19 +1931,6 @@ void Clean_Task(void* data)
 					{
 						status_ReportStatus(STATUS_CLEANING, STATUS_SET);
 
-						//                    status_ReportStatus(STATUS_MOVING, STATUS_SET);
-						//                    buf[0] = 7;
-						//                    buf[1] = UART_MOVETO_CMD;
-						//                    buf[2] = 0;
-						//                    buf[3] = 0;
-						//                    buf[4] = 0;
-						//                    buf[5] = 0;
-						//                    buf[6] = printer.movSpeed;
-						//
-						//                    while (!UART_SendCMD(UART_MOTION_CHANNEL, buf)) //Go home
-						//                        OSTimeDly(100);
-						//                    OSFlagPend(status_FLAG_GRP, STATUS_MOVING, OS_FLAG_WAIT_CLR_ALL,0,&err); //Waiting moving stop
-
 						buf[0] = 4;
 						buf[1] = UART_HEAD_EPSON_JOBSTART;
 						buf[2] = 1; //flash Job
@@ -2043,7 +2028,6 @@ void Clean_Task(void* data)
 				status_ReportStatus(STATUS_PAUSE, STATUS_CLR);
 				status_ReportStatus(STATUS_PRINT, STATUS_SET);
 
-				//OSTimeDly(2000);
 				//Send UART CMD to MOTION to inform encoder_div, speed
 				buf[0] = 10; //Command length
 #ifdef SUPPORT_MOTOR_CONTROL
