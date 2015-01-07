@@ -23,8 +23,8 @@
 
 #include <platform.h>
 
-#define ARCH_NR_GPIOS		(2 * 29 + 60)	/* 60 fpga gpio */
-#define ARCH_NR_GPIOCHIPS	(2 + 4)		/* 4 fpga gpiochip */
+#define ARCH_NR_GPIOS		(118)	/* 60 fpga gpio */
+#define ARCH_NR_GPIOCHIPS	(2 + 4)	/* 4 fpga gpiochip */
 
 #define GPIOF_OPEN_DRAIN	(1 << 0)
 #define GPIOF_OPEN_SOURCE	(1 << 1)
@@ -37,7 +37,7 @@ static inline int gpio_is_valid(int number)
 struct gpio_chip {
 	int		base;
 	u16		ngpio;
-	spinlock_t	lock;
+	unsigned long	irqflags;
 	void		*priv;
 
 	int (*direction_input)(struct gpio_chip *chip, unsigned offset);
@@ -55,9 +55,6 @@ struct gpio_chip {
 	int (*to_irq)(struct gpio_chip *chip, unsigned offset);
 	int (*set_debounce)(struct gpio_chip *chip,
 			    unsigned offset, unsigned debounce);
-
-	void (*set_imode)(struct gpio_chip *chip, int en, unsigned mask,
-			unsigned itmask, unsigned imode, unsigned pol);
 };
 
 int gpio_set_debounce(unsigned gpio, unsigned debounce);

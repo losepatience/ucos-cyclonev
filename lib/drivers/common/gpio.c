@@ -24,9 +24,6 @@
 struct gpio_desc {
 	struct gpio_chip	*chip;
 	unsigned long		flags;
-/* flag symbols are bit numbers */
-#define FLAG_OPEN_DRAIN	1	/* gpio is open drain type */
-#define FLAG_OPEN_SOURCE 2	/* gpio is open source type */
 };
 
 static struct gpio_desc gpio_desc[ARCH_NR_GPIOS];
@@ -145,34 +142,21 @@ static void gpio_set_open_source_value(unsigned gpio, int value)
 
 void gpio_set_value(unsigned gpio, int value)
 {
-	unsigned long flags;
 	struct gpio_chip *chip;
 
 	chip = gpio_to_chip(gpio);
 
 	if (GPIOF_OPEN_DRAIN & gpio_desc[gpio].flags) {
-		spin_lock_irqsave(&chip->lock, flags);
+		local_irq_save(chip->irqflags);
 		gpio_set_open_drain_value(gpio, value);
-		spin_unlock_irqrestore(&chip->lock, flags);
+		local_irq_restore(chip->irqflags);
 	} else if (GPIOF_OPEN_SOURCE & gpio_desc[gpio].flags) {
-		spin_lock_irqsave(&chip->lock, flags);
+		local_irq_save(chip->irqflags);
 		gpio_set_open_source_value(gpio, value);
-		spin_unlock_irqrestore(&chip->lock, flags);
+		local_irq_restore(chip->irqflags);
 	} else {
 		chip->set(chip, gpio - chip->base, value);
 	}
-}
-
-void gpio_set_flags(unsigned gpio, unsigned long flags)
-{
-	unsigned long flag;
-	struct gpio_chip *chip;
-
-	chip = gpio_to_chip(gpio);
-
-	spin_lock_irqsave(&chip->lock, flag);
-	gpio_desc[gpio].flags = flags;
-	spin_unlock_irqrestore(&chip->lock, flag);
 }
 
 int gpiochip_add(struct gpio_chip *chip)

@@ -19,33 +19,40 @@
  * MA 02111-1307 USA
  */
 
-#include <serial_core.h>
+#include <uart_core.h>
 #include <string.h>
 
-struct uart_port *serial_ports[ARCH_NR_UARTPORTS];
+struct uart_port *uart_ports[ARCH_NR_UARTPORTS];
 
 struct uart_port *to_uart_port(int num)
 {
-	return serial_ports[num];
+	return uart_ports[num];
 }
 
-static void serial_start_tx(struct uart_port *port)
+static void uart_stop(struct uart_port *port)
+{
+	local_irq_save(port->irqflags);
+	port->stop_tx(port);
+	local_irq_restore(port->irqflags);
+}
+
+static void uart_start(struct uart_port *port)
 {
 	struct fifo *fifo = port->txfifo;
 
-	spin_lock_irqsave(&port->lock, port->irqflags);
+	local_irq_save(port->irqflags);
 	if (fifo_cached(fifo))
 		port->start_tx(port);
-	spin_unlock_irqrestore(&port->lock, port->irqflags);
+	local_irq_restore(port->irqflags);
 }
 
-int serial_write(int num, const unsigned char *buf, int count)
+int uart_write(int num, const unsigned char *buf, int count)
 {
 	struct uart_port *port = to_uart_port(num);
 	struct fifo *fifo = port->txfifo;
 	int ret = 0;
 
-	spin_lock_irqsave(&port->lock, port->irqflags);
+	local_irq_save(port->irqflags);
 	while (1) {
 		int c = fifo_unused(fifo);
 		if (count < c)
@@ -58,19 +65,19 @@ int serial_write(int num, const unsigned char *buf, int count)
 		count -= c;
 		ret += c;
 	}
-	spin_unlock_irqrestore(&port->lock, port->irqflags);
+	local_irq_restore(port->irqflags);
 
-	serial_start_tx(port);
+	uart_start(port);
 	return ret;
 }
 
-int serial_read(int num, unsigned char *buf, int count)
+int uart_read(int num, unsigned char *buf, int count)
 {
 	struct uart_port *port = to_uart_port(num);
 	struct fifo *fifo = port->rxfifo;
 	int ret = 0;
 
-	spin_lock_irqsave(&port->lock, port->irqflags);
+	local_irq_save(port->irqflags);
 	while (1) {
 		int c = fifo_cached(fifo);
 		if (count > c)
@@ -83,24 +90,25 @@ int serial_read(int num, unsigned char *buf, int count)
 		count -= c;
 		ret += c;
 	}
-	spin_unlock_irqrestore(&port->lock, port->irqflags);
+	local_irq_restore(port->irqflags);
 
 	return ret;
 }
 
-void serial_register_rxcb(int num, callback_t rxcb)
+void uart_register_rxcb(int num, callback_t rxcb)
 {
 	struct uart_port *port = to_uart_port(num);
-	spin_lock_irqsave(&port->lock, port->irqflags);
+
+	local_irq_save(port->irqflags);
 	port->rxcb = rxcb;
-	spin_unlock_irqrestore(&port->lock, port->irqflags);
+	local_irq_restore(port->irqflags);
 }
 
-int serial_port_add(struct uart_port *port)
+int uart_port_add(struct uart_port *port)
 {
-	spin_lock_irqsave(&port->lock, port->irqflags);
-	serial_ports[port->id] = port;
-	spin_unlock_irqrestore(&port->lock, port->irqflags);
+	local_irq_save(port->irqflags);
+	uart_ports[port->id] = port;
+	local_irq_restore(port->irqflags);
 
 	return 0;
 }

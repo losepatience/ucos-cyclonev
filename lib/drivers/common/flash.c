@@ -19,13 +19,6 @@
  * MA 02111-1307 USA
  */
 
-/*
- * only envs would be writen to buffer firstly, others would be
- * directly writen to the flash. there are 2 opportunities to
- * flush the buffer:
- *  1. at the arrival of the timer.
- *  2. when sync is manually called.
- */
 #include <asm/types.h>
 #include <platform.h>
 #include <errno.h>
@@ -34,7 +27,6 @@
 #include <flash.h>
 
 struct flash {
-	spinlock_t		lock;
 #ifndef CONFIG_NAND_FLASH
 	struct spi_flash	*chip;
 #else
@@ -88,11 +80,10 @@ static int __write(char *src, ulong addr, ulong cnt)
 
 int flash_write(char *src, ulong addr, ulong cnt)
 {
-	struct flash *flash = &__flash;
 	unsigned long flags = 0;
 	int rval = 0;
 
-	spin_lock_irqsave(&flash->lock, flags);
+	local_irq_save(flags);
 	while (cnt) {
 		int size = __write(src, addr, cnt);
 		if (size <= 0) {
@@ -106,7 +97,7 @@ int flash_write(char *src, ulong addr, ulong cnt)
 		cnt -= size;
 		rval += size;
 	}
-	spin_unlock_irqrestore(&flash->lock, flags);
+	local_irq_restore(flags);
 
 	return rval;
 }
@@ -117,11 +108,11 @@ int flash_read(char *des, ulong addr, ulong cnt)
 	unsigned long flags = 0;
 	int rval;
 
-	spin_lock_irqsave(&flash->lock, flags);
+	local_irq_save(flags);
 	rval = flash->chip->read(flash->chip, addr, cnt, des);
 	if (rval < 0)
 		cnt = rval;
-	spin_unlock_irqrestore(&flash->lock, flags);
+	local_irq_restore(flags);
 	return cnt;
 }
 

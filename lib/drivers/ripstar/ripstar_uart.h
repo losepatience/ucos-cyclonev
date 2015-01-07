@@ -22,7 +22,7 @@
 #ifndef __CYCSERIAL_H__
 #define __CYCSERIAL_H__
 
-#include <serial_core.h>
+#include <uart_core.h>
 
 int cyc_uart_port_add(int num);
 

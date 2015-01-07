@@ -35,7 +35,6 @@
 #define W1_RESUME_CMD		0xA5
 
 struct w1_master {
-	spinlock_t	lock;
 	unsigned long	irqflags;
 
 	unsigned char	(*read_bit)(void);

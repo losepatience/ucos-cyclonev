@@ -42,7 +42,7 @@ tbreak spl_boot_device
 cont
 
 # wait for breakpoint
-wait 60s
+wait 10s
 
 
 # Create function to deassert fpga bridge reset
@@ -74,4 +74,4 @@ start
 thbreak TaskStart
 #thbreak _start
 cont
-wait 60s
+wait 10s

@@ -83,12 +83,20 @@ typedef struct spinlock {
 	u32 lock;
 } spinlock_t;
 
+#define local_irq_save(flags)		\
+	do {					\
+		flags = OS_CPU_SR_Save();	\
+	} while (0)
+#define local_irq_restore(flags)		\
+	do {					\
+		OS_CPU_SR_Restore(flags);	\
+	} while (0)
+
 #define spin_lock_irqsave(lock, flags)		\
 	do {					\
 		flags = OS_CPU_SR_Save();	\
 		(void)lock;			\
 	} while (0)
-
 #define spin_unlock_irqrestore(lock, flags)	\
 	do {					\
 		OS_CPU_SR_Restore(flags);	\

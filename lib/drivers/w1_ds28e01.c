@@ -12,7 +12,7 @@
 #include <malloc.h>
 #include <errno.h>
 #include <delay.h>
-#include <ssl.h>
+#include <crypto.h>
 #include <w1.h>
 #include <gpio.h>
 #include <stddef.h>
@@ -318,25 +318,26 @@ static u8 ripstar_secret[8] = {
 
 u8 InitSecurityChip(void)
 {
+	u8 buf[8];
 	u8 page[32];
-	u8 *p = page + 8;
 	struct w1_slave *sl = w1_f2f_get_slave();
 
 	u8 chlge[8] = {
 		0xFF, 0xFF, 0x12, 0x24, 0x4D, 0x2A, 0x73, 0xFF
 	};
 
-	if (w1_f2f_read(sl, p, 0x88, 24) != 24)
+	if (w1_f2f_read(sl, page + 8, 0x88, 24) != 24)
 		return false;
 
-	if (0) {//(p[0] != 0x55 && p[0] != 0xAA) {
+	if (page[8] != 0x55 && page[8] != 0xAA) {
 
 		if (w1_f2f_load_secret(sl, ripstar_secret, 0x80))
 			return false;
 
-		p[0] = 0x55;
 		memcpy(page, ripstar_secret, 8);
-		if (w1_f2f_write8(sl, p, 0x88, page))
+		memcpy(buf, page + 8, 8);
+		buf[0] = 0x55;
+		if (w1_f2f_write8(sl, buf, 0x88, page))
 			return false;
 	} else if (w1_f2f_auth(sl, chlge, 1)) {
 		return false;
@@ -381,8 +382,6 @@ u8 Init_OneWire(void)
 	owBoardID = *((unsigned int *)tmp);
 	owManufacturerID = *((unsigned short *)(tmp + sizeof(int)));
 #endif
-	InitSecurityChip();
-	WriteBoardAndManufacturerID(0x11223344, 0xaabb);
 	return true;
 }
 

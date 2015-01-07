@@ -21,7 +21,7 @@
 
 #include <w1.h>
 #include <delay.h>
-#include <ssl.h>
+#include <crypto.h>
 
 static unsigned char w1_read_bit(struct w1_master *master)
 {
@@ -36,14 +36,14 @@ static unsigned char w1_read_bit(struct w1_master *master)
 	 */
 
 	/* sample timing is critical here */
-	spin_lock_irqsave(master->lock, master->irqflags);
+	local_irq_save(master->irqflags);
 	master->write_bit(0);
 	udelay(6);
 	master->write_bit(1);
 	udelay(9);
 
 	val = master->read_bit();
-	spin_unlock_irqrestore(master->lock, master->irqflags);
+	local_irq_restore(master->irqflags);
 
 	udelay(55);
 
@@ -61,7 +61,7 @@ static void w1_write_bit(struct w1_master *master, unsigned char bit)
 	 * XXX: the master pulls the master down for tW1L or tW0L
 	 */
 
-	spin_lock_irqsave(master->lock, master->irqflags);
+	local_irq_save(master->irqflags);
 	if (bit) {
 		master->write_bit(0);
 		udelay(6);
@@ -73,7 +73,7 @@ static void w1_write_bit(struct w1_master *master, unsigned char bit)
 		master->write_bit(1);
 		udelay(10);
 	}
-	spin_unlock_irqrestore(master->lock, master->irqflags);
+	local_irq_restore(master->irqflags);
 }
 
 int w1_reset(struct w1_slave *sl)

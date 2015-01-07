@@ -30,7 +30,7 @@
 #include <delay.h>
 #include <asm/io.h>
 #include <asm/regs.h>
-#include <serial_core.h>
+#include <uart_core.h>
 
 #define CONFIG_UART_BASE	(SOCFPGA_LWH2F_ADDRESS + 0x1000)
 #define CONFIG_UART_IRQ		77
@@ -143,7 +143,7 @@ int cyc_uart_port_add(int num)
 	port->fifosize	= size;
 
 	request_irq(port->irq, cyc_uart_isr, NULL);
-	serial_port_add(port);
+	uart_port_add(port);
 
 	/* enable rx */
 	setbits32(port->base + UARTIER, 1 << (num + 4));

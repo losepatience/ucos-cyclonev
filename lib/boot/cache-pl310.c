@@ -84,8 +84,6 @@ struct pl310 {
 	void		*base;
 	u32		size;
 	u32		way_mask;
-
-	spinlock_t	lock;
 };
 
 static struct pl310 *__pl310;
@@ -109,12 +107,11 @@ static inline void cache_sync(void)
 
 static void pl310_cache_sync(void)
 {
-	struct pl310 *pl310 = __get_pl310();
 	unsigned long flags;
 
-	spin_lock_irqsave(&pl310->lock, flags);
+	local_irq_save(flags);
 	cache_sync();
-	spin_unlock_irqrestore(&pl310->lock, flags);
+	local_irq_restore(flags);
 }
 
 /* ------------------------------------------------------------------------------
@@ -135,11 +132,11 @@ static void pl310_op_all(u32 opreg)
 	struct pl310 *pl310 = __get_pl310();
 	unsigned long flags;
 
-	spin_lock_irqsave(&pl310->lock, flags);
+	local_irq_save(flags);
 	writel_relaxed(pl310->way_mask, pl310->base + opreg);
 	cache_wait_way(pl310->base + opreg);
 	cache_sync();
-	spin_unlock_irqrestore(&pl310->lock, flags);
+	local_irq_restore(flags);
 
 }
 static void pl310_inv_all(void)
@@ -167,10 +164,9 @@ static inline void pl310_flush_all(void)
  */
 static void pl310_op_range(ulong start, ulong end, u32 opreg)
 {
-	struct pl310 *pl310 = __get_pl310();
 	unsigned long flags;
 
-	spin_lock_irqsave(&pl310->lock, flags);
+	local_irq_save(flags);
 	while (start < end) {
 		u32 blk_end = start + min(end - start, 4096UL);
 
@@ -180,21 +176,20 @@ static void pl310_op_range(ulong start, ulong end, u32 opreg)
 		}
 
 		if (blk_end < end) {
-			spin_unlock_irqrestore(&pl310->lock, flags);
-			spin_lock_irqsave(&pl310->lock, flags);
+			local_irq_restore(flags);
+			local_irq_save(flags);
 		}
 	}
 	cache_sync();
-	spin_unlock_irqrestore(&pl310->lock, flags);
+	local_irq_restore(flags);
 
 }
 
 static void pl310_inv_range(unsigned long start, unsigned long end)
 {
-	struct pl310 *pl310 = __get_pl310();
 	unsigned long flags;
 
-	spin_lock_irqsave(&pl310->lock, flags);
+	local_irq_save(flags);
 	if (start & (CACHE_LINE_SIZE - 1)) {
 		start &= ~(CACHE_LINE_SIZE - 1);
 		pl310_op_line(start, L2X0_INV_LINE_PA);
@@ -205,7 +200,7 @@ static void pl310_inv_range(unsigned long start, unsigned long end)
 		end &= ~(CACHE_LINE_SIZE - 1);
 		pl310_op_line(end, L2X0_INV_LINE_PA);
 	}
-	spin_unlock_irqrestore(&pl310->lock, flags);
+	local_irq_restore(flags);
 
 	pl310_op_range(start, end, L2X0_INV_LINE_PA);
 }

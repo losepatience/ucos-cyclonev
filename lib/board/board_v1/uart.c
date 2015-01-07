@@ -25,7 +25,7 @@
 #include <errno.h>
 
 #include <fifo.h>
-#include <ssl.h>
+#include <crypto.h>
 #include <platform.h>
 #include <ripstar_uart.h>
 
@@ -62,7 +62,6 @@ int uart_waittime[4];	/* not used, just for complitable */
  */
 
 struct SA_channel {
-	spinlock_t		lock;
 	unsigned long		irqflags;
 
 	unsigned int		fifosize;
@@ -76,6 +75,8 @@ struct SA_channel {
 	bool			txACK;
 	struct fifo		*rxfifo;
 	struct fifo		*txfifo;
+	int			idx;
+	u8			cmd[MAX_SAPACKET_LEN];
 };
 
 static struct SA_channel *SA_chans[UART_CHNUM];
@@ -124,57 +125,67 @@ static void SA_callback(void *arg)
 	struct SA_channel *chan = to_SA_channel(num);
 	unsigned char ch;
 
-	static u8 cmd[MAX_SAPACKET_LEN] = { 0xaa };
-	static int idx;
-
-	serial_read(num, &ch, 1);
+	uart_read(num, &ch, 1);
 
 	if (fifo_unused(chan->rxfifo) < MAX_SAPACKET_LEN)
 		return;
 
-	if (idx == 0 && ch != 0xaa)
+	if (chan->idx == 0 && ch != 0xaa)
 		return;
 
-	if (idx == 1) {
+	if (chan->idx == 1) {
 		if (ch == !chan->rx_toggle) {
-			cmd[idx++] = ch;
+			chan->cmd[chan->idx++] = ch;
 		} else {
-			idx = 0;
+			chan->idx = 0;
 
 			if (ch == 0x55)	/* this is an ACK */
 				chan->txACK = true;
 		}
 
-	} else if (idx == 3 && (ch > MAX_SAPACKET_LEN || ch < 5)) {
-		idx = 0;
-	} else if (idx > 3 && idx == cmd[3]) {
+	} else if (chan->idx == 3 && (ch > MAX_SAPACKET_LEN || ch < 5)) {
+		chan->idx = 0;
+	} else if (chan->idx > 3 && chan->idx == chan->cmd[3]) {
 
 		const u8 ack[] = { 0xaa, 0x55 };
 
-		cmd[idx] = ch;
-		idx = 0;
+		chan->cmd[chan->idx] = ch;
+		chan->idx = 0;
 
-		/* cmd[2] is the check sum of the received packet */
-		if (!SA_is_valid_packet(num, cmd, cmd[3], cmd[2]))
+		/* chan->cmd[2] is the check sum of the received packet */
+		if (!SA_is_valid_packet(num, chan->cmd,
+					chan->cmd[3], chan->cmd[2]))
 			return;
 
 		chan->rx_toggle = !chan->rx_toggle;
 
-		cmd[3] -= 3;
-		fifo_in(chan->rxfifo, &cmd[3], cmd[3]);
-		serial_write(num, ack, 2);	/* ACK */
+		chan->cmd[3] -= 3;
+		fifo_in(chan->rxfifo, &chan->cmd[3], chan->cmd[3]);
+		uart_write(num, ack, 2);	/* ACK */
 	} else {
-		cmd[idx++] = ch;
+		chan->cmd[chan->idx++] = ch;
 	}
+}
+
+static void __UART_SetCheckModel(u8 num, u8 model)
+{
+	struct SA_channel *chan = to_SA_channel(num);
+
+	local_irq_save(chan->irqflags);
+	chan->chkmod = model;
+	local_irq_restore(chan->irqflags);
 }
 
 void UART_SetCheckModel(u8 num, u8 model)
 {
-	struct SA_channel *chan = to_SA_channel(num);
+	if (num == UART_HEAD_CHANNEL) {
+		int i;
 
-	spin_lock_irqsave(&chan->lock, chan->irqflags);
-	chan->chkmod = model;
-	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
+		for (i = 0; i < 4; i++)
+			__UART_SetCheckModel(i, model);
+	} else {
+		__UART_SetCheckModel(num, model);
+	}
 }
 
 /* virtual uart device. data received would be stored in txfifo */
@@ -186,7 +197,7 @@ u8 UART_MotionGetCMD(u8 *data)
 	int len;
 
 
-	spin_lock_irqsave(&chan->lock, chan->irqflags);
+	local_irq_save(chan->irqflags);
 
 	if (fifo_cached(fifo) == 0)
 		goto err_out;
@@ -200,7 +211,7 @@ u8 UART_MotionGetCMD(u8 *data)
 	ret = true;
 
 err_out:
-	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
+	local_irq_restore(chan->irqflags);
 	return ret;
 }
 
@@ -211,16 +222,16 @@ static u8 UART_SendMotionCMD(u8 *data)
 	u8 len = data[0];
 	u8 err;
 
-	spin_lock_irqsave(&chan->lock, chan->irqflags);
+	local_irq_save(chan->irqflags);
 	if (fifo_unused(fifo) < len) {
-		spin_unlock_irqrestore(&chan->lock, chan->irqflags);
+		local_irq_restore(chan->irqflags);
 		return false;
 	}
 
 	fifo_in(fifo, data, len);
-	//OSFlagPost(mix_FLAG_GRP, MOTION_SEND_CMD, OS_FLAG_SET, &err);
+	OSFlagPost(mix_FLAG_GRP, MOTION_SEND_CMD, OS_FLAG_SET, &err);
 
-	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
+	local_irq_restore(chan->irqflags);
 	return true;
 }
 
@@ -232,27 +243,27 @@ u8 UART_MotionReportCMD(u8 *data)
 	u8 err;
 
 
-	spin_lock_irqsave(&chan->lock, chan->irqflags);
+	local_irq_save(chan->irqflags);
 	if (fifo_unused(fifo) < len) {
-		spin_unlock_irqrestore(&chan->lock, chan->irqflags);
+		local_irq_restore(chan->irqflags);
 		return false;
 	}
 
 	fifo_in(fifo, data, len);
-	//OSFlagPost(mix_FLAG_GRP, MOTION_REPORT_CMD, OS_FLAG_SET, &err);
-	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
+	OSFlagPost(mix_FLAG_GRP, MOTION_REPORT_CMD, OS_FLAG_SET, &err);
+	local_irq_restore(chan->irqflags);
 
 	return true;
 }
 
-u8 UART_GetCMD(u8 num, u8 *data)
+u8 __UART_GetCMD(u8 num, u8 *data)
 {
 	struct SA_channel *chan = to_SA_channel(num);
 	struct fifo *fifo = chan->rxfifo;
 	bool ret = false;
 	u8 len;
 
-	spin_lock_irqsave(&chan->lock, chan->irqflags);
+	local_irq_save(chan->irqflags);
 
 	if (fifo_cached(fifo) == 0)
 		goto out;
@@ -264,11 +275,28 @@ u8 UART_GetCMD(u8 num, u8 *data)
 	fifo_out(fifo, data, len);
 	ret = true;
 out:
-	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
+	local_irq_restore(chan->irqflags);
 	return ret;
 }
 
-u8 UART_SendCMD(u8 num, u8 *data)
+u8 UART_GetCMD(u8 num, u8 *data)
+{
+	if (num == UART_HEAD_CHANNEL) {
+		int i;
+
+		for (i = 0; i < 4; i++)
+			if (__UART_GetCMD(i, data)) {
+				data[data[0]++] = i + 1;
+				return true;
+			}
+	} else {
+		return __UART_GetCMD(num, data);
+	}
+
+	return false;
+}
+
+u8 __UART_SendCMD(u8 num, u8 *data)
 {
 	struct SA_channel *chan;
 	u8 buf[MAX_SAPACKET_LEN];
@@ -288,18 +316,35 @@ u8 UART_SendCMD(u8 num, u8 *data)
 	buf[3] = data[0] + 3;	/* len */
 	buf[2] = SA_gen_chksum(buf, buf[3], chan->chkmod, 0);
 
-	spin_lock_irqsave(&chan->lock, chan->irqflags);
+	local_irq_save(chan->irqflags);
 	if (!chan->txACK)
 		goto out;
 
-	if (serial_write(num, buf, buf[3]) == buf[3]) {
+	if (uart_write(num, buf, buf[3]) == buf[3]) {
 		chan->txACK = false;
 		chan->tx_toggle = !chan->tx_toggle;
 		ret = true;
 	}
 out:
-	spin_unlock_irqrestore(&chan->lock, chan->irqflags);
+	local_irq_restore(chan->irqflags);
 	return ret;
+}
+
+
+u8 UART_SendCMD(u8 num, u8 *data)
+{
+	if (num == UART_HEAD_CHANNEL) {
+		int i;
+
+		for (i = 0; i < 4; i++) {
+			if (!__UART_SendCMD(i, data))
+				return false;
+		}
+	} else {
+		return __UART_SendCMD(num, data);
+	}
+
+	return true;
 }
 
 static struct SA_channel *SA_add_channel(int num)
@@ -351,7 +396,7 @@ void UART_Init(u8 flag)
 			SA_chans[num] = chan;
 		} else {
 			cyc_uart_port_add(num);
-			serial_register_rxcb(num, SA_callback);
+			uart_register_rxcb(num, SA_callback);
 		}
 	}
 }

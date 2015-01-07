@@ -50,7 +50,7 @@ typedef struct {
 
 static unsigned int numSources;
 static InterruptSource pSources[MAX_INTERRUPT_SOURCES];
-static spinlock_t pio_lock;
+static unsigned long pio_irqflags;
 
 extern struct gpio_chip __gc[DWGPIO_CHIP_NUM + 4];
 
@@ -67,47 +67,44 @@ static int dw_gpio_get(struct gpio_chip *gc, unsigned offset)
 static void dw_gpio_set(struct gpio_chip *gc, unsigned offset, int val)
 {
 	unsigned int reg;
-	unsigned long flags = 0;
 
-	spin_lock_irqsave(&pio_lock, flags);
+	local_irq_save(pio_irqflags);
 	reg = readl(gc->priv + DW_GPIO_DR);
 	if (val)
 		reg |= 1 << offset;
 	else
 		reg &= ~(1 << offset);
 	writel(reg, gc->priv + DW_GPIO_DR);
-	spin_unlock_irqrestore(&pio_lock, flags);
+	local_irq_restore(pio_irqflags);
 }
 
 static int dw_gpio_direction_input(struct gpio_chip *gc, unsigned offset)
 {
 	unsigned int ddr;
-	unsigned long flags = 0;
 
-	spin_lock_irqsave(&pio_lock, flags);
+	local_irq_save(pio_irqflags);
 	/* Set pin as input, assumes software controlled IP */
 	ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
 	ddr &= ~(1 << offset);
 	writel(ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
-	spin_unlock_irqrestore(&pio_lock, flags);
+	local_irq_restore(pio_irqflags);
 
 	return 0;
 }
 
 static int dw_gpio_direction_output(struct gpio_chip *gc,
-				unsigned int offset, int val)
+		unsigned int offset, int val)
 {
 	unsigned int ddr;
-	unsigned long flags = 0;
 
 	dw_gpio_set(gc, offset, val);
 
-	spin_lock_irqsave(&pio_lock, flags);
+	local_irq_save(pio_irqflags);
 	/* Set pin as output, assumes software controlled IP */
 	ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
 	ddr |= (1 << offset);
 	writel(ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
-	spin_unlock_irqrestore(&pio_lock, flags);
+	local_irq_restore(pio_irqflags);
 	return 0;
 }
 
@@ -122,9 +119,8 @@ static int dw_gpio_get_array(struct gpio_chip *gc, unsigned mask)
 static void dw_gpio_set_array(struct gpio_chip *gc, unsigned mask, int val)
 {
 	unsigned int reg;
-	unsigned long flags = 0;
 
-	spin_lock_irqsave(&pio_lock, flags);
+	local_irq_save(pio_irqflags);
 
 	reg = readl(gc->priv + DW_GPIO_DR);
 	if (val)
@@ -133,73 +129,37 @@ static void dw_gpio_set_array(struct gpio_chip *gc, unsigned mask, int val)
 		reg &= ~mask;
 
 	writel(reg, gc->priv + DW_GPIO_DR);
-	spin_unlock_irqrestore(&pio_lock, flags);
+	local_irq_restore(pio_irqflags);
 }
 
 static int dw_gpio_direction_input_array(struct gpio_chip *gc, unsigned mask)
 {
 	unsigned int ddr;
-	unsigned long flags = 0;
 
-	spin_lock_irqsave(&pio_lock, flags);
+	local_irq_save(pio_irqflags);
 	/* Set pin as input, assumes software controlled IP */
 	ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
 	ddr &= ~mask;
 	writel(ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
-	spin_unlock_irqrestore(&pio_lock, flags);
+	local_irq_restore(pio_irqflags);
 
 	return 0;
 }
 
 static int dw_gpio_direction_output_array(struct gpio_chip *gc,
-				unsigned int mask, int val)
+		unsigned int mask, int val)
 {
 	unsigned int ddr;
-	unsigned long flags = 0;
 
 	dw_gpio_set_array(gc, mask, val);
 
-	spin_lock_irqsave(&pio_lock, flags);
+	local_irq_save(pio_irqflags);
 	/* Set pin as output, assumes software controlled IP */
 	ddr = readl(gc->priv + GPIO_DDR_OFFSET_PORT);
 	ddr |= mask;
 	writel(ddr, gc->priv + GPIO_DDR_OFFSET_PORT);
-	spin_unlock_irqrestore(&pio_lock, flags);
+	local_irq_restore(pio_irqflags);
 	return 0;
-}
-
-/* imode1: level-sensitive */
-static void dw_gpio_set_imode(struct gpio_chip *gc, int en, unsigned mask,
-		unsigned itmask, unsigned imode, unsigned pol)
-{
-	unsigned int reg;
-
-	/* disable irq */
-	if (en == 0) {
-		reg = readl(gc->priv + GPIO_INT_EN_REG_OFFSET);
-		reg &= ~mask;
-		writel(reg, gc->priv + GPIO_INT_EN_REG_OFFSET);
-		return;
-	}
-
-
-	if(mask & itmask) {
-		unsigned long flags = 0;
-
-		if (mask & imode)	/* level */
-			imode = ~imode;
-
-		if (!(mask & pol))	/* active low or falling edge */
-			pol = ~pol;
-
-		spin_lock_irqsave(&pio_lock, flags);
-		writel(imode, gc->priv + GPIO_INT_TYPE_LEVEL_REG_OFFSET);
-		writel(pol, gc->priv + GPIO_INT_POLARITY_REG_OFFSET);
-		spin_unlock_irqrestore(&pio_lock, flags);
-	} else {
-		/* default: edge-sensitive */
-		writel(mask, gc->priv + GPIO_INT_TYPE_LEVEL_REG_OFFSET);
-	}
 }
 
 int dw_gpio_init(void)
@@ -220,13 +180,15 @@ int dw_gpio_init(void)
 		gc->direction_input	= dw_gpio_direction_input;
 		gc->direction_output	= dw_gpio_direction_output;
 
-		gc->set_imode		= dw_gpio_set_imode;
 		gc->get_array		= dw_gpio_get_array;
 		gc->set_array		= dw_gpio_set_array;
 		gc->direction_input_array  = dw_gpio_direction_input_array;
 		gc->direction_output_array = dw_gpio_direction_output_array;
 
+		/* edge-sensitive only */
+		writel(0x1FFFFFFF, gc->priv + GPIO_INT_TYPE_LEVEL_REG_OFFSET);
 		gpiochip_add(gc);
+
 	}
 
 	return 0;
@@ -267,14 +229,14 @@ void PIO_Set(const Pin *pin)
 {
 	struct gpio_chip *gc = __get_gpiochip(pin);
 	if (gc != 0)
-		gc->set_array(gc, pin->mask, 1);
+		gc->direction_output_array(gc, pin->mask, 1);
 }
 
 void PIO_Clear(const Pin *pin)
 {
 	struct gpio_chip *gc = __get_gpiochip(pin);
 	if (gc != 0)
-		gc->set_array(gc, pin->mask, 0);
+		gc->direction_output_array(gc, pin->mask, 0);
 }
 
 char PIO_Get(const Pin *pin)
@@ -285,7 +247,7 @@ char PIO_Get(const Pin *pin)
 	if (gc == 0)
 		return -1;
 
-	if (gc->get_array(gc, pin->mask))
+	if (gc->direction_input_array(gc, pin->mask))
 		return 1;
 
 	return 0;
@@ -330,7 +292,7 @@ void PIO_InitializeInterrupts(unsigned int priority)
 	int i;
 
 	dw_gpio_init();
-	cycgpio_init();
+	rsgpio_init();
 
 	for (i = 0; i < ARCH_NR_GPIOCHIPS; i++) {
 
@@ -345,7 +307,6 @@ void PIO_InitializeInterrupts(unsigned int priority)
 
 void PIO_ConfigureIt(const Pin *pin, void (*handler)(const Pin *))
 {
-	unsigned long flags = 0;
 	InterruptSource *pSource;
 
 	if (numSources >= MAX_INTERRUPT_SOURCES) {
@@ -353,20 +314,20 @@ void PIO_ConfigureIt(const Pin *pin, void (*handler)(const Pin *))
 		return;
 	}
 
-	spin_lock_irqsave(&pio_lock, flags);
+	local_irq_save(pio_irqflags);
+	PIO_Configure(pin, 1);
 	pSource = &(pSources[numSources]);
 	pSource->pin = pin;
 	pSource->handler = handler;
 	numSources++;
-	spin_unlock_irqrestore(&pio_lock, flags);
+	local_irq_restore(pio_irqflags);
 }
 
 void PIO_UnConfigureIt(const Pin *pin)
 {
 	int i, j;
-	unsigned long flags = 0;
 
-	spin_lock_irqsave(&pio_lock, flags);
+	local_irq_save(pio_irqflags);
 	for (i = 0; i < numSources; i++) {
 		if (pSources[i].pin == pin) {
 			for (j = i; j < numSources - 1; j++) {
@@ -377,41 +338,46 @@ void PIO_UnConfigureIt(const Pin *pin)
 			break;
 		}
 	}
-	spin_unlock_irqrestore(&pio_lock, flags);
-}
-
-static void PIO_Set_debounce(const Pin *pin)
-{
-	struct gpio_chip *gc = __get_gpiochip(pin);
-	unsigned long flags = 0;
-	unsigned int reg;
-
-	if (!gc || gc->base > (DWGPIO_CHIP_NUM - 1) * 29)
-		return;
-
-	spin_lock_irqsave(&pio_lock, flags);
-	reg = readl(gc->priv + DW_GPIO_DEBOUNCE);
-	reg |= pin->mask;
-	writel(reg, gc->priv + DW_GPIO_DEBOUNCE);
-	spin_unlock_irqrestore(&pio_lock, flags);
+	local_irq_restore(pio_irqflags);
 }
 
 void PIO_EnableIt(const Pin *pin)
 {
+	unsigned reg, IER;
 	struct gpio_chip *gc = __get_gpiochip(pin);
-	if (gc) {
 
-		PIO_Configure(pin, 1);
-		PIO_Set_debounce(pin);
-		gc->set_imode(gc, 1, pin->mask, pin->imode.imask,
-				pin->imode.type, pin->imode.polarity);
-	}
+	if (!gc)
+		return;
+
+	if (gc->base <= 29 * (DWGPIO_CHIP_NUM - 1))
+		IER = GPIO_INT_EN_REG_OFFSET;
+	else
+		IER = CYCGPIO_IER;
+
+	local_irq_save(pio_irqflags);
+	reg = readl(gc->priv + IER);
+	reg |= pin->mask;
+	writel(reg, gc->priv + IER);
+	local_irq_restore(pio_irqflags);
 }
 
 void PIO_DisableIt(const Pin *pin)
 {
+	unsigned reg, IER;
 	struct gpio_chip *gc = __get_gpiochip(pin);
-	if (gc)
-		gc->set_imode(gc, 0, pin->mask, 0, 0, 0);
+
+	if (!gc)
+		return;
+
+	if (gc->base <= 29 * (DWGPIO_CHIP_NUM - 1))
+		IER = GPIO_INT_EN_REG_OFFSET;
+	else
+		IER = CYCGPIO_IER;
+
+	local_irq_save(pio_irqflags);
+	reg = readl(gc->priv + IER);
+	reg &= ~pin->mask;
+	writel(reg, gc->priv + IER);
+	local_irq_restore(pio_irqflags);
 }
 

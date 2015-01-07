@@ -30,7 +30,6 @@
 #define UART_XMIT_SIZE		(512)
 
 struct uart_port {
-	spinlock_t		lock;
 	unsigned char		*base;
 	void			*iobase;
 
@@ -41,6 +40,7 @@ struct uart_port {
 	struct fifo		*rxfifo;
 
 	void			(*start_tx)(struct uart_port *);
+	void			(*stop_tx)(struct uart_port *);
 	unsigned int		irq;			/* irq number */
 	unsigned long		irqflags;		/* irq flags  */
 	unsigned int		fifosize;		/* tx fifo size */

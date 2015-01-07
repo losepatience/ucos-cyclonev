@@ -26,7 +26,6 @@
 
 static struct mutex  pr_lock;
 static struct mutex  puts_lock;
-static spinlock_t __spinlock;
 
 static struct stdio_dev *stdio_dev[3];
 static char printbuffer[1024];
@@ -36,9 +35,9 @@ int stdio_register(int fd, struct stdio_dev *dev)
 	unsigned long flags = 0;
 
 	/* allow to reassign stdio_dev to fd */
-	spin_lock_irqsave(&__spinlock, flags);
+	local_irq_save(flags);
 	stdio_dev[fd] = dev;
-	spin_unlock_irqrestore(&__spinlock, flags);
+	local_irq_restore(flags);
 	return 0;
 }
 
@@ -47,9 +46,9 @@ int fputc(int fd, const char c)
 	struct stdio_dev *dev;
 	unsigned long flags = 0;
 
-	spin_lock_irqsave(&__spinlock, flags);
+	local_irq_save(flags);
 	dev = stdio_dev[fd];
-	spin_unlock_irqrestore(&__spinlock, flags);
+	local_irq_restore(flags);
 
 	if (!dev || !dev->putc)
 		return EOF;

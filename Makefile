@@ -62,10 +62,8 @@ SPECS += HEAD_LEVEL_SENSOR
 SPECS += TRACE_LEVEL=0
 SPECS += SUPPORT_HEAD_HEATER
 SPECS += RICOH_VSD2
-SPECS += UV_PRINTER
-SPECS += WAVE_SET_FUN
-SPECS += RIPSTAR_FLAT_EX OLD_UV
-SPECS += COORD_NEW_UV		# confirm
+
+# SPECS += noRIPSTAR_FLAT_EX	# the square is fixed
 
 # --- board specification
 SPECS += IIC_Key_Board_LCD
@@ -81,7 +79,10 @@ SPECS += FPGA_MAINTAIN_COOR
 SPECS += RICOH_CLEAN_PRESS	# big headboard clean manually
 
 SPECS += SUPPORT_MOTOR_CONTROL
-SPECS += MANUFACTURER_DYSS	# a new one
+SPECS += OPEN_IDLE_FLUSH
+SPECS += MANUFACTURER_ORIC_COMMON	# a new one
+
+SPECS += CONVERSION_BOARD
 CFLAGS += $(SPECS:%=-D%)
 
 # ===============================================================

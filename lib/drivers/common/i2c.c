@@ -21,7 +21,6 @@
 #include <errno.h>
 #include "i2c.h"
 
-static spinlock_t __i2c_lock;
 static LIST_HEAD(i2c_adap_list);
 
 int i2c_is_numbered_adapter_registered(int busnum)
@@ -29,15 +28,15 @@ int i2c_is_numbered_adapter_registered(int busnum)
 	struct i2c_adapter *tmp;
 	unsigned long flags = 0;
 
-	spin_lock_irqsave(&__i2c_lock, flags);
+	local_irq_save(flags);
 	list_for_each_entry(tmp, &i2c_adap_list, list) {
 		if (tmp->busnum == busnum) {
-			spin_unlock_irqrestore(&__i2c_lock, flags);
+			local_irq_restore(flags);
 			pr_info("i2c adapter%d already registered\n");
 			return 1;
 		}
 	}
-	spin_unlock_irqrestore(&__i2c_lock, flags);
+	local_irq_restore(flags);
 	return 0;
 }
 
@@ -50,9 +49,9 @@ int i2c_register_adapter(struct i2c_adapter *adap, int busnum)
 		return -EINVAL;
 	}
 
-	spin_lock_irqsave(&__i2c_lock, flags);
+	local_irq_save(flags);
 	if (i2c_is_numbered_adapter_registered(busnum)) {
-		spin_unlock_irqrestore(&__i2c_lock, flags);
+		local_irq_restore(flags);
 		return -EINVAL;
 	}
 
@@ -60,7 +59,7 @@ int i2c_register_adapter(struct i2c_adapter *adap, int busnum)
 	mutex_init(&adap->lock);
 	list_add_tail(&adap->list, &i2c_adap_list);
 
-	spin_unlock_irqrestore(&__i2c_lock, flags);
+	local_irq_restore(flags);
 	return 0;
 }
 
@@ -70,16 +69,16 @@ struct i2c_adapter *i2c_get_adapter(int busnum)
 	unsigned long flags = 0;
 
 	/* this lock is unneccessary for now, it is here for to add del func */
-	spin_lock_irqsave(&__i2c_lock, flags);
+	local_irq_save(flags);
 	list_for_each_entry(tmp, &i2c_adap_list, list) {
 		if (tmp->busnum == busnum) {
-			spin_unlock_irqrestore(&__i2c_lock, flags);
+			local_irq_restore(flags);
 			return tmp;
 		}
 
 	}
 
-	spin_unlock_irqrestore(&__i2c_lock, flags);
+	local_irq_restore(flags);
 	return NULL;
 }
 

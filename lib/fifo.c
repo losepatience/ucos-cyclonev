@@ -31,9 +31,19 @@ inline unsigned long fifo_unused(struct fifo *fifo)
 	return fifo->unused;
 }
 
+inline unsigned long fifo_unused_nowrap(struct fifo *fifo)
+{
+	return (fifo->count - fifo->in) * fifo->esize;
+}
+
 inline unsigned long fifo_cached(struct fifo *fifo)
 {
 	return fifo->count - fifo->unused;
+}
+
+inline unsigned long fifo_cached_nowrap(struct fifo *fifo)
+{
+	return (fifo->count - fifo->out) * fifo->esize;
 }
 
 static void __fifo_in(struct fifo *fifo, const void *src,

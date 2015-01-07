@@ -19,8 +19,7 @@
  * MA 02111-1307 USA
  */
 
-#include <fifo.h>
-#include <job.h>
+#include <circ.h>
 #include <status.h>
 #include <stddef.h>
 #include <hugebuf.h>
@@ -28,34 +27,16 @@
 #include <ezusb.h>
 #include <platform.h>
 
-#include <uv.h>
 #include <control.h>
 #include <miscellance.h>
 #include <fpga.h>
+#include <asm/io.h>
 
 #define __report	status_ReportStatus
 #define HEADSIZE	1024	/* heads is 1024bytes aligned */
 
 extern volatile INT8U USBDMA_manualStop; /*not used*/
 extern INT16U *CurHugeBufDataAddr;
-
-typedef struct __rx_info {
-	bool		first;
-	int		remainning;
-	int		cnt;
-} __rx_info_t;
-
-typedef struct circ {
-	spinlock_t	lock;
-	struct fifo	*fifo;
-
-	int		sizeof_header;	/* const */
-	int		sizeof_band;
-	void		*nextheader;	/* FlushCurBand */
-	int		band_left;
-
-	__rx_info_t	xinfo;
-} circ_t;
 
 static circ_t __circ;
 
@@ -82,13 +63,35 @@ INT8U FPGA_RESET(void)
 {
 	return 1;
 }
+
+#define BULK_BASE	0xff200200
+#define BULK_BUSY	1 << 1
+
+#define DMA_BASE	0xff200280
+#define DMA_BUSY	1 << 1
+
 int wait_for_fpga_dma_idle(void)
 {
-	return 1;
+	while (1) {
+		if (!(readl((void *)DMA_BASE) & DMA_BUSY))
+			break;
+
+		msleep(1);
+	}
+
+	return true;
 }
+
 int wait_for_usb_dma_idle(void)
 {
-	return 1;
+	while (1) {
+		if (!(readl((void *)BULK_BASE) & BULK_BUSY))
+			break;
+
+		msleep(1);
+	}
+
+	return true;
 }
 #endif
 
@@ -102,9 +105,9 @@ void HugeBuf_Reset(void)
 	circ_t *circ = __to_circ();
 	unsigned long flags = 0;
 
-	spin_lock_irqsave(&circ->lock, flags);
+	local_irq_save(flags);
 	fifo_reset(circ->fifo);
-	spin_unlock_irqrestore(&circ->lock, flags);
+	local_irq_restore(flags);
 }
 
 u8 HugeBuf_Flush(ssize_t size)
@@ -114,7 +117,7 @@ u8 HugeBuf_Flush(ssize_t size)
 	unsigned long flags = 0;
 	bool ret;
 
-	spin_lock_irqsave(&circ->lock, flags);
+	local_irq_save(flags);
 
 	if (size > fifo_cached(fifo)) {
 		ret = false;
@@ -123,7 +126,7 @@ u8 HugeBuf_Flush(ssize_t size)
 		ret = true;
 	}
 
-	spin_unlock_irqrestore(&circ->lock, flags);
+	local_irq_restore(flags);
 	return ret;
 }
 
@@ -141,7 +144,7 @@ u8 HugeBuf_GetInfHead(DataHeaderType *header)
 	addr = fifo_oaddr(fifo);
 	memcpy(header, addr, sizeof(DataHeaderType));
 
-	if (memcmp(&header->header_flag, "BYHX", 4)) {
+	if (memcmp(&header->header_flag, "XHYB", 4)) {
 		__report(STATUS_FTA_INTERNAL_WRONGHEADER, STATUS_SET);
 		while (1)
 			OSTimeDly(1);
@@ -155,7 +158,7 @@ u8 HugeBuf_GetInfHead(DataHeaderType *header)
 		return false;
 	}
 
-	spin_lock_irqsave(&circ->lock, flags);
+	local_irq_save(flags);
 
 	HugeBuf_Flush(size);
 
@@ -163,7 +166,7 @@ u8 HugeBuf_GetInfHead(DataHeaderType *header)
 	size = header->data_bytescnt;
 	circ->nextheader = fifo_oaddr_plus(fifo, size);
 	circ->sizeof_band = size;
-	spin_unlock_irqrestore(&circ->lock, flags);
+	local_irq_restore(flags);
 	return true;
 }
 
@@ -176,10 +179,10 @@ void HugeBuf_FlushCurBand(void)
 
 	wait_for_fpga_dma_idle();
 
-	spin_lock_irqsave(&circ->lock, flags);
+	local_irq_save(flags);
 	cnt = circ->nextheader - fifo_oaddr(fifo);
 	fifo_out(fifo, NULL, cnt);
-	spin_unlock_irqrestore(&circ->lock, flags);
+	local_irq_restore(flags);
 }
 
 ssize_t HugeBuf_GetSize(void)
@@ -188,9 +191,9 @@ ssize_t HugeBuf_GetSize(void)
 	unsigned long flags = 0;
 	int cnt;
 
-	spin_lock_irqsave(&circ->lock, flags);
+	local_irq_save(flags);
 	cnt = fifo_cached(circ->fifo);
-	spin_unlock_irqrestore(&circ->lock, flags);
+	local_irq_restore(flags);
 
 	return (ssize_t)cnt;
 }
@@ -201,9 +204,9 @@ u8 *HugeBuf_GetRecAddr(void)
 	unsigned long flags = 0;
 	u8 *addr;
 
-	spin_lock_irqsave(&circ->lock, flags);
+	local_irq_save(flags);
 	addr = (u8 *)fifo_iaddr(circ->fifo);
-	spin_unlock_irqrestore(&circ->lock, flags);
+	local_irq_restore(flags);
 
 	return addr;
 }
@@ -213,20 +216,31 @@ void HugeBuf_PutSize(size_t size)
 	circ_t *circ = __to_circ();
 	unsigned long flags = 0;
 
-	spin_lock_irqsave(&circ->lock, flags);
+	local_irq_save(flags);
 	fifo_in(circ->fifo, NULL, size);
-	spin_unlock_irqrestore(&circ->lock, flags);
+	local_irq_restore(flags);
 }
 
 void HugBuf_InitReceiveSize(void)
 {
 	circ_t *circ = __to_circ();
+
 	circ->xinfo.remainning = 0;
 	circ->xinfo.first = true;
 	circ->xinfo.cnt = HEADSIZE;
+	circ->sizeof_header = HEADSIZE;
+}
 
-	// not here
-	//circ->fifo = fifo_init((void *)0x2000000, 1, 1024 * 1024);
+void HugBuf_Init(void)
+{
+	circ_t *circ = __to_circ();
+	unsigned long start, size;
+
+	start = __OS_BASE + __OS_SIZE;
+	size = PHYS_SDRAM_SIZE - start;
+
+	HugBuf_InitReceiveSize();
+	circ->fifo = fifo_init((void *)start, 1, size);
 }
 
 static void __callback(void *arg, u8 stat, u32 xmit, u32 remaining)
@@ -235,6 +249,7 @@ static void __callback(void *arg, u8 stat, u32 xmit, u32 remaining)
 		USBDMA_EP2_DoneInterrupt();
 }
 
+/* fill the fifo until it is full */
 void HugeBuf_StartOneReceive(void)
 {
 	circ_t *circ = __to_circ();
@@ -244,22 +259,22 @@ void HugeBuf_StartOneReceive(void)
 
 	if (USBDMA_manualStop) {
 		g_USBTransStoped = true;
-		return;	
+		return;
 	}
 
 	wait_for_usb_dma_idle();
 
-	spin_lock_irqsave(&circ->lock, flags);
+	local_irq_save(flags);
 
 	g_USBTransStoped = false;
-	if (fifo_unused(fifo) < info->cnt) {
-		void *addr = fifo_oaddr(fifo);
+	if (fifo_unused(fifo) >= info->cnt) {
+		void *addr = fifo_iaddr(fifo);
 
 		USBD_Read(USB_OUT_EP, addr, info->cnt, __callback, 0);
 	} else {
 		g_USBTransStoped = true;
 	}
-	spin_unlock_irqrestore(&circ->lock, flags);
+	local_irq_restore(flags);
 }
 
 void HugeBuf_CompleteOneReceive(void)
@@ -273,12 +288,14 @@ void HugeBuf_CompleteOneReceive(void)
 
 		head = (DataHeaderType *)fifo_iaddr(fifo);
 
-		if (memcmp(&head->header_flag, "BYHX", 4)) {
-			info->first = false;
+		if (!memcmp(&head->header_flag, "XHYB", 4))
 			info->remainning = head->data_bytescnt;
-		} else {
+		else
 			info->remainning = 0;
-		}
+
+		if (info->remainning != 0)
+			info->first = false;
+
 	} else {
 		info->remainning -= info->cnt;
 		if (info->remainning == 0)
@@ -290,8 +307,8 @@ void HugeBuf_CompleteOneReceive(void)
 	if (info->first) {
 		info->cnt = circ->sizeof_header;
 	} else {
-		info->cnt = min(info->remainning, 0x10000 - 0x1000);
-		info->cnt = min(info->cnt, fifo_unused(fifo));
+		info->cnt = min(info->remainning, 0x10000 - circ->sizeof_header);
+		info->cnt = min(info->cnt, fifo_unused_nowrap(fifo));
 	}
 	return;
 }
@@ -308,15 +325,9 @@ u16 *HugeBuf_GetCodeAddr(ssize_t len)
 
 void HugeBuf_CancelJob(void)
 {
-	circ_t *circ = __to_circ();
 	unsigned long flags = 0;
 	u8 buf[10];
 	u8 err;
-
-	uv_PrintCancelJob();
-
-	if (LCDMenuConfig.PlateFanMode == PLATEFANMODE_AUTO)
-		ClosePlateFan();
 
 	buf[0] = 2;
 	buf[1] = UART_DSP_STOP_PRINT;
@@ -328,13 +339,13 @@ void HugeBuf_CancelJob(void)
 	USBD_AbortDataRead(USB_OUT_EP);
 	OSTimeDly(1);
 
-	spin_lock_irqsave(&circ->lock, flags);
+	local_irq_save(flags);
 
 	USBDMA_manualStop = false;
 	HugeBuf_Reset();
 	HugBuf_InitReceiveSize();
 	HugeBuf_StartOneReceive();
-	spin_unlock_irqrestore(&circ->lock, flags);
+	local_irq_restore(flags);
 
 	status_ReportStatus(STATUS_NO_CANCEL, STATUS_SET);
 

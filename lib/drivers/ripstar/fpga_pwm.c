@@ -640,7 +640,7 @@ static inline void __pwm_handler_almost(void * arg)
 	}
 #endif
 }
-static spinlock_t irq_lock;
+
 static void __pwm_irq_handler(void *arg)
 {
 	int i = 0;
@@ -649,7 +649,7 @@ static void __pwm_irq_handler(void *arg)
 
 
 	// check the empty irq
-	spin_lock_irqsave(&irq_lock, flags);
+	local_irq_save(flags);
 	for(i = 0; i < PWM_MAX_CH_CNT; i++)
 	{
 		dbuf_id_t valid_buf = (__pwm->pwm_sebr & (0x01 << i)) ? DBUF_1 : DBUF_0;
@@ -659,7 +659,7 @@ static void __pwm_irq_handler(void *arg)
 	}
 	if(chId != 0 && pwm_handler_e != NULL)
 		pwm_handler_e((void *)chId);		//call the interrupt handler
-	spin_unlock_irqrestore(&irq_lock, flags);
+	local_irq_restore(flags);
 
 	if(chId != 0)
 	{
@@ -670,7 +670,7 @@ static void __pwm_irq_handler(void *arg)
 	//check the almost empty irq
 	chId = 0;
 	volatile dbuf_id_t valid_buf = 0;
-	spin_lock_irqsave(&irq_lock, flags);
+	local_irq_save(flags);
 	for(i = 0; i < PWM_MAX_CH_CNT; i ++)
 	{
 		valid_buf = (__pwm->pwm_sebr & (0x01 << i)) ? DBUF_1 : DBUF_0;
@@ -681,7 +681,7 @@ static void __pwm_irq_handler(void *arg)
 	if(chId != 0 && pwm_handler_ae != NULL)
 		pwm_handler_ae((void *)chId);		//call the interrupt handler
 
-	spin_unlock_irqrestore(&irq_lock, flags);
+	local_irq_restore(flags);
 
 	if(chId != 0)
 	{

@@ -52,9 +52,9 @@ int dw_gpio_init(void);
 #define DW_BASE_PIOF	DW_ID_PIOF
 
 typedef struct pio_imode {
-	unsigned int imask;
 	unsigned int type;	/* 0 is Edge, 1 is Level */
 	unsigned int polarity;	/* 0 is Falling Edge */
+	unsigned int dual;	/* dual active */
 } Pio_Imode;
 
 typedef struct {

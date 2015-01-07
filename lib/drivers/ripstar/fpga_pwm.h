@@ -1,7 +1,3 @@
-#ifndef __FPGA_PWM_H__
-#define __FPGA_PWM_H__
-#include <asm/io.h>
-
 /*
  *  PWM0		: out std_logic;	-- FPGA_3A_GPIO10     --xPul     --AJ2
  *	PWM1		: out std_logic;	-- FPGA_3A_GPIO16     --xDir     --AG2
@@ -19,17 +15,21 @@
  */
 
 #if 1
-#define REG_PRINT_STATUS 	 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x00))		//R
-#define REG_FPGA_CONFIG		 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x04))		//RW
-#define REG_FPGA_CMD 		 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x08))		//RW
-#define REG_MOTOR_COOR_X 	 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x0c))		//R
-#define REG_MOTOR_COOR_Y 	 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x10))		//R
-#define REG_PRT_COOR_X 		 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x14))		//R
-#define REG_COOR_SYS_CTRL	 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x18))		//RW
-#define REG_COOR_SYS_STAUS	 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x1c))		//R
-#define REG_FIRE_START		 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x20))		//RW
-#define REG_FIRE_END		 (*(volatile unsigned int*)(FPGA_FIFO_ADDR + 0x24))		//RW
+#define REG_PRINT_STATUS 	 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x00))		//R
+#define REG_FPGA_CONFIG		 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x04))		//RW
+#define REG_FPGA_CMD 		 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x08))		//RW
+#define REG_MOTOR_COOR_X 	 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x0c))		//R
+#define REG_MOTOR_COOR_Y 	 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x10))		//R
+#define REG_PRT_COOR_X 		 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x14))		//R
+#define REG_COOR_SYS_CTRL	 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x18))		//RW
+#define REG_COOR_SYS_STAUS	 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x1c))		//R
+#define REG_FIRE_START		 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x20))		//RW
+#define REG_FIRE_END		 ((volatile unsigned int*)(FPGA_FIFO_ADDR + 0x24))		//RW
 #endif
+
+#ifndef __FPGA_PWM_H__
+#define __FPGA_PWM_H__
+#include <asm/io.h>
 
 #define PWM_MAX_CH_CNT 14
 #define CONFIG_PWM_IRQ		78
@@ -37,8 +37,8 @@
 #define PWM_BASE_ADDR (SOCFPGA_LWH2F_ADDRESS + 0x2000)
 #define PWM_CHANNEL_ADDR (PWM_BASE_ADDR + 0x80)
 
-#define PWM_IDX(n) (n)					//pwm ÈÄöÈÅìÁ¥¢Âºï
-#define PWM_MSK(n) (0x01 << (n))		//pwm ÈÄöÈÅì‰ΩçÊé©Á†Å
+#define PWM_IDX(n) (n)					//pwm Õ®µ¿À˜“˝
+#define PWM_MSK(n) (0x01 << (n))		//pwm Õ®µ¿Œª—⁄¬Î
 #define PWM_MSK_ALL (0xFFFFFFFF)
 
 #define PWM_PR_NEG 1
@@ -64,31 +64,31 @@ typedef enum DOUBLE_BUFFER_ID
 
 typedef struct pwm_t
 {
-	/*1 pwm_ovr:Ë∂ÖÊéßÈÇ£‰∏™Áõ¥Êé•Â∞±ÊòØarmÊéßÂà∂Ôºö
-	 * 		ÂΩì‰∏∫pwm_mr(Ê®°ÂºèÈÄâÊã©)‰∏∫PWMÊ®°Âºè‰∏îÊéßÂà∂Ê∫êÔºàPWMÊ∫êÔºâ‰∏∫HPSÊó∂ÔºåÁõ¥Êé•Âú®pwm_ovrÈáåÂÜô010101010
-	 * 		ÂΩì‰∏∫gpioÊ®°ÂºèÊó∂ÔºåÊâÄÊúâÂØÑÂ≠òÂô®‰∏≠Âè™Êúâpwm_ovrËµ∑‰ΩúÁî®ÔºåÊ≠§Êó∂Âú®pwm_ovrÈáåÂÜô0/1Âç≥ËæìÂá∫0/1
-	 * 2 pwm_csr:control source register‰∏ìÁî®Âú®ËæìÂá∫PWMÊó∂,Ëøô‰∏™Êó∂ÂÄôËæìÂá∫ÊòØÊî∂Âà∞ÊûÅÊÄßÂØÑÂ≠òÂô®ÁöÑÂΩ±ÂìçÁöÑ
-	 * 3 Â∞ÜÁ©∫‰∏≠Êñ≠:ÂΩìbufferÈáåÂ∞ë‰∫éÊüê‰∏ÄÊï∞ÂÄºÊó∂Ôºå‰ºö‰∏ÄÁõ¥Âèë‰∏≠Êñ≠ÔºåÁ©∫‰∏≠Êñ≠ÂΩìbufferÊØèÊ¨°Áî±ÈùûÁ©∫Âèò‰∏∫Á©∫Êó∂ÂèëÈÄÅ‰∏ÄÊ¨°‰∏≠Êñ≠
-	 * 4 pwmÁöÑÂÆûÁé∞‰∏∫ÂèåÁºìÂÜ≤Êú∫Âà∂Ôºå‰ΩÜÂú®‰∏ÄËà¨ÊÉÖÂÜµ‰∏ãÔºåÂØπÂ§ñÂèåÁºìÂÜ≤ÊòØÈÄèÊòéÁöÑÔºåÂ§ñÈÉ®ËÄåË®Ä‰∏ÄËà¨ÊÉÖÂÜµ‰∏ã‰∏çÈúÄË¶ÅÁî®Êà∑ÂàáÊç¢ÁºìÂÜ≤
-	 * 	ÁºìÂÜ≤ÁöÑÂàáÊç¢Âú®ÂÜÖÈÉ®Ëá™Âä®ÂàáÊç¢ÔºåÂõ†Ê≠§ÂÖ≥‰∫éÁºìÂÜ≤ÁöÑ‰∏ÄËà¨ÂáΩÊï∞Â§ñÈÉ®Â∞ΩÈáè‰∏çË¶ÅË∞ÉÁî®
-	 * 5 pwm_mr:ÂΩìËÆæÁΩÆ‰∏∫0Êó∂Ôºå‰∏∫gpio„ÄÇ
+	/*1 pwm_ovr:≥¨øÿƒ«∏ˆ÷±Ω”æÕ «armøÿ÷∆£∫
+	 * 		µ±Œ™pwm_mr(ƒ£ Ω—°‘Ò)Œ™PWMƒ£ Ω«“øÿ÷∆‘¥£®PWM‘¥£©Œ™HPS ±£¨÷±Ω”‘⁄pwm_ovr¿Ô–¥010101010
+	 * 		µ±Œ™gpioƒ£ Ω ±£¨À˘”–ºƒ¥Ê∆˜÷–÷ª”–pwm_ovr∆◊˜”√£¨¥À ±‘⁄pwm_ovr¿Ô–¥0/1º¥ ‰≥ˆ0/1
+	 * 2 pwm_csr:control source register◊®”√‘⁄ ‰≥ˆPWM ±,’‚∏ˆ ±∫Ú ‰≥ˆ « ’µΩº´–‘ºƒ¥Ê∆˜µƒ”∞œÏµƒ
+	 * 3 Ω´ø’÷–∂œ:µ±buffer¿Ô…Ÿ”⁄ƒ≥“ª ˝÷µ ±£¨ª·“ª÷±∑¢÷–∂œ£¨ø’÷–∂œµ±buffer√ø¥Œ”…∑«ø’±‰Œ™ø’ ±∑¢ÀÕ“ª¥Œ÷–∂œ
+	 * 4 pwmµƒ µœ÷Œ™À´ª∫≥Âª˙÷∆£¨µ´‘⁄“ª∞„«Èøˆœ¬£¨∂‘Õ‚À´ª∫≥Â «Õ∏√˜µƒ£¨Õ‚≤ø∂¯—‘“ª∞„«Èøˆœ¬≤ª–Ë“™”√ªß«–ªªª∫≥Â
+	 * 	ª∫≥Âµƒ«–ªª‘⁄ƒ⁄≤ø◊‘∂Ø«–ªª£¨“Ú¥Àπÿ”⁄ª∫≥Âµƒ“ª∞„∫Ø ˝Õ‚≤øæ°¡ø≤ª“™µ˜”√
+	 * 5 pwm_mr:µ±…Ë÷√Œ™0 ±£¨Œ™gpio°£
 	 */
-	volatile uint32_t pwm_mr;		// PWM Mode Register 0:gpio	1:pwm,ÂΩì‰Ωú‰∏∫gpioÊó∂ÔºåÁî®‰ΩúpwmÁîµÊú∫ÁöÑÊñπÂêëÊéßÂà∂
+	volatile uint32_t pwm_mr;		// PWM Mode Register 0:gpio	1:pwm,µ±◊˜Œ™gpio ±£¨”√◊˜pwmµÁª˙µƒ∑ΩœÚøÿ÷∆
 	volatile uint32_t pwm_csr;		// PWM Control Source Register 0:FPGA	1:HPS
-	volatile uint32_t pwm_pr;		// PWM Polarity Register: 0Ê≠£ÈÄªËæëÔºå1ÔºöË¥üÈÄªËæë
-	volatile uint32_t pwm_ovr;		// PWM Override Register 1:HPS Ë∂äÊùÉÊéßÂà∂.ÂΩìÈÖçÁΩÆ‰∏∫gpioÊ®°ÂºèÊó∂ÔºåËØ•‰ΩçÊéßÂà∂GPIOÁîµÂπ≥
+	volatile uint32_t pwm_pr;		// PWM Polarity Register: 0’˝¬ﬂº≠£¨1£∫∏∫¬ﬂº≠
+	volatile uint32_t pwm_ovr;		// PWM Override Register 1:HPS ‘Ω»®øÿ÷∆.µ±≈‰÷√Œ™gpioƒ£ Ω ±£¨∏√Œªøÿ÷∆GPIOµÁ∆Ω
 	volatile uint32_t pwm_enr; 		// PWM Enable Register
 	volatile uint32_t pwm_sfbr;		// PWM Switch Fill Buffer Register 0:buffer0, 1:buffer1
 	volatile uint32_t pwm_sebr;		// PWM Switch Execute Buffer Register 0:buffer0, 1:buffer1
 	volatile uint32_t pwm_cbr[2];	// PWM Clear Buffer Register
 	volatile uint32_t pwm_sfr[2];	// PWM Status Full Register
 	volatile uint32_t pwm_ser[2];	// PWM Status Empty Register
-	//Â∞ÜÁ©∫‰∏≠Êñ≠ÂØÑÂ≠òÂô®ÔºåÂΩìpwm bufferÈáåÂ∞ë‰∫é‰∏ÄÂÆöÁ®ãÂ∫¶ÔºàÁõÆÂâç(FPGA)ËßÑÂÆö‰∏∫10‰∏™ÔºâÊó∂‰ºö‰∏ÄÁõ¥Êúâ‰∏≠Êñ≠ÔºåÂΩìÂ§ß‰∫éÊó∂‰∏çÂÜçÊúâ‰∏≠Êñ≠
+	//Ω´ø’÷–∂œºƒ¥Ê∆˜£¨µ±pwm buffer¿Ô…Ÿ”⁄“ª∂®≥Ã∂»£®ƒø«∞(FPGA)πÊ∂®Œ™10∏ˆ£© ±ª·“ª÷±”–÷–∂œ£¨µ±¥Û”⁄ ±≤ª‘Ÿ”–÷–∂œ
 	volatile uint32_t pwm_iaesr[2];	// PWM Almost Empty Interrupt Status Register
 	volatile uint32_t pwm_iaeer[2];	// PWM Almost Empty Interrupt Enable Register
 	volatile uint32_t pwm_iaemr[2];	// PWM Almost Empty Interrupt Mask Register
 	volatile uint32_t pwm_iaecr[2];	// PWM Almost Empty Interrupt Clear Register
-	//Á©∫‰∏≠Êñ≠ÂØÑÂ≠òÂô®ÔºåÂΩìpwm buffer Èáå‰∏∫Á©∫Êó∂ÂèëÈÄÅ‰∏Ä‰∏™‰∏≠Êñ≠
+	//ø’÷–∂œºƒ¥Ê∆˜£¨µ±pwm buffer ¿ÔŒ™ø’ ±∑¢ÀÕ“ª∏ˆ÷–∂œ
 	volatile uint32_t pwm_iesr[2]; 	// PWM Empty Interrupt Status Register
 	volatile uint32_t pwm_ieer[2]; 	// PWM Empty Interrupt Enable Register
 	volatile uint32_t pwm_iemr[2]; 	// PWM Empty Interrupt Mask Register
@@ -124,8 +124,8 @@ int pwm_reset(uint32_t ch);
 extern int pwm_init(void);
 
 typedef void (*pwm_handler_t)(void *);
-extern pwm_handler_t pwm_handler_e;			//Á©∫‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞
-extern pwm_handler_t pwm_handler_ae;		//Â∞ÜÁ©∫‰∏≠Êñ≠Â§ÑÁêÜÂáΩÊï∞
+extern pwm_handler_t pwm_handler_e;			//ø’÷–∂œ¥¶¿Ì∫Ø ˝
+extern pwm_handler_t pwm_handler_ae;		//Ω´ø’÷–∂œ¥¶¿Ì∫Ø ˝
 
 
 /*	 can delete

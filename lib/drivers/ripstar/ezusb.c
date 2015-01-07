@@ -37,7 +37,7 @@
 
 #define CONFIG_EZUSB__BASE	(SOCFPGA_LWH2F_ADDRESS + 0x800)
 #define CONFIG_EZUSB_IRQ		76
-#define EZUSB_PORT_CNT			3
+#define EZUSB_PORT_CNT			4
 
 #define EZUSB_SR			0x00
 #define EZUSB_CR			0x04
@@ -60,11 +60,10 @@ typedef struct ezusb_ids {
 	int			type;
 
 	u32			mask;
+	u32			status;
 } __ids_t;
 
 struct ezusb_port {
-	spinlock_t		lock;
-
 	__ids_t			id;
 	void			*base;
 	void			*iobase;
@@ -76,9 +75,10 @@ struct ezusb_port {
 };
 
 static __ids_t ids[] = {
-	[0] = { 0, USBGenericRequest_IN, 1 << 3 },
-	[1] = { 0, USBGenericRequest_OUT, 1 << 1 },
-	[2] = { 6, USBGenericRequest_IN, 1 << 4 },
+	[0] = { 0, USBGenericRequest_IN, 1 << 0, 1 << 3 },
+	[1] = { 1, USBGenericRequest_OUT, 1 << 1, 1 << 1 },
+	[2] = { 6, USBGenericRequest_IN, 1 << 2, 1 << 4 },
+	[3] = { 2, USBGenericRequest_IN, 1 << 2, 1 << 4 },
 };
 
 static struct ezusb_port *ezusb_ports;
@@ -102,7 +102,7 @@ static int wait_port_not_busy(struct ezusb_port *port)
 
 	do {
 		stat = readl(port->base + EZUSB_SR);
-		stat &= port->id.mask;
+		stat &= port->id.status;
 		if (port->id.type == USBGenericRequest_IN)
 			stat = !stat;
 
@@ -122,8 +122,10 @@ static void ezusb_ep0_isr(void *arg)
 	static unsigned int q[2];
 
 	if (port->callback) {
+
 		q[0] = readl(port->iobase);
 		q[1] = readl(port->iobase);
+
 		port->callback(q);
 	}
 
@@ -140,35 +142,33 @@ static int __read(struct ezusb_port *port, void *buf, int len)
 
 	p = (unsigned int *)buf;
 
-	spin_lock_irqsave(&port->lock, flags);
+	local_irq_save(flags);
 	while (len) {
 		u32 stat = readl(port->base + EZUSB_SR);
-		if (stat &= port->id.mask)
+		if (stat & port->id.status)
 			break;
 
 		*p++ = readl(port->iobase);
 		len--;
 	}
-	spin_unlock_irqrestore(&port->lock, flags);
+	local_irq_restore(flags);
 	return (char *)p - (char *)buf;
 }
 
 /* XXX: only used by EP0 */
 static int ezusb_read(struct ezusb_port *port, void *buf, int len)
 {
-	char *p;
-	int ret;
+	char *p = (char *)buf;
+	int ret = 0;
 
-	p = (char *)buf;
-	len -= len % 4;
-	ret = 0;
+	len = roundup(len, 4);
 
 	while (len > 0) {
 		int l = __read(port, buf, len);
-		if (l <= 0 && wait_port_not_busy(port))
+		if (l <= 0 || wait_port_not_busy(port))
 			break;
 
-		len -= l; 
+		len -= l;
 		ret += l;
 		p += l;
 	}
@@ -194,8 +194,8 @@ static int __write(struct ezusb_port *port, const void *buf, int len, int flag)
 	p = (unsigned int *)buf;
 	padding = 0;
 
-	spin_lock_irqsave(&port->lock, flags);
-	if (flag & EZUSB_FLAGS_PAD) {
+	local_irq_save(flags);
+	if (port->id.ep == 0) {
 
 		cnt = len % port->burst;
 		padding = port->burst - cnt;
@@ -204,50 +204,48 @@ static int __write(struct ezusb_port *port, const void *buf, int len, int flag)
 			len = io_limit - padding;
 
 		memset(port->wrbuf, 0, sizeof(port->wrbuf));
-		port->wrbuf[0] = padding | EZUSB_FLAGS_PAD;
+		port->wrbuf[0] = padding;
+		if (flag & EZUSB_FLAGS_PAD)
+			port->wrbuf[0] |= EZUSB_FLAGS_PAD;
 		memcpy(port->wrbuf + padding, buf, cnt);
 
 		p = (unsigned int *)port->wrbuf;
 		cnt = port->burst / 4;
 		while (cnt--)
-			writel(p++, port->iobase);
+			writel(*p++, port->iobase);
 	}
 
 	cnt = (len - (port->burst - padding)) / 4;
 	p = (unsigned int *)((char *)buf + (port->burst - padding));
 
 	while (cnt--)
-		writel(p++, port->iobase);
+		writel(*p++, port->iobase);
 
 	/* start to xmit */
 	writel(port->id.mask, port->base + EZUSB_CR);
-	spin_unlock_irqrestore(&port->lock, flags);
+	local_irq_restore(flags);
 
 	return len;
 }
 
 /* used by ep0 & ep6 */
-static inline ssize_t ezusb_write(struct ezusb_port *port,
-				const void *buf, int len)
+static ssize_t ezusb_write(struct ezusb_port *port,
+		const void *buf, int len, int flags)
 {
 	char *p;
 	int ret;
-	int flag;
-
-	if (port->id.ep == 0)
-		flag = EZUSB_FLAGS_PAD;
-	else
-		flag = 0;
 
 	p = (char *)buf;
 	ret = 0;
+	if (flags)
+		flags = EZUSB_FLAGS_PAD;
 
 	while (len > 0) {
-		int l = __write(port, buf, len, flag);
+		int l = __write(port, p, len, flags);
 		if (l <= 0)
 			break;
 
-		len -= l; 
+		len -= l;
 		ret += l;
 		p += l;
 	}
@@ -255,10 +253,50 @@ static inline ssize_t ezusb_write(struct ezusb_port *port,
 	return ret;
 }
 
-static inline void ezusb_flush(u8 endpoint)
+#define BULK_BASE	0xff200200
+#define BULK_STAT	0x0
+#define BULK_BUSY	1 << 1
+
+static struct completion	__wait;
+
+static void ezusb_bulk_isr(void *arg)
 {
-	struct ezusb_port *port = __to_ezusb_port(endpoint);
-	writel(port->id.mask << 16, port->base + EZUSB_CR);
+	complete(&__wait);
+}
+
+static ssize_t bulk_in(struct ezusb_port *port, const void *buf, int len)
+{
+	int retries = 10;
+	int rval;
+
+	do {
+		if (!(readl(port->base) & BULK_BUSY))
+			break;
+
+		msleep(1);
+
+	} while (--retries);
+
+	if (retries == 0) {
+		pr_err("%s: busy\n", __func__);
+		return -EBUSY;
+	}
+
+	INIT_COMPLETION(__wait);
+	writel(0, port->base);
+	writel(buf, port->base + 0x4);
+	writel(len / 4, port->base + 0xC);
+	writel(0x9c, port->base + 0x18);
+
+	rval = wait_for_completion_timeout(&__wait, 5 * HZ);
+	if (rval == 0) {
+		pr_err("controller timed out\n");
+		writel(0, port->base);
+		writel(0, port->base + 0x4);
+		writel(0, port->base + 0xC);
+		return -EIO;
+	}
+	return len;
 }
 
 int ezusb_init(callback_t func)
@@ -274,7 +312,7 @@ int ezusb_init(callback_t func)
 	}
 
 	offset = EZUSB_CTX;
-	for (i = 0; i < EZUSB_PORT_CNT; i++, offset += 4) {
+	for (i = 0; i < EZUSB_PORT_CNT - 1; i++, offset += 4) {
 		port = &ezusb_ports[i];
 
 		port->id	= ids[i];
@@ -291,6 +329,14 @@ int ezusb_init(callback_t func)
 	/* enable ep0 rx irq */
 	request_irq(CONFIG_EZUSB_IRQ, ezusb_ep0_isr, port);
 	setbits32(port->base + EZUSB_IER, port->id.mask);
+
+	port = &ezusb_ports[3];	/* ep2 */
+	port->base	= (void *)BULK_BASE;
+	port->id	= ids[3];
+	port->burst	= 512;
+	port->retries	= 5;
+	init_completion(&__wait);
+	request_irq(73, ezusb_bulk_isr, port);
 
 	return 0;
 }
@@ -334,19 +380,25 @@ u8 USBGenericRequest_GetDirection(const USBGenericRequest *request)
 
 char USBD_Read(u8 ep, void *buf, u32 len, TransferCallback func, void *arg)
 {
-	struct ezusb_port *port = __to_ezusb_port(ep);
+	struct ezusb_port *port;
 	char status;
 	int cnt;
 
- 	status = USBD_STATUS_SUCCESS;
+	status = USBD_STATUS_SUCCESS;
 
-	cnt = ezusb_read(port, buf, len);
+	if (ep == 0)
+		ep++;
+	port = __to_ezusb_port(ep);
+	if (ep == 2)
+		cnt = bulk_in(port, buf, len);
+	else
+		cnt = ezusb_read(port, buf, len);
 	if (cnt < 0) {
 		status = USBD_STATUS_LOCKED;
 		cnt = 0;
 	}
 
-	if (func) 
+	if (func)
 		func(arg, status, cnt, len - cnt);
 
 	return status;
@@ -362,7 +414,7 @@ char USBD_Write(u8 ep, const void *buf, u32 len,
 
 	status = USBD_STATUS_SUCCESS;
 
-	cnt = ezusb_write(port, buf, len);
+	cnt = ezusb_write(port, buf, len, 0);
 	if (cnt < 0) {
 		status = USBD_STATUS_LOCKED;
 		cnt = 0;
@@ -405,7 +457,7 @@ void USBD_Connect(void)
 	};
 	struct ezusb_port *port = __to_ezusb_port(0);
 
-	ezusb_write(port, &cmd, sizeof(cmd));
+	ezusb_write(port, &cmd, sizeof(cmd), 1);
 }
 
 void USBD_Disconnect(void)
@@ -417,7 +469,7 @@ void USBD_Disconnect(void)
 	struct ezusb_port *port = __to_ezusb_port(0);
 
 	__usb_state = USBD_STATE_DEFAULT;
-	ezusb_write(port, &cmd, sizeof(cmd));
+	ezusb_write(port, &cmd, sizeof(cmd), 1);
 }
 
 u8 USBD_Stall(u8 Endpoint)
@@ -433,7 +485,7 @@ u8 USBD_Stall(u8 Endpoint)
 	cmd->cmd = USB_CMD_STALL;
 	cmd->data[0] = Endpoint;
 
-	ezusb_write(port, buf, sizeof(buf));
+	ezusb_write(port, buf, sizeof(buf), 1);
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -449,8 +501,8 @@ u8 USBD_ACK(u8 Endpoint)
 	cmd->len = 1;
 	cmd->cmd = USB_CMD_ACK;
 	cmd->data[0] = Endpoint;
-	
-	ezusb_write(port, buf, sizeof(buf));
+
+	ezusb_write(port, buf, sizeof(buf), 1);
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -464,7 +516,7 @@ char USBD_AbortDataRead(u8 Endpoint)
 	cmd->cmd = USB_CMD_ABORT_READ;
 	cmd->data[0] = Endpoint;
 
-	ezusb_write(port, buf, sizeof(buf));
+	ezusb_write(port, buf, sizeof(buf), 1);
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -478,7 +530,7 @@ char USBD_AbortDataWrite(u8 Endpoint)
 	cmd->cmd = USB_CMD_ABROT_WRITE;
 	cmd->data[0] = Endpoint;
 
-	ezusb_write(port, buf, sizeof(buf));
+	ezusb_write(port, buf, sizeof(buf), 1);
 	return USBD_STATUS_SUCCESS;
 }
 
@@ -487,14 +539,26 @@ extern void USBDCallbacks_RequestReceived(const USBGenericRequest *req);
 /* called in irq, so could not have mutex */
 static void ezusb_callback(void *arg)
 {
-	USBGenericRequest *req = (USBGenericRequest *)arg;	
+	USBGenericRequest *req = (USBGenericRequest *)arg;
 
-	if (USBGenericRequest_GetType(req) == USBGenericRequest_STANDARD) {
-		__usb_state = req->wIndex | 0x0F;
-		__usb_speed = req->wIndex | 0xF0;
+	if (USBGenericRequest_GetType(req) == USBGenericRequest_STANDARD
+			&& req->bRequest == 0x01
+			&& req->wValue == USB_CMD_HAND_SHAKE) {
+
+		USB_CMD_t cmd;
+		struct ezusb_port *port = __to_ezusb_port(0);
+
+		__usb_state = USBD_STATE_CONFIGURED;
+		__usb_speed = CY_U3P_SUPER_SPEED;
+
+		cmd.len = 0;
+		cmd.cmd = USB_CMD_HAND_SHAKE;
+
+		ezusb_write(port, &cmd, sizeof(cmd), 1);
+	} else {
+
+		USBDCallbacks_RequestReceived(req);
 	}
-
-	USBDCallbacks_RequestReceived(req);
 }
 
 u8 USB_Init(void)

@@ -95,7 +95,7 @@ u8 IIC_ReadEEPRom_Ex(u16 addr, u8 *buf, u16 *len)
  * APIS for max11614
  * ------------------------------------------------------------------------
  */
-#include <ssl.h>
+#include <crypto.h>
 unsigned char CRC8_Table(unsigned char *p, char len)
 {
 	return w1_crc8(p, (int)len);

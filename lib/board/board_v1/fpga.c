@@ -19,7 +19,7 @@
  * MA 02111-1307 USA
  */
 
-#include <fifo.h>
+#include <circ.h>
 #include <job.h>
 #include <status.h>
 #include <stddef.h>
@@ -28,34 +28,29 @@
 #include <ezusb.h>
 #include <platform.h>
 
-#include <uv.h>
 #include <control.h>
 #include <miscellance.h>
 #include <fpga.h>
+#include <asm/io.h>
 
-typedef struct __rx_info {
-	bool		first;
-	int		remainning;
-	int		cnt;
-} __rx_info_t;
+#define BULK_BASE	0xff200280
 
-typedef struct circ {
-	spinlock_t	lock;
-	struct fifo	*fifo;
-
-	int		sizeof_header;	/* const */
-	int		sizeof_band;
-	void		*nextheader;	/* FlushCurBand */
-	int		band_left;
-
-	__rx_info_t	xinfo;
-} circ_t;
-
+struct __dma {
+	void			*base;
+	struct completion	wait;
+} __dma;
 
 static volatile INT8U FPGADMA_manualStop = false;
-
-
+//nozzle_mask_t gl_nozzle_mask;
 volatile INT8U USBDMA_manualStop = false;
+
+struct __dma *to_dma()
+{
+	return &__dma;
+}
+
+unsigned char FPGA_SendData(unsigned char first);
+
 /* this is irq from fpga. */
 static void fpga_notify_interrupt(void *arg)
 {
@@ -75,45 +70,100 @@ static void fpga_notify_interrupt(void *arg)
 
 }
 
+static void dma_interrupt(void *arg);
+
+u8 fpga_init(void)
+{
+	struct __dma *dma = to_dma();
+	dma->base = BULK_BASE;
+	request_irq(74, dma_interrupt, NULL);
+
+	return true;
+}
+
+u8 fpga_cfg(void)
+{
+	u32 fpga_cfg = 0;
+
+	/*
+	 * data source: USB
+	 * X coor source: raster
+	 */
+	//REG_WRITE(REG_FPGA_CONFIG, fpga_cfg);
+
+	return true;
+}
+
+static void dma_start(int en)
+{
+	u32 reg;
+	unsigned long flags;
+	struct __dma *dma = to_dma();
+
+	local_irq_save(flags);
+	reg = readl(dma->base + 0x18);
+	if (en)
+		reg |= 1 << 4;
+	else
+		reg &= ~(1 << 4);
+	writel(reg, dma->base + 0x18);
+	local_irq_restore(flags);
+}
 
 void FPGADMA_stop(void)
 {
+	struct __dma *dma = to_dma();
+	unsigned long flags;
+	u32 reg;
+
 	FPGADMA_manualStop = true;
-	//11 DMAD_AbortTransfer(FPGA_DMA_CHANNEL_NUM);
+
+	local_irq_save(flags);
+	reg = readl(dma->base + 0x18);
+	reg |= 1 << 6;
+	reg &= ~(1 << 4);
+	writel(reg, dma->base + 0x18);
+	local_irq_restore(flags);
 }
 
-
-unsigned char FPGA_SendData(unsigned char first) 
+static void __send(const void *buf, int len)
 {
-	unsigned char ret = true;
-	unsigned short cur_FPGADMA_StepSize;
+	struct __dma *dma = to_dma();
 
-	circ_t *circ = __to_circ();
-	unsigned long flags = 0;
+	writel(buf, dma->base + 0x8);
+	writel(len / 4, dma->base + 0xC);
+	writel(0x9c, dma->base + 0x18);
+}
 
+static void dma_interrupt(void *arg)
+{
+	int len;
+	void *addr;
+	struct fifo *fifo = __to_circ()->fifo;
+
+	addr = fifo_oaddr(fifo);
+	len = min(1024 * 16, fifo_cached_nowrap(fifo));
+
+	if (len == 0) {
+		dma_start(0);
+		return;
+	}
+
+	__send(addr, len);
+}
+
+unsigned char FPGA_SendData(unsigned char first)
+{
 	wait_for_fpga_dma_idle();
-	
-	spin_lock_irqsave(&circ->lock, flags);
-	
+
 	if (first) {
 		FPGADMA_manualStop = false;
+		dma_start(1);
 	} else {
-
-		int cnt = FPGADMA_TRANS_COUNT * 2;
-		fifo_out(circ->fifo, NULL, cnt);
+		return false;
 	}
 
-	if (circ->xinfo.remainning > 0 && !FPGADMA_manualStop) {
-		if (first == true)
-		{
-		//	AT91C_BASE_AIC->AIC_ICCR = (1<<AT91C_ID_FIQ);
-		}
-		//IRQ_EnableIT(AT91C_ID_FIQ);
-	} else {
-		ret = false;	
-	}
-	spin_unlock_irqrestore(&circ->lock, flags);
-	return ret;
+	return true;
 }
 
 void FPGA_START_RICOH_AUTO_C(void )
@@ -126,10 +176,10 @@ void FPGA_START_FLASH_RICOH(unsigned char DataMask)
 	unsigned char flash_level = 0;
 	if (0 <= cleanparam_EPSON_ALLWIN.Config[2].FlashFreqInterval
 		&&cleanparam_EPSON_ALLWIN.Config[2].FlashFreqInterval <= 5)
-		flash_level = cleanparam_EPSON_ALLWIN.Config[2].FlashFreqInterval; 
+		flash_level = cleanparam_EPSON_ALLWIN.Config[2].FlashFreqInterval;
 	else
 		flash_level = 0;
-#ifdef MANUFACTURER_DYSS	
+#ifdef MANUFACTURER_DYSS
 		flash_level = 1;
 #endif
 
